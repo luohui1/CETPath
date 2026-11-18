@@ -1,0 +1,35 @@
+# 英语之道国内站（阿里云武汉，/etc/nginx/sites-available/yingyu，软链到 sites-enabled）。
+# 国内机房用域名要备案，所以直接用 IP 访问。
+# 现在（2026-11-12）还没有 IP 证书，站点先走 80 口：Service Worker、离线缓存要 https 才有，能做题但不能离线。
+# 拿到证书后换成文件末尾注释里的写法：80 只留证书验证和跳转，站点走 443。
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    # Let's Encrypt 的 HTTP 验证
+    location ^~ /.well-known/acme-challenge/ { root /var/www/acme; default_type text/plain; }
+
+    include snippets/yingyu-site.conf;
+}
+
+# ---- 有证书以后 ----
+# server {
+#     listen 80 default_server;
+#     listen [::]:80 default_server;
+#     server_name _;
+#     location ^~ /.well-known/acme-challenge/ { root /var/www/acme; default_type text/plain; }
+#     location / { return 301 https://$host$request_uri; }
+# }
+# server {
+#     listen 443 ssl http2 default_server;
+#     listen [::]:443 ssl http2 default_server;
+#     server_name _;
+#     ssl_certificate     /etc/nginx/ssl/yingyu.fullchain.pem;
+#     ssl_certificate_key /etc/nginx/ssl/yingyu.key;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_session_cache shared:SSL:10m;
+#     ssl_session_timeout 1d;
+#     include snippets/yingyu-site.conf;
+# }

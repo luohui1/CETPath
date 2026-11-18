@@ -1,0 +1,314 @@
+@import "tailwindcss" source("."); /* 只扫 src 里的类名：scripts、public 里的试卷数据改动时不会整页刷新 */
+/* 团队设计系统 Grasso：令牌放 base 层，组件样式放 components 层，需要时 Tailwind 工具类还能覆盖 */
+@import "./grasso/tokens.css" layer(base);
+@import "./grasso/bundle.css" layer(components);
+/* 「考场与文具」主题，覆盖 Grasso 的令牌 */
+@import "./theme.css";
+
+/* 页面里用的语义色，全部映射到 Grasso 令牌（Grasso 只有浅色主题） */
+:root {
+  --bg: var(--sky);
+  --surface: var(--glass-strong);
+  --surface-2: var(--fill-quiet);
+  --border: var(--line-soft);
+  --text: var(--ink);
+  --muted: var(--ink-muted);
+  --subtle: var(--ink-subtle);
+  --primary: var(--blue);
+  --primary-hover: var(--blue-hover);
+  --primary-fg: var(--on-blue);
+  --primary-soft: var(--blue-tint);
+  --accent: var(--star-ink);
+  --accent-soft: var(--star-tint);
+  --success-soft: var(--success-tint);
+  --danger-soft: var(--danger-tint);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-sky-deep: var(--sky-deep);
+  --shadow-card: var(--shadow-glass);
+  --shadow-float: var(--shadow-glass-lift);
+  --font-serif: "Source Serif 4", "Source Serif 4 Variable", "New York", "Times New Roman", "PingFang SC", "Microsoft YaHei", serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 结构化试卷正文里可点的单词 */
+.w {
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast);
+}
+.w:hover {
+  background: var(--blue-tint);
+}
+.w.is-vocab {
+  box-shadow: inset 0 -2px 0 var(--pixel-blue);
+}
+.w.is-active {
+  background: var(--blue-tint);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+/* 原卷上要显示的单词框（生词、查找命中、正在查的词）：盖在画布上，背景必须半透明；点词按坐标找，框本身不接点击 */
+.w.pw {
+  position: absolute;
+  border-radius: 2px;
+  cursor: text;
+}
+.w.pw:hover {
+  background: none;
+}
+/* 生词本里的词：只在词下面一道细线，不铺底色（扫描卷的词框是识别出来的，铺了底色看着像错位的色块） */
+.w.pw.is-vocab {
+  background: none;
+  box-shadow: inset 0 -1.5px 0 var(--pixel-blue);
+}
+/* 正在查的词只描边，不填色，字照样清楚 */
+.w.pw.is-active {
+  background: transparent;
+  box-shadow: 0 0 0 1.5px var(--blue);
+}
+/* 听力原文里判过的题的答案句：荧光笔（和卷面高亮同一支 --mark），只涂文字下半截，换行处每行各涂各的 */
+.hl-mark {
+  color: var(--ink);
+  background-image: linear-gradient(transparent 52%, color-mix(in oklab, var(--mark) 88%, transparent) 52%, color-mix(in oklab, var(--mark) 88%, transparent) 96%, transparent 96%);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* 长按出译文的那一句：整句很淡的黄底（正片叠底，字照样清楚） */
+.w.pw.is-sent {
+  background: rgba(255, 222, 120, 0.34);
+  mix-blend-mode: multiply;
+  border-radius: 1px;
+}
+/* 卷面上的小按钮（题号、空位、便签）：触屏时热区至少 40×40，看起来还是原来大小 */
+.hit40 {
+  position: relative;
+}
+@media (pointer: coarse) {
+  .hit40::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 40px);
+    height: max(100%, 40px);
+    transform: translate(-50%, -50%);
+  }
+}
+/* 卷面查找：命中涂一层荧光黄（正片叠底，字还是清楚的），当前命中深一级，跳到时闪一下 */
+.w.pw.is-hit,
+.w.pw.is-hit-cur {
+  mix-blend-mode: multiply;
+  border-radius: 1px;
+}
+.w.pw.is-hit {
+  background: #fff0a0;
+}
+.w.pw.is-hit-cur {
+  background: #ffcf33;
+  animation: find-flash 0.6s ease-out;
+}
+@keyframes find-flash {
+  0%,
+  40% {
+    background: #ffb300;
+    box-shadow: 0 0 0 3px rgba(255, 179, 0, 0.45);
+  }
+  100% {
+    background: #ffcf33;
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .w.pw.is-hit-cur {
+    animation: none;
+  }
+}
+
+/* 玻璃面：Grasso 的 .gr-glass 配方（底色 + 模糊 + 亮边 + 浮起），给自定义容器用。
+   放在 components 层，fixed、absolute 这类工具类才能覆盖它的 position */
+@layer components {
+  .glass {
+    position: relative;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur-glass);
+    backdrop-filter: var(--blur-glass);
+    box-shadow: var(--shadow-glass), inset 0 0 0 0.5px rgba(255, 255, 255, 0.7);
+  }
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop {
+  animation: pop-in 160ms var(--ease-out);
+}
+
+/* 从笔记面板跳到卷面时，框出那条笔记闪两下 */
+@keyframes mark-flash {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  20%,
+  60% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.mark-flash {
+  animation: mark-flash 1.6s var(--ease-out) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop,
+  .mark-flash {
+    animation: none;
+  }
+}
+
+/* 平板（触屏）上按钮放大到 40px，手指好点 */
+@media (pointer: coarse) {
+  .gr-tool,
+  .gr-iconbtn,
+  .listen-tool {
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
+/* 触屏没有悬停：平时藏起来、悬停才出现的按钮直接显示 */
+@media (hover: none) {
+  .touch-show {
+    opacity: 1 !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
+
+/* 答题条从卷面底边滑上来 */
+@keyframes bar-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.animate-bar-in {
+  animation: bar-in 160ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-bar-in {
+    animation: none;
+  }
+}
+
+/* 内存库（本地数据库没响应）时顶部多一行提示：整屏高的布局让出这一行 */
+:root {
+  --memdb-h: 0px;
+}
+html.yz-memdb {
+  --memdb-h: 32px;
+}
+html.yz-memdb body {
+  padding-top: var(--memdb-h);
+}
+html.yz-memdb .h-dvh {
+  height: calc(100dvh - var(--memdb-h));
+}
+html.yz-memdb .min-h-dvh {
+  min-height: calc(100dvh - var(--memdb-h));
+}
+
+/* 工具栏上的视图开关（缩略图、听力、面板）：开着是浅蓝底；实心蓝只给当前的笔记工具 */
+.gr-tool-soft,
+.gr-tool-soft:hover {
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+/* 新手提示：一道都没答时，第一题的空答题圈向外扩一圈淡蓝光，闪三下 */
+@keyframes slot-hint {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(22, 119, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
+  }
+}
+.animate-slot-hint {
+  animation: slot-hint 1.6s ease-out 0.6s 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-slot-hint {
+    animation: none;
+  }
+}

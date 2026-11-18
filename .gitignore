@@ -1,0 +1,26 @@
+node_modules
+dist
+dev-dist
+*.local
+.vite
+# ECDICT 原始数据（体积大，用 npm run build:dict 重新生成 public/dict）
+data/raw
+# 四六级真题库（体积大、有版权，只在本机开发用）
+真题/
+
+# 学习资料及其导入中间文件留在本机
+/public/papers/
+/public/audio/
+/public/dict/
+/data/cache/
+/data/parse/
+/scripts/audio/
+/scripts/cet_answer_fixes.json
+
+# 本机调试与线上站点的运维文件
+__pycache__/
+/log820.txt
+/deploy/.last-deploy*
+/deploy/deploy-vps.sh
+/docs/部署.md
+/docs/后续安排.md
