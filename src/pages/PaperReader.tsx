@@ -306,9 +306,10 @@ export function PaperReaderPage() {
       onSectionTime={onSectionTime}
       onMock={
         // 整套卷还没动笔时可以改成全真模拟（从头倒计时）
-        !sectionId && !retry && (!attempt || (attemptMode(attempt) === "free" && !attempt.submittedAt && !Object.keys(attempt.answers).length))
+        !sectionId && !retry && (!attempt || (attemptMode(attempt) === "free" && !attempt.submittedAt && !Object.keys(attempt.answers).length && !Object.values(attempt.texts ?? {}).some((t) => t.trim())))
           ? () => {
               void setSetting("examMode", "exam");
+              setSessionSec(0);
               void db.attempts.put(emptyAttempt(key, { mode: "exam" }));
             }
           : undefined
