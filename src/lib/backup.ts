@@ -1,6 +1,6 @@
 import { db } from "./db";
 
-const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery"] as const;
+const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory"] as const;
 
 /** 所有学习数据导出成一个 JSON，换设备或清缓存前用来备份 */
 export async function exportBackup() {

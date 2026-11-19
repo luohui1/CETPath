@@ -1,4 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useAgentEnabled } from "@/lib/agent";
+import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -139,7 +141,7 @@ const MIN_WIDTH = 760; // 平板竖屏 768 起
 const LONG_PRESS_MS = 500; // 手指按住一句不动这么久：出这句的译文
 const HINT_KEY = "yz.examHintSeen"; // 底部"怎么选答案、查词"的提示只在第一次做题时出
 const DOCK_KEY = "yz.dockTab"; // 停靠区上次开的标签（只是记住个习惯，存在浏览器里，取不到就算了）
-const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax"];
+const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax", "ask"];
 function lastDockTab(): DockTab | null {
   try {
     const t = localStorage.getItem(DOCK_KEY) as DockTab | null;
@@ -1501,6 +1503,16 @@ export function ExamRoom({
   // 卷面上点了词（点在空白处是 null：收起）
   const onPaperWord = showWord;
   const cover = `/papers/pdf/${encodeURIComponent(paper.id)}.thumb.jpg`;
+  // 问 AI：卷面上的一句（可带点的词），右侧"问 AI"标签里接着聊
+  const aiOn = useAgentEnabled();
+  const [agentThread, setAgentThread] = useState<AgentThread | null>(null);
+  const askAI = useCallback(
+    (sentence: string, word?: string) => {
+      setAgentThread({ id: `${sentenceKey(sentence)}:${word ?? ""}`, ctx: { paper: paper.title, sentence, word, syntax: synOf(sentence) ?? undefined } });
+      openTab("ask");
+    },
+    [paper.title, synOf, openTab],
+  );
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
@@ -1733,6 +1745,7 @@ export function ExamRoom({
         trans={trans}
         onClose={barContent.kind === "explain" ? () => setExplainOpen(false) : closeBar}
         step={{ prev: canPrev, next: canNext, go: onStep }}
+        onAsk={aiOn && barContent.kind === "sentence" ? () => askAI(barContent.sentence) : undefined}
         onHeight={embedded ? undefined : setBarH}
       />
     );
@@ -1752,6 +1765,7 @@ export function ExamRoom({
       mode={mode}
       attemptKey={attemptKey}
       attemptInit={{ mode }}
+      agent={agentThread}
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
@@ -2330,6 +2344,14 @@ export function ExamRoom({
             onClose={closeWord}
             onTransOpen={setCardTrans}
             onSyntax={hit.page != null && synOf(hit.sentence) ? () => openSyntax(sentenceKey(hit.sentence), false) : undefined}
+            onAsk={
+              aiOn && hit.sentence
+                ? () => {
+                    closeWord();
+                    askAI(hit.sentence, hit.word);
+                  }
+                : undefined
+            }
           />,
           document.body,
         )}

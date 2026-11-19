@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+"""英语之道 AI 助教后端：只用标准库。
+
+- 把网页的提问转发到 OpenAI 兼容接口（/chat/completions），密钥只在服务器上
+- 管理后台 /admin：填接口地址、模型名、密钥，测试连通
+- 长期记忆存在学习者浏览器里（IndexedDB），每次提问随请求带来；/api/agent/remember 让模型整理出新的记忆
+
+运行：
+  python3 server/agent_server.py set-password        # 第一次：设管理后台密码
+  python3 server/agent_server.py serve [--port 8787]  # 只听 127.0.0.1，由 nginx 转发 /api/agent/、/api/admin/、/admin
+配置文件：环境变量 YZ_AGENT_CONFIG，默认 /srv/yingyu/config/agent.json
+"""
+from __future__ import annotations
+
+import getpass
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CONFIG = os.environ.get("YZ_AGENT_CONFIG", "/srv/yingyu/config/agent.json")
+MAX_BODY = 64 * 1024
+MAX_TURNS = 24
+MAX_MEMORY = 60
+SESSION_SEC = 7 * 86400
+RATE = (40, 600)  # 每个 IP 每 10 分钟最多 40 次提问
+_lock = threading.Lock()
+_hits: dict[str, list[float]] = {}
+_fails: dict[str, list[float]] = {}
+
+
+# ---------- 配置 ----------
+def load() -> dict:
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def save(cfg: dict) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(CONFIG)), exist_ok=True)
+    tmp = CONFIG + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CONFIG)
+
+
+def hash_pw(pw: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), 200_000).hex()
+    return f"{salt}${h}"
+
+
+def check_pw(pw: str, stored: str) -> bool:
+    try:
+        salt, _ = stored.split("$", 1)
+    except ValueError:
+        return False
+    return hmac.compare_digest(hash_pw(pw, salt), stored)
+
+
+def sign(cfg: dict, exp: int) -> str:
+    mac = hmac.new(cfg["secret"].encode(), str(exp).encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{mac}"
+
+
+def valid_session(cfg: dict, token: str | None) -> bool:
+    if not token or "secret" not in cfg or "." not in token:
+        return False
+    exp, _ = token.split(".", 1)
+    return exp.isdigit() and int(exp) > time.time() and hmac.compare_digest(sign(cfg, int(exp)), token)
+
+
+def limited(bucket: dict[str, list[float]], ip: str, n: int, window: int) -> bool:
+    now = time.time()
+    with _lock:
+        q = [t for t in bucket.get(ip, []) if now - t < window]
+        over = len(q) >= n
+        if not over:
+            q.append(now)
+        bucket[ip] = q
+    return over
+
+
+# ---------- 提示词 ----------
+SYSTEM = """你是「英语之道」里的英语长难句助教，学习者在备考四六级和考研英语。
+回答要求：
+- 用中文讲解，英文原文片段保留英文；短、准、口语化，不寒暄。
+- 解析一个句子时按这个顺序：先给一句话的整体意思；再找主干（主语 + 谓语 + 宾语/表语）；再逐个说修饰成分（从句、非谓语、介词短语、插入语）修饰谁；最后点出难点和容易误解的地方。
+- 学习者追问时，只回答追问的那一点，不重复整句解析。
+- 用 **加粗** 标出主干词，用「」括起英文片段。不要用表格和标题。
+- 只讲语言本身，不替学习者做题、不透露题目答案。
+- 结合下面「关于这位学习者」的记忆调整讲法：讲过的语法点简要带过并提醒"之前遇到过"，薄弱的点讲细一点，遵守他说过的偏好。"""
+
+REMEMBER = """你在维护一位英语学习者的长期记忆。下面是已有记忆（带 id）和刚才的一段对话。
+请找出以后讲解时值得记住的东西，只记长期有用的：
+- weak：他没掌握/反复卡住的语法点或句型（如"分不清 that 引导同位语从句还是定语从句"）
+- pref：他对讲解方式的偏好（如"希望先给译文再拆结构"）
+- fact：关于他的事实（如"在备考六级，目标 550 分"）
+不要记具体句子本身、不要记一次性的问题、不要重复已有记忆。已有记忆需要修正时用 update，已经掌握或过时的用 remove。
+只输出 JSON，不要别的文字：{"add":[{"kind":"weak|pref|fact","text":"..."}],"update":[{"id":1,"text":"..."}],"remove":[2]}
+没有要改的就输出 {"add":[],"update":[],"remove":[]}"""
+
+
+def memory_block(memory: list) -> str:
+    lines = []
+    names = {"weak": "薄弱", "pref": "偏好", "fact": "情况"}
+    for m in memory[:MAX_MEMORY]:
+        if isinstance(m, dict) and isinstance(m.get("text"), str):
+            lines.append(f"- [{names.get(m.get('kind'), '记忆')}] {m['text'][:200]}")
+    return "\n".join(lines) or "（还没有记忆）"
+
+
+def context_block(ctx: dict) -> str:
+    parts = []
+    if ctx.get("paper"):
+        parts.append(f"试卷：{str(ctx['paper'])[:80]}")
+    if ctx.get("sentence"):
+        parts.append(f"正在看的句子：{str(ctx['sentence'])[:1200]}")
+    if ctx.get("word"):
+        parts.append(f"他点的词：{str(ctx['word'])[:60]}")
+    if ctx.get("syntax"):
+        parts.append(f"这句已有的结构解析（可参考，有错可以纠正）：{json.dumps(ctx['syntax'], ensure_ascii=False)[:2000]}")
+    return "\n".join(parts)
+
+
+def clean_turns(msgs) -> list[dict]:
+    out = []
+    for m in (msgs if isinstance(msgs, list) else [])[-MAX_TURNS:]:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
+            out.append({"role": m["role"], "content": m["content"][:4000]})
+    return out
+
+
+# ---------- 上游 ----------
+def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1200, temperature: float | None = None):
+    url = cfg["base_url"].rstrip("/") + "/chat/completions"
+    body = {"model": cfg["model"], "messages": messages, "stream": stream, "max_tokens": max_tokens}
+    t = cfg.get("temperature") if temperature is None else temperature
+    if t is not None:
+        body["temperature"] = t
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", f"Bearer {cfg.get('api_key', '')}")
+    return urllib.request.urlopen(req, timeout=90)
+
+
+def ready(cfg: dict) -> bool:
+    return bool(cfg.get("base_url") and cfg.get("model") and cfg.get("api_key"))
+
+
+def parse_ops(text: str) -> dict:
+    a, b = text.find("{"), text.rfind("}")
+    try:
+        d = json.loads(text[a : b + 1]) if a >= 0 < b else {}
+    except json.JSONDecodeError:
+        d = {}
+    ops = {"add": [], "update": [], "remove": []}
+    for x in d.get("add", []) if isinstance(d.get("add"), list) else []:
+        if isinstance(x, dict) and isinstance(x.get("text"), str) and x["text"].strip():
+            ops["add"].append({"kind": x.get("kind") if x.get("kind") in ("weak", "pref", "fact") else "weak", "text": x["text"].strip()[:200]})
+    for x in d.get("update", []) if isinstance(d.get("update"), list) else []:
+        if isinstance(x, dict) and isinstance(x.get("id"), int) and isinstance(x.get("text"), str):
+            ops["update"].append({"id": x["id"], "text": x["text"].strip()[:200]})
+    ops["remove"] = [x for x in d.get("remove", []) if isinstance(x, int)] if isinstance(d.get("remove"), list) else []
+    return ops
+
+
+# ---------- HTTP ----------
+class Handler(BaseHTTPRequestHandler):
+    server_version = "yz-agent"
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):  # 不记录请求内容
+        sys.stderr.write(f"{self.address_string()} {self.command} {self.path.split('?')[0]} {args[1] if len(args) > 1 else ''}\n")
+
+    def ip(self) -> str:
+        return self.headers.get("X-Real-IP") or self.client_address[0]
+
+    def send_json(self, code: int, data, headers: dict | None = None):
+        raw = json.dumps(data, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > MAX_BODY:
+            return None
+        try:
+            return json.loads(self.rfile.read(n) or b"{}")
+        except json.JSONDecodeError:
+            return None
+
+    def cookie(self, name: str) -> str | None:
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return None
+
+    def admin(self, cfg: dict) -> bool:
+        return valid_session(cfg, self.cookie("yz_admin"))
+
+    # ---- GET ----
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        cfg = load()
+        if path in ("/admin", "/admin/"):
+            raw = ADMIN_HTML.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(raw)
+        elif path == "/api/agent/status":
+            self.send_json(200, {"enabled": ready(cfg)})
+        elif path == "/api/admin/config":
+            if not self.admin(cfg):
+                return self.send_json(401, {"error": "请先登录"})
+            key = cfg.get("api_key", "")
+            self.send_json(200, {"base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
+        else:
+            self.send_json(404, {"error": "not found"})
+
+    # ---- POST / PUT ----
+    def do_PUT(self):
+        self.do_POST()
+
+    def do_POST(self):
+        path = self.path.split("?")[0]
+        cfg = load()
+        data = self.body()
+        if data is None or not isinstance(data, dict):
+            return self.send_json(400, {"error": "请求格式不对"})
+        if path == "/api/admin/login":
+            if limited(_fails, self.ip(), 10, 900):
+                return self.send_json(429, {"error": "试错太多次，15 分钟后再来"})
+            if not cfg.get("admin_hash") or not check_pw(str(data.get("password", "")), cfg["admin_hash"]):
+                return self.send_json(401, {"error": "密码不对" if cfg.get("admin_hash") else "还没设密码：在服务器上运行 set-password"})
+            exp = int(time.time()) + SESSION_SEC
+            secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+            return self.send_json(200, {"ok": True}, {"Set-Cookie": f"yz_admin={sign(cfg, exp)}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_SEC}{secure}"})
+        if path == "/api/admin/logout":
+            return self.send_json(200, {"ok": True}, {"Set-Cookie": "yz_admin=; Path=/; Max-Age=0"})
+        if path == "/api/admin/config":
+            if not self.admin(cfg):
+                return self.send_json(401, {"error": "请先登录"})
+            for k in ("base_url", "model"):
+                if isinstance(data.get(k), str):
+                    cfg[k] = data[k].strip()
+            if isinstance(data.get("api_key"), str) and data["api_key"].strip():
+                cfg["api_key"] = data["api_key"].strip()
+            t = data.get("temperature")
+            cfg["temperature"] = float(t) if isinstance(t, (int, float)) else None
+            save(cfg)
+            return self.send_json(200, {"ok": True})
+        if path == "/api/admin/test":
+            if not self.admin(cfg):
+                return self.send_json(401, {"error": "请先登录"})
+            if not ready(cfg):
+                return self.send_json(400, {"error": "地址、模型、密钥要先填全"})
+            try:
+                t0 = time.time()
+                with upstream(cfg, [{"role": "user", "content": "用一句中文说：连接成功"}], False, 40) as r:
+                    reply = json.load(r)["choices"][0]["message"]["content"]
+                return self.send_json(200, {"ok": True, "reply": reply, "ms": int((time.time() - t0) * 1000)})
+            except Exception as e:  # noqa: BLE001
+                return self.send_json(502, {"error": upstream_error(e)})
+        if path == "/api/agent/chat":
+            return self.chat(cfg, data)
+        if path == "/api/agent/remember":
+            return self.remember(cfg, data)
+        self.send_json(404, {"error": "not found"})
+
+    def chat(self, cfg: dict, data: dict):
+        if not ready(cfg):
+            return self.send_json(503, {"error": "AI 助教还没配置好"})
+        if limited(_hits, self.ip(), *RATE):
+            return self.send_json(429, {"error": "问得太快了，歇一会儿再问"})
+        turns = clean_turns(data.get("messages"))
+        if not turns or turns[-1]["role"] != "user":
+            return self.send_json(400, {"error": "没有问题"})
+        sys_msg = SYSTEM + "\n\n关于这位学习者：\n" + memory_block(data.get("memory") or [])
+        ctx = context_block(data.get("context") or {})
+        if ctx:
+            sys_msg += "\n\n" + ctx
+        try:
+            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True)
+        except Exception as e:  # noqa: BLE001
+            return self.send_json(502, {"error": upstream_error(e)})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            with r:
+                for line in r:
+                    line = line.strip()
+                    if not line.startswith(b"data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        delta = json.loads(payload)["choices"][0].get("delta", {}).get("content")
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+                    if delta:
+                        self.wfile.write(b"data: " + json.dumps({"t": delta}, ensure_ascii=False).encode() + b"\n\n")
+                        self.wfile.flush()
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:  # noqa: BLE001
+            try:
+                self.wfile.write(b"data: " + json.dumps({"error": upstream_error(e)}, ensure_ascii=False).encode() + b"\n\n")
+            except OSError:
+                pass
+
+    def remember(self, cfg: dict, data: dict):
+        if not ready(cfg):
+            return self.send_json(503, {"error": "AI 助教还没配置好"})
+        if limited(_hits, self.ip(), *RATE):
+            return self.send_json(429, {"error": "太频繁"})
+        turns = clean_turns(data.get("messages"))
+        if not turns:
+            return self.send_json(200, {"add": [], "update": [], "remove": []})
+        mem = [m for m in (data.get("memory") or [])[:MAX_MEMORY] if isinstance(m, dict)]
+        existing = "\n".join(f"{m.get('id')}. [{m.get('kind')}] {str(m.get('text'))[:200]}" for m in mem) or "（无）"
+        convo = "\n".join(f"{'学习者' if t['role'] == 'user' else '助教'}：{t['content'][:1500]}" for t in turns)
+        msgs = [{"role": "system", "content": REMEMBER}, {"role": "user", "content": f"已有记忆：\n{existing}\n\n对话：\n{convo}"}]
+        try:
+            with upstream(cfg, msgs, False, 400, 0) as r:
+                text = json.load(r)["choices"][0]["message"]["content"] or ""
+        except Exception as e:  # noqa: BLE001
+            return self.send_json(502, {"error": upstream_error(e)})
+        self.send_json(200, parse_ops(text))
+
+
+def upstream_error(e: Exception) -> str:
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            detail = json.loads(e.read() or b"{}").get("error", {})
+            msg = detail.get("message") if isinstance(detail, dict) else str(detail)
+        except Exception:  # noqa: BLE001
+            msg = ""
+        return f"模型接口返回 {e.code}{'：' + msg[:200] if msg else ''}"
+    if isinstance(e, urllib.error.URLError):
+        return f"连不上模型接口：{e.reason}"
+    return f"模型接口出错：{type(e).__name__}"
+
+
+ADMIN_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>英语之道 · AI 助教后台</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 system-ui,-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;background:#f4f3ef;color:#1d1d1f}
+main{max-width:520px;margin:48px auto;padding:0 20px}h1{font-size:22px;margin:0 0 4px}p.sub{color:#6b6b70;margin:0 0 24px}
+.card{background:#fff;border-radius:14px;padding:22px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.05)}
+label{display:block;font-size:13px;color:#6b6b70;margin:14px 0 6px}label:first-child{margin-top:0}
+input{width:100%;height:40px;border:0;border-radius:9px;padding:0 12px;font:inherit;background:#f4f3ef;outline:none}input:focus{box-shadow:0 0 0 2px #2f6bff55}
+.row{display:flex;gap:10px;margin-top:20px;align-items:center}button{height:40px;border:0;border-radius:999px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer;background:#ecebe6;color:#1d1d1f}
+button.primary{background:#2f6bff;color:#fff}button:disabled{opacity:.5}.hint{font-size:13px;color:#6b6b70;margin-top:6px}
+#msg{margin-top:14px;font-size:14px;white-space:pre-wrap}.ok{color:#1a7f45}.err{color:#c62828}.out{margin-left:auto;background:none;color:#6b6b70;font-weight:500}
+</style></head><body><main>
+<h1>AI 助教后台</h1><p class="sub">填 OpenAI 兼容接口。密钥只存在服务器上，网页拿不到。</p>
+<div class="card" id="login" hidden><label>管理密码</label><input id="pw" type="password" autocomplete="current-password">
+<div class="row"><button class="primary" id="go">登录</button></div><div id="lmsg" class="err" style="margin-top:12px"></div></div>
+<div class="card" id="form" hidden>
+<label>接口地址（到 /v1 为止）</label><input id="base_url" placeholder="https://api.deepseek.com/v1">
+<label>模型名</label><input id="model" placeholder="deepseek-chat">
+<label>API Key</label><input id="api_key" type="password" autocomplete="off"><div class="hint" id="keyhint"></div>
+<label>温度（可空，默认用接口的）</label><input id="temperature" inputmode="decimal" placeholder="0.3">
+<div class="row"><button class="primary" id="save">保存</button><button id="test">测试连接</button><button class="out" id="logout">退出</button></div>
+<div id="msg"></div></div>
+</main><script>
+const $=id=>document.getElementById(id);
+async function api(p,o={}){const r=await fetch(p,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...o});let d={};try{d=await r.json()}catch{}return[r.status,d]}
+function say(t,ok){$("msg").textContent=t;$("msg").className=ok?"ok":"err"}
+async function boot(){const[s,d]=await api("/api/admin/config");if(s===401){$("login").hidden=false;$("form").hidden=true;$("pw").focus();return}
+$("login").hidden=true;$("form").hidden=false;$("base_url").value=d.base_url||"";$("model").value=d.model||"";$("temperature").value=d.temperature??"";
+$("api_key").value="";$("api_key").placeholder=d.api_key_set?"已保存（不改就留空）":"sk-...";$("keyhint").textContent=d.api_key_set?"已保存的密钥尾号 "+d.api_key_tail:"还没填"}
+$("go").onclick=async()=>{const[s,d]=await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:$("pw").value})});if(s===200){$("pw").value="";boot()}else $("lmsg").textContent=d.error||"登录失败"};
+$("pw").onkeydown=e=>e.key==="Enter"&&$("go").click();
+$("save").onclick=async()=>{const t=$("temperature").value.trim();const[s,d]=await api("/api/admin/config",{method:"PUT",body:JSON.stringify({base_url:$("base_url").value,model:$("model").value,api_key:$("api_key").value,temperature:t===""?null:Number(t)})});if(s===200){say("已保存",true);boot()}else say(d.error||"保存失败")};
+$("test").onclick=async()=>{$("test").disabled=true;say("测试中…",true);const[s,d]=await api("/api/admin/test",{method:"POST",body:"{}"});$("test").disabled=false;s===200?say("连接成功（"+d.ms+" ms）："+d.reply,true):say(d.error||"失败")};
+$("logout").onclick=async()=>{await api("/api/admin/logout",{method:"POST",body:"{}"});boot()};
+boot();
+</script></body></html>"""
+
+
+def main():
+    args = sys.argv[1:]
+    cmd = args[0] if args else "serve"
+    if cmd == "set-password":
+        pw = os.environ.get("YZ_ADMIN_PASSWORD") or getpass.getpass("新的管理密码：")
+        if len(pw) < 8:
+            sys.exit("密码至少 8 位")
+        cfg = load()
+        cfg["admin_hash"] = hash_pw(pw)
+        cfg["secret"] = secrets.token_hex(32)  # 换密码时旧的登录全部失效
+        save(cfg)
+        print("已设置，配置在", CONFIG)
+        return
+    if cmd == "serve":
+        port = int(args[args.index("--port") + 1]) if "--port" in args else 8787
+        host = os.environ.get("YZ_AGENT_HOST", "127.0.0.1")
+        print(f"yz-agent on {host}:{port}, config {CONFIG}", flush=True)
+        ThreadingHTTPServer((host, port), Handler).serve_forever()
+        return
+    sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

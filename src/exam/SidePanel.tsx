@@ -5,6 +5,7 @@ import { ArrowCounterClockwise, BookBookmark, BookmarkSimple, ChatText, Lightbul
 import * as G from "@/grasso";
 import { db, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { updateAttempt } from "@/lib/attempts";
+import { AgentPanel, type AgentThread } from "./AgentPanel";
 import { phonetic, translationLines } from "@/lib/dict";
 import { SenseLine } from "@/components/WordPopover";
 import { removeFromVocab } from "@/lib/learning";
@@ -642,7 +643,7 @@ function NotesPanel({ marks, history, onJumpMark, onClear }: { marks: MarkRow[];
 }
 
 /** 停靠区的标签；temp 是竖屏底部抽屉开着时临时出现的"查词""解析 N""译句"（底部条的内容放进抽屉） */
-export type DockTab = "sheet" | "listen" | "explain" | "write" | "notes" | "vocab" | "syntax";
+export type DockTab = "sheet" | "listen" | "explain" | "write" | "notes" | "vocab" | "syntax" | "ask";
 export type DockView = DockTab | "temp";
 
 /** 停靠区"长难句"标签要的东西：长难句层、各篇的标题、点一句（跳到卷面那句，底部放它的解析）、正在看的那句 */
@@ -744,6 +745,7 @@ export function Dock({
   times,
   limits,
   syntax,
+  agent,
 }: {
   layout: "side" | "drawer";
   view: DockView;
@@ -781,6 +783,7 @@ export function Dock({
   times: Record<string, number> | null;
   limits: Record<string, number>;
   syntax?: DockSyntax | null;
+  agent?: AgentThread | null; // 问 AI 的那句
 }) {
   const hasWrites = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => !q.options?.length)));
   // 解析交卷后才有（只有写作翻译的卷没有）；重做后回到答题卡
@@ -791,13 +794,14 @@ export function Dock({
       ? temp
         ? "temp"
         : "sheet"
-      : (view === "explain" && !canExplain) || (view === "listen" && !paper.audio) || (view === "write" && !hasWrites) || (view === "syntax" && !syntax)
+      : (view === "explain" && !canExplain) || (view === "listen" && !paper.audio) || (view === "write" && !hasWrites) || (view === "syntax" && !syntax) || (view === "ask" && !agent)
         ? "sheet"
         : view;
   const tabs = [
     { value: "sheet", label: "答题卡" },
     ...(paper.audio ? [{ value: "listen", label: "原文" }] : []),
     ...(syntax ? [{ value: "syntax", label: `长难句 ${Object.keys(syntax.file.sentences).length}` }] : []),
+    ...(agent ? [{ value: "ask", label: "问 AI" }] : []),
     ...(canExplain ? [{ value: "explain", label: "解析" }] : []),
     ...(hasWrites && (showWrite || !hasChoice || shown === "write") ? [{ value: "write", label: "作答" }] : []),
     { value: "notes", label: marks.length ? `笔记 ${marks.length}` : "笔记" },
@@ -921,6 +925,7 @@ export function Dock({
       {shown === "notes" && <NotesPanel marks={marks} history={history} onJumpMark={onJumpMark} onClear={onClearMarks} />}
       {shown === "vocab" && <PaperVocab paper={paper} />}
       {shown === "syntax" && syntax && <SyntaxPanel syntax={syntax} />}
+      {shown === "ask" && <AgentPanel thread={agent ?? null} />}
     </aside>
   );
 }

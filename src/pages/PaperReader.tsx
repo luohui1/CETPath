@@ -5,7 +5,7 @@ import { bumpDay, db, type AttemptMode } from "@/lib/db";
 import { attemptKey, attemptMode, emptyAttempt, retryKey, updateAttempt } from "@/lib/attempts";
 import { choiceQuestions, KIND_NAMES, loadPaper, sectionRange, type Paper, type Question } from "@/lib/papers";
 import { recordMastery, retryRounds, scoredQuestions } from "@/lib/mistakes";
-import { setSetting, useSettings } from "@/lib/settings";
+import { useSettings } from "@/lib/settings";
 import { ExamRoom } from "@/exam/ExamRoom";
 import { Button, EmptyState, LoadingBlock } from "@/components/ui";
 
@@ -125,7 +125,7 @@ export function PaperReaderPage() {
 
   // 做题方式：有记录按记录（旧记录当整套模考）；专项新开按地址或设置；整套新开要先选
   const asked = search.get("mode");
-  const mode: AttemptMode = retry ? "retry" : attempt ? attemptMode(attempt) : sectionId ? ((asked ?? settings.practiceMode) === "practice" ? "practice" : "exam") : "free";
+  const mode: AttemptMode = retry ? "retry" : attempt ? attemptMode(attempt) : sectionId ? ((asked ?? settings.practiceMode) === "practice" ? "practice" : "exam") : settings.examMode;
   const init = useMemo(() => ({ mode }), [mode]);
 
   const answers = attempt?.answers ?? {};
@@ -306,9 +306,8 @@ export function PaperReaderPage() {
       onSectionTime={onSectionTime}
       onMock={
         // 整套卷还没动笔时可以改成全真模拟（从头倒计时）
-        !sectionId && !retry && (!attempt || (attemptMode(attempt) === "free" && !attempt.submittedAt && !Object.keys(attempt.answers).length && !Object.values(attempt.texts ?? {}).some((t) => t.trim())))
+        mode === "free" && !sectionId && !retry && (!attempt || (attemptMode(attempt) === "free" && !attempt.submittedAt && !Object.keys(attempt.answers).length && !Object.values(attempt.texts ?? {}).some((t) => t.trim())))
           ? () => {
-              void setSetting("examMode", "exam");
               setSessionSec(0);
               void db.attempts.put(emptyAttempt(key, { mode: "exam" }));
             }

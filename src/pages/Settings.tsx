@@ -1,4 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { MEMORY_KINDS } from "@/lib/agent";
 import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icons/react";
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
 import { setSetting, useSettings } from "@/lib/settings";
@@ -19,9 +22,9 @@ function Row({ title, desc, children }: { title: string; desc?: ReactNode; child
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function Group({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="mb-7">
+    <section id={id} className="mb-7 scroll-mt-6">
       {/* 分组标题是一张从卡片上沿伸出的便签 */}
       <h2 className="ml-4">
         <StickyTab>{title}</StickyTab>
@@ -66,7 +69,7 @@ export function SettingsPage() {
       <PageHeader title="设置" />
 
       <Group title="做题">
-        <Row title="整套卷的做题方式" desc="新开一套时默认选中，开始前还能改">
+        <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
           <Segmented
             label="整套卷的做题方式"
             value={s.examMode}
@@ -149,6 +152,10 @@ export function SettingsPage() {
         </Row>
       </Group>
 
+      <Group title="AI 助教的长期记忆" id="memory">
+        <AgentMemory />
+      </Group>
+
       <Group title="数据">
         <div className="px-5 py-4 text-[13px] leading-[21px] text-[var(--ink-700)]">
           现在是单机版：所有数据只存在这台设备的浏览器里。换设备、换浏览器或清理浏览器数据之前，请先导出备份。
@@ -196,5 +203,39 @@ export function SettingsPage() {
         </div>
       </Group>
     </div>
+  );
+}
+
+/** AI 助教记住的要点：每次问完由模型整理，这里能改、能删 */
+function AgentMemory() {
+  const rows = useLiveQuery(() => db.memory.orderBy("updatedAt").reverse().toArray(), []);
+  if (!rows) return null;
+  if (!rows.length) return <div className="px-5 py-4 text-[13px] leading-[21px] text-[var(--ink-500)]">还没有记忆。做题时点词或长按句子再点"问 AI"，聊完 AI 会把你卡住的语法点、喜欢的讲法记在这台设备上，下次讲解时用上。</div>;
+  return (
+    <>
+      {rows.map((m) => (
+        <div key={m.id} className="flex items-center gap-3 px-5 py-2.5">
+          <span className="tag-paper flex-none">{MEMORY_KINDS[m.kind] ?? "记忆"}</span>
+          <input
+            defaultValue={m.text}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (!v) void db.memory.delete(m.id!);
+              else if (v !== m.text) void db.memory.update(m.id!, { text: v, updatedAt: Date.now() });
+            }}
+            className="min-w-0 flex-1 rounded-[6px] bg-transparent px-1.5 py-1 text-[14px] outline-none focus:bg-[var(--paper-100)]"
+            aria-label="记忆内容"
+          />
+          <button type="button" onClick={() => void db.memory.delete(m.id!)} className="grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--red)]" aria-label="删掉这条">
+            <Trash className="size-4" />
+          </button>
+        </div>
+      ))}
+      <Row title={`共 ${rows.length} 条`} desc="点文字可以直接改；清空后 AI 会重新认识你">
+        <Button variant="danger" size="sm" onClick={() => confirm("清空 AI 助教的全部记忆？") && void db.memory.clear()}>
+          清空记忆
+        </Button>
+      </Row>
+    </>
   );
 }

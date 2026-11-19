@@ -33,6 +33,8 @@ export default defineConfig({
         // pdf-lib（导出 PDF 才用，440KB）也不预缓存：慢网下第一次装的时候别和录音预下载抢带宽，用到时再取、存运行时缓存
         globIgnores: ["**/pdf.worker*", "**/pdf-lib-*.js"],
         navigateFallback: "/index.html",
+        // AI 助教的后端和管理后台不归前端路由管
+        navigateFallbackDenylist: [/^\/api\//, /^\/admin/],
         runtimeCaching: [
           {
             // pdf.js 解析器（见上面 globIgnores）：第一次开卷时存下，之后离线也能开卷
@@ -118,6 +120,9 @@ export default defineConfig({
   server: {
     // 查词在线兜底（src/lib/youdao.ts）：开发时也转发到有道，和线上 nginx 的 /yd/ 一样
     proxy: {
+      // AI 助教后端（server/agent_server.py）：开发时本机跑在 8787，线上 nginx 同样转发
+      "/api/": { target: "http://127.0.0.1:8787" },
+      "/admin": { target: "http://127.0.0.1:8787" },
       "/yd/": {
         target: "https://dict.youdao.com",
         changeOrigin: true,

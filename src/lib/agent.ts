@@ -1,0 +1,101 @@
+import { useEffect, useState } from "react";
+import { db, type MemoryRow } from "./db";
+
+/** AI 助教：问题经服务器（server/agent_server.py）转发到管理后台配好的模型；长期记忆存在本机 memory 表，每次提问随请求带上 */
+export type ChatMsg = { role: "user" | "assistant"; content: string };
+export type AgentContext = { paper?: string; sentence: string; word?: string; syntax?: unknown };
+
+let status: Promise<boolean> | null = null;
+export function agentEnabled(): Promise<boolean> {
+  status ??= fetch("/api/agent/status")
+    .then((r) => (r.ok ? r.json() : { enabled: false }))
+    .then((d: { enabled?: boolean }) => !!d.enabled)
+    .catch(() => false)
+    .then((on) => {
+      if (!on) setTimeout(() => (status = null), 60_000); // 没开通或离线：过一会儿再问
+      return on;
+    });
+  return status;
+}
+
+export function useAgentEnabled(): boolean | null {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void agentEnabled().then((v) => live && setOn(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return on;
+}
+
+const memoryForPrompt = async () =>
+  (await db.memory.orderBy("updatedAt").reverse().limit(60).toArray()).map((m) => ({ id: m.id, kind: m.kind, text: m.text }));
+
+async function failure(r: Response) {
+  try {
+    const d = (await r.json()) as { error?: string };
+    return new Error(d.error || `出错了（${r.status}）`);
+  } catch {
+    return new Error(r.status === 404 || r.status === 502 ? "AI 助教的服务没开" : `出错了（${r.status}）`);
+  }
+}
+
+/** 流式提问：每收到一段字调一次 onText（传累计的全文），返回完整回答 */
+export async function streamChat(messages: ChatMsg[], context: AgentContext, onText: (all: string) => void, signal?: AbortSignal): Promise<string> {
+  const r = await fetch("/api/agent/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, context, memory: await memoryForPrompt() }),
+    signal,
+  });
+  if (!r.ok || !r.body) throw await failure(r);
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let all = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i: number;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 2);
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") return all;
+      const d = JSON.parse(payload) as { t?: string; error?: string };
+      if (d.error) throw new Error(d.error);
+      if (d.t) onText((all += d.t));
+    }
+  }
+  return all;
+}
+
+/** 聊完一轮：让模型从这段对话里整理长期记忆，按它给的加、改、删写进本机。返回新记下的条目 */
+export async function remember(messages: ChatMsg[]): Promise<string[]> {
+  const r = await fetch("/api/agent/remember", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, memory: await memoryForPrompt() }),
+  });
+  if (!r.ok) return [];
+  const ops = (await r.json()) as { add: Pick<MemoryRow, "kind" | "text">[]; update: { id: number; text: string }[]; remove: number[] };
+  const added: string[] = [];
+  await db.transaction("rw", db.memory, async () => {
+    const now = Date.now();
+    const have = new Set((await db.memory.toArray()).map((m) => m.text));
+    for (const a of ops.add ?? []) {
+      if (have.has(a.text)) continue;
+      await db.memory.add({ kind: a.kind, text: a.text, createdAt: now, updatedAt: now });
+      added.push(a.text);
+    }
+    for (const u of ops.update ?? []) if (await db.memory.get(u.id)) await db.memory.update(u.id, { text: u.text, updatedAt: now });
+    if (ops.remove?.length) await db.memory.bulkDelete(ops.remove);
+  });
+  return added;
+}
+
+export const MEMORY_KINDS: Record<MemoryRow["kind"], string> = { weak: "薄弱", pref: "偏好", fact: "情况" };

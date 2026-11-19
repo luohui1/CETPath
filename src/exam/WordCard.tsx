@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
+import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, Sparkle, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { lookup, phonetic, TAG_LABELS, translationLines, type LookupResult } from "@/lib/dict";
 import { addToVocab, removeFromVocab } from "@/lib/learning";
@@ -142,6 +142,7 @@ export function WordCard({
   onTransOpen,
   onPhrase,
   onSyntax,
+  onAsk,
 }: {
   hit: WordClick;
   /** 这句的词序列和点的是第几个（认短语用） */
@@ -162,6 +163,8 @@ export function WordCard({
   onPhrase?: (pos: number[] | null) => void;
   /** 这句是有解析的长难句：多一个"长难句"按钮，点了收起卡片、底部放这句的解析 */
   onSyntax?: () => void;
+  /** AI 助教开通了：多一个"问 AI"，点了收起卡片、右侧面板里讲这句 */
+  onAsk?: () => void;
 }) {
   // "可能是 government"：点了就改查那个词
   const [alt, setAlt] = useState<string | null>(null);
@@ -529,6 +532,16 @@ export function WordCard({
               >
                 <TreeStructure className="size-4" />
                 长难句
+              </button>
+            )}
+            {onAsk && (
+              <button
+                type="button"
+                onClick={onAsk}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium text-[var(--ink-700)] shadow-[inset_0_0_0_1px_var(--line)] transition hover:bg-[var(--fill-quiet)] active:scale-[0.98]"
+              >
+                <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
+                问 AI
               </button>
             )}
             {win && (

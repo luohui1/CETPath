@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, X, Sparkle } from "@phosphor-icons/react";
 import type { Question } from "@/lib/papers";
 import type { SyntaxEntry } from "@/lib/syntax";
 import type { TransLookup } from "@/lib/trans";
@@ -61,6 +61,7 @@ export function AnswerBar({
   onClose,
   step,
   onHeight,
+  onAsk,
 }: {
   content: BarContent;
   mine?: string | null; // 解析里要不要对答案（交卷后、练习模式选过）：见 ExplanationCard
@@ -69,6 +70,7 @@ export function AnswerBar({
   onClose: () => void;
   step?: { prev: boolean; next: boolean; go: (dir: 1 | -1) => void }; // 解析头上的上一题、下一题
   onHeight?: (h: number) => void;
+  onAsk?: () => void; // 长按出的这句：右侧面板里问 AI
 }) {
   const self = useRef<HTMLElement>(null);
 
@@ -141,6 +143,11 @@ export function AnswerBar({
                 {content.syn ? "长难句解析" : "译句"}
                 {content.nav && <span className="num ml-2 text-[13px] font-normal text-[var(--ink-500)]">{content.nav.pos}</span>}
               </span>
+              {onAsk && (
+                <button type="button" onClick={onAsk} className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-[var(--blue)] transition-colors hover:bg-[var(--blue-tint)]">
+                  <Sparkle className="size-3.5" weight="fill" /> 问 AI
+                </button>
+              )}
               {content.nav && (
                 <span className="flex items-center gap-0.5">
                   {[["上一句", content.nav.prev], ["下一句", content.nav.next]].map(([label, go]) => (

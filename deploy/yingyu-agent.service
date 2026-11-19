@@ -1,0 +1,24 @@
+# AI 助教后端：/etc/systemd/system/yingyu-agent.service
+# 部署：
+#   install -D -m 755 server/agent_server.py /srv/yingyu/agent/agent_server.py
+#   python3 /srv/yingyu/agent/agent_server.py set-password     # 设管理后台密码（配置写到 /srv/yingyu/config/agent.json，权限 600）
+#   systemctl enable --now yingyu-agent && nginx -t && systemctl reload nginx
+#   然后打开 http://<服务器>/admin 填模型接口
+[Unit]
+Description=yingyu-zhidao AI agent
+After=network-online.target
+
+[Service]
+Environment=YZ_AGENT_CONFIG=/srv/yingyu/config/agent.json
+ExecStart=/usr/bin/python3 /srv/yingyu/agent/agent_server.py serve --port 8787
+Restart=on-failure
+DynamicUser=no
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/yingyu/config
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

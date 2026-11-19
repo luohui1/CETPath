@@ -111,6 +111,15 @@ export interface MarkRow {
   updatedAt: number;
 }
 
+/** AI 助教的长期记忆：每条是一个要点，聊完由模型整理（加、改、删），设置里能看能改 */
+export interface MemoryRow {
+  id?: number;
+  kind: "weak" | "pref" | "fact"; // 薄弱点、讲解偏好、个人情况
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface SettingRow {
   key: string;
   value: unknown;
@@ -143,6 +152,7 @@ export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexed
   settings: EntityTable<SettingRow, "key">;
   marks: EntityTable<MarkRow, "id">;
   mastery: EntityTable<MasteryRow, "id">;
+  memory: EntityTable<MemoryRow, "id">;
 };
 
 db.version(1).stores({
@@ -160,6 +170,10 @@ db.version(2).stores({
 
 db.version(3).stores({
   mastery: "id, paperId, kind, firstWrongAt, retiredAt",
+});
+
+db.version(4).stores({
+  memory: "++id, kind, updatedAt",
 });
 
 // Safari（iPhone/iPad）的老毛病：新开的页面里第一次打开 IndexedDB 可能一直不响应，页面就卡在"加载中"。
