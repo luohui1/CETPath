@@ -7,7 +7,8 @@ export type ChatMsg = { role: "user" | "assistant"; content: string };
 const MAX_TURNS = 12;
 const MAX_CHARS = 3000;
 const trimTurns = (m: ChatMsg[]) => m.slice(-MAX_TURNS).map((x) => ({ role: x.role, content: x.content.slice(0, MAX_CHARS) }));
-export type AgentContext = { paper?: string; sentence: string; word?: string; syntax?: unknown };
+// question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
+export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown };
 
 let status: Promise<boolean> | null = null;
 export function agentEnabled(): Promise<boolean> {

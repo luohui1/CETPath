@@ -123,7 +123,7 @@ export interface MemoryRow {
 /** AI 助教的一段对话：问的哪句（可带点的词）和来回的消息；AI 助教页列出历史 */
 export interface ChatRow {
   id: string; // 句子键 + 词
-  ctx: { paper?: string; sentence: string; word?: string; syntax?: unknown };
+  ctx: { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown };
   messages: { role: "user" | "assistant"; content: string }[];
   updatedAt: number;
 }

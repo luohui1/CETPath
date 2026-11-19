@@ -16,9 +16,11 @@ export function AskPage() {
   const [gen, setGen] = useState(0);
 
   const ask = () => {
-    const sentence = draft.trim().replace(/\s+/g, " ");
-    if (!sentence) return;
-    setThread({ id: `${sentenceKey(sentence)}:`, ctx: { sentence } });
+    const text = draft.trim().replace(/\s+/g, " ");
+    if (!text) return;
+    // 带中文的当成一般问题（"四级翻译怎么准备"），纯英文的当成要解析的句子
+    const question = /[\u4e00-\u9fff]/.test(text);
+    setThread(question ? { id: `q:${Date.now()}`, ctx: { sentence: "", question: text } } : { id: `${sentenceKey(text)}:`, ctx: { sentence: text } });
     setGen((g) => g + 1);
     setDraft("");
   };
@@ -36,12 +38,12 @@ export function AskPage() {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
               }}
               rows={5}
-              placeholder="粘贴一句英文，比如：What he said at the meeting, which surprised everyone, was that…"
+              placeholder="粘贴一句看不懂的英文，或者直接问：考研阅读的态度题怎么做？"
               className="w-full resize-none rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] outline-none focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--blue)_35%,transparent)]"
               aria-label="要问的句子"
             />
             <Button variant="primary" className="mt-3 w-full" disabled={!draft.trim()} onClick={ask}>
-              解析这句
+              {/[\u4e00-\u9fff]/.test(draft) ? "提问" : "解析这句"}
             </Button>
           </div>
           <div className="card p-2">
@@ -50,7 +52,7 @@ export function AskPage() {
             {chats?.map((c) => (
               <div key={c.id} className={cn("group flex items-start gap-1 rounded-[10px] transition-colors hover:bg-[var(--fill-quiet)]", thread?.id === c.id && "bg-[var(--blue-tint)] hover:bg-[var(--blue-tint)]")}>
                 <button type="button" onClick={() => setThread({ id: c.id, ctx: c.ctx })} className="min-w-0 flex-1 px-2.5 py-2 text-left">
-                  <p className="line-clamp-2 font-serif text-[14px] leading-[1.5] text-[var(--ink)]">{c.ctx.sentence}</p>
+                  <p className={cn("line-clamp-2 text-[14px] leading-[1.5] text-[var(--ink)]", c.ctx.sentence && "font-serif")}>{c.ctx.sentence || c.ctx.question}</p>
                   <p className="mt-0.5 truncate text-[12px] text-[var(--ink-500)]">
                     {[c.ctx.paper, c.ctx.word && `「${c.ctx.word}」`, `${Math.ceil(c.messages.length / 2)} 问`].filter(Boolean).join(" · ")}
                   </p>

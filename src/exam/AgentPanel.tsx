@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowUp, Sparkle, Stop } from "@phosphor-icons/react";
@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { remember, streamChat, useAgentEnabled, type AgentContext, type ChatMsg } from "@/lib/agent";
 import { cn } from "@/lib/utils";
 import { EmptyState, Spinner } from "@/components/ui";
+import { Markdown } from "@/components/Markdown";
 
 /** 一次提问的对象：卷面上的一句（可带点的那个词） */
 export type AgentThread = { id: string; ctx: AgentContext };
@@ -16,15 +17,10 @@ const threads = new Map<string, ChatMsg[]>();
 export const forgetThread = (id: string) => void threads.delete(id);
 
 const QUICK = ["再讲简单点", "主干是哪几个词？", "这里为什么这样用？", "出一句类似的考考我"];
+// 一般备考问题（不针对某一句）的快捷追问
+const QUICK_Q = ["再讲简单点", "举个真题里的例子", "给我出一道练习"];
 
-const firstAsk = (ctx: AgentContext) => (ctx.word ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。` : "这句我没看懂，帮我解析一下。");
-
-/** **加粗** → <strong>；其余原样，换行保留 */
-function Rich({ text }: { text: string }) {
-  const out: ReactNode[] = [];
-  text.split(/(\*\*[^*]+\*\*)/g).forEach((p, i) => out.push(p.startsWith("**") && p.endsWith("**") && p.length > 4 ? <strong key={i} className="font-semibold text-[var(--ink)]">{p.slice(2, -2)}</strong> : p));
-  return <>{out}</>;
-}
+const firstAsk = (ctx: AgentContext) => ctx.question || (ctx.word ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。` : "这句我没看懂，帮我解析一下。");
 
 /** inDock：做题页右侧面板里，多一个"去 AI 助教页"的链接 */
 export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inDock?: boolean }) {
@@ -113,7 +109,7 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
   if (!thread)
     return (
       <div className="px-4 py-10">
-        <EmptyState icon={<Sparkle className="size-6" />} title={inDock ? "点卷面上的词，再点“问 AI”" : "粘贴一句英文开始"} desc={inDock ? "也可以长按一句，在底部条上点“问 AI”。" : "左边粘贴句子，或从历史对话里选一段接着聊。"} />
+        <EmptyState icon={<Sparkle className="size-6" />} title={inDock ? "点卷面上的词，再点“问 AI”" : "粘贴一句英文，或直接提问"} desc={inDock ? "也可以长按一句，在底部条上点“问 AI”。" : "比如粘贴阅读里看不懂的句子，或者问“六级翻译怎么拆长句”。"} />
       </div>
     );
 
@@ -137,7 +133,7 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
             长期记忆 <span className="num">{memCount ?? 0}</span> 条
           </Link>
         </div>
-        <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">{quote}</blockquote>
+        {quote && <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">{quote}</blockquote>}
       </div>
 
       <div className="flex-1 space-y-3 px-4 py-3" aria-live="polite">
@@ -147,8 +143,8 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
               {m.content}
             </div>
           ) : (
-            <div key={i} className="text-[15px] leading-[1.75] whitespace-pre-wrap text-[var(--ink-700)]">
-              {m.content ? <Rich text={m.content} /> : <span className="inline-flex items-center gap-2 text-[var(--ink-500)]"><Spinner /> 在想…</span>}
+            <div key={i}>
+              {m.content ? <Markdown text={m.content} /> : <span className="inline-flex items-center gap-2 text-[var(--ink-500)]"><Spinner /> 在想…</span>}
             </div>
           ),
         )}
@@ -159,7 +155,7 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
 
       <div className="sticky bottom-0 border-t border-[var(--line-soft)] bg-[var(--surface,white)] px-3 pt-2 pb-3">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {QUICK.map((q) => (
+          {(thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
             <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="pill disabled:opacity-40">
               {q}
             </button>
