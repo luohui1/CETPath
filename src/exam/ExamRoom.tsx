@@ -1516,9 +1516,9 @@ export function ExamRoom({
   );
   // AI 复盘：把这套的作答（每题选了什么、对错、用时）交给 AI
   const reviewAI = useCallback(() => {
-    setAgentThread({ id: `review:${paper.id}:${attempt?.submittedAt ?? 0}`, ctx: { paper: paper.title, sentence: "", review: reviewSummary(paper, answers, questionSec, limits) } });
+    setAgentThread({ id: `review:${paper.id}:${attempt?.submittedAt ?? 0}`, ctx: { paper: paper.title, sentence: "", review: reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) } });
     openTab("ask");
-  }, [paper, attempt?.submittedAt, answers, questionSec, limits, openTab]);
+  }, [paper, attempt?.submittedAt, attempt?.sectionSec, answers, questionSec, limits, openTab]);
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {

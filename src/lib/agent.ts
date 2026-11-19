@@ -114,29 +114,56 @@ export const MEMORY_KINDS: Record<MemoryRow["kind"], string> = { weak: "薄弱",
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
-/** 复盘用的作答摘要：总分、各题型对错和用时，逐条列出错题、没答的和超过建议用时的题 */
-export function reviewSummary(paper: Paper, answers: Record<string, string>, sec: Record<string, number> | null, limits: Record<string, number>): string {
+/**
+ * 复盘用的作答摘要：先是总分和每个题型的对错、用时（单题秒表没开时用按部分累计的时间），
+ * 再逐条列错题、没答的和超时的题（带选项原文，完形这类没有题干的也看得懂）。明细太长时只截明细，题型总览总在。
+ */
+export function reviewSummary(
+  paper: Paper,
+  answers: Record<string, string>,
+  sec: Record<string, number> | null,
+  limits: Record<string, number>,
+  sectionSec?: Record<string, number>,
+): string {
   const all = paper.sections.flatMap((s) => s.groups.flatMap((g) => g.questions).filter((q) => q.options?.length).map((q) => ({ s, q })));
   const right = all.filter(({ q }) => answers[q.id] === q.answer).length;
-  const spent = all.reduce((t, { q }) => t + (sec?.[q.id] ?? 0), 0);
-  const lines = [`选择题答对 ${right}/${all.length}，没答 ${all.filter(({ q }) => !answers[q.id]).length} 题，记录到的作答用时 ${mmss(spent)}`];
+  const head = [`选择题答对 ${right}/${all.length}，没答 ${all.filter(({ q }) => !answers[q.id]).length} 题`];
+  const detail: string[] = [];
+  let spent = 0;
   for (const s of paper.sections) {
     const qs = all.filter((x) => x.s === s).map((x) => x.q);
     if (!qs.length) continue;
+    const name = `${kindName(s.kind, paper.exam)} ${qs[0].number}–${qs[qs.length - 1].number}`;
     const ok = qs.filter((q) => answers[q.id] === q.answer).length;
-    const t = qs.reduce((a, q) => a + (sec?.[q.id] ?? 0), 0);
+    const t = Math.max(qs.reduce((a, q) => a + (sec?.[q.id] ?? 0), 0), sectionSec?.[s.id] ?? 0);
     const lim = qs.reduce((a, q) => a + (limits[q.id] ?? 0), 0);
-    lines.push("", `【${kindName(s.kind, paper.exam)} ${qs[0].number}–${qs[qs.length - 1].number}】对 ${ok}/${qs.length}，用时 ${mmss(t)}${lim ? `（建议 ${mmss(lim)}）` : ""}`);
+    spent += t;
+    head.push(`【${name}】对 ${ok}/${qs.length}，用时 ${t ? mmss(t) : "没记录"}${lim ? `（建议 ${mmss(lim)}）` : ""}`);
     for (const q of qs) {
       const a = answers[q.id];
       const used = sec?.[q.id] ?? 0;
       const slow = used > (limits[q.id] ?? Infinity);
       if (a === q.answer && !slow) continue;
-      const why = a === q.answer ? "对了但超时" : a ? `选 ${a}，正确 ${q.answer}` : `没答，正确 ${q.answer}`;
+      const opt = (k?: string) => {
+        const o = k ? q.options?.find((x) => x.key === k) : undefined;
+        return o ? `${o.key}「${o.text.slice(0, 60)}」` : (k ?? "");
+      };
+      const why = a === q.answer ? `对了但超时（选 ${opt(a)}）` : a ? `选 ${opt(a)}，正确 ${opt(q.answer)}` : `没答，正确 ${opt(q.answer)}`;
       const stem = q.stem ? `；题干：${q.stem.replace(/\s+/g, " ").slice(0, 140)}` : "";
       const exp = a !== q.answer && q.explanation ? `；解析：${q.explanation.replace(/\s+/g, " ").slice(0, 160)}` : "";
-      lines.push(`- 第 ${q.number} 题：${why}${used ? `，用时 ${mmss(used)}${slow ? `（建议 ${mmss(limits[q.id])}）` : ""}` : ""}${stem}${exp}`);
+      detail.push(`- [${name}] 第 ${q.number} 题：${why}${used ? `，用时 ${mmss(used)}${slow ? `（建议 ${mmss(limits[q.id])}）` : ""}` : ""}${stem}${exp}`);
     }
   }
-  return lines.join("\n").slice(0, 9000);
+  head[0] += `，记录到的作答用时 ${mmss(spent)}`;
+  const top = head.join("\n");
+  const budget = 9000 - top.length - 40;
+  let body = "";
+  for (const d of detail) {
+    if (body.length + d.length + 1 > budget) {
+      body += `\n（还有 ${detail.length - body.split("\n").filter(Boolean).length} 条明细放不下，略）`;
+      break;
+    }
+    body += (body ? "\n" : "") + d;
+  }
+  return `${top}\n\n逐题明细：\n${body || "（全对，没有超时）"}`;
 }
