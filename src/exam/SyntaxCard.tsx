@@ -68,6 +68,9 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
       <figure className="rounded-[10px] bg-[var(--paper-50)] px-3.5 py-2 shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
         <SyntaxSentence e={e} />
       </figure>
+      <CardSection label={<>译文<span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">AI 解析</span></>}>
+        <p className="text-[17px] leading-[1.7] text-[var(--ink)]">{e.zh}</p>
+      </CardSection>
       <CardSection label="主干">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-[15px] leading-[1.5]">
           {e.main.map((m, i) => (
@@ -78,6 +81,16 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
             </span>
           ))}
         </div>
+      </CardSection>
+      <CardSection label="难点">
+        <ul className="space-y-1 text-[15px] leading-[1.6] text-[var(--ink-700)]">
+          {e.points.map((x, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="mt-[0.7em] size-1 flex-none rounded-full bg-[var(--ink-300)]" />
+              {x}
+            </li>
+          ))}
+        </ul>
       </CardSection>
       {e.parts.length > 0 && (
         <CardSection label="修饰成分">
@@ -100,19 +113,6 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
           </ol>
         </CardSection>
       )}
-      <CardSection label="难点">
-        <ul className="space-y-1 text-[15px] leading-[1.6] text-[var(--ink-700)]">
-          {e.points.map((x, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="mt-[0.7em] size-1 flex-none rounded-full bg-[var(--ink-300)]" />
-              {x}
-            </li>
-          ))}
-        </ul>
-      </CardSection>
-      <CardSection label={<>译文<span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">AI 解析</span></>}>
-        <p className="text-[18px] leading-[1.7] text-[var(--ink)]">{e.zh}</p>
-      </CardSection>
     </div>
   );
 }
