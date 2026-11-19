@@ -81,7 +81,7 @@ export function AgentSplit({
   const thread: AgentThread = sentence
     ? sentence
     : sid
-      ? sid.startsWith(prefix)
+      ? sid.startsWith("paper:") // 整卷会话总用最新的作答数据（交卷后前缀会变，旧会话也要看到对错和用时）
         ? { id: sid, ctx: paperThread.ctx }
         : { id: sid, ctx: picked?.ctx ?? paperThread.ctx }
       : {
