@@ -39,7 +39,7 @@ def inline(page: dict, box) -> bool:
 
 def underline(a, box):
     """box 那一行底下最像下划线的一段横线（pt 坐标）；离 box 中心最近、至少 15pt 长"""
-    x0, x1 = int((box[0] - 45) * Z), int((box[2] + 45) * Z)
+    x0, x1 = int((box[0] - 125) * Z), int((box[2] + 125) * Z)  # 比最长的下划线（120pt）宽，免得截断
     x0 = max(0, x0)
     cx = (box[0] + box[2]) / 2
     best = None
