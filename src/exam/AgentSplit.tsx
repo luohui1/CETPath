@@ -12,6 +12,7 @@ import { AgentPanel, type AgentThread } from "./AgentPanel";
 export function AgentSplit({
   side,
   width,
+  inset,
   onWidth,
   enabled,
   thread,
@@ -20,6 +21,7 @@ export function AgentSplit({
 }: {
   side: boolean;
   width: number;
+  inset: number; // 矮横屏工具栏浮在上面时，和停靠区一样往下让
   onWidth: (w: number) => void;
   enabled: boolean;
   thread: AgentThread;
@@ -48,7 +50,7 @@ export function AgentSplit({
     addEventListener("pointerup", up);
   };
   return (
-    <aside ref={self} aria-label="Agent" className={cn("gr-wb-panel no-print relative flex shrink-0 flex-col overflow-hidden", !side && "h-[55%]")} style={side ? { width } : undefined}>
+    <aside ref={self} aria-label="Agent" className={cn("gr-wb-panel no-print relative flex shrink-0 flex-col overflow-hidden", !side && "h-[55%]")} style={side ? { width, marginTop: inset } : undefined}>
       {side && (
         <div
           role="separator"

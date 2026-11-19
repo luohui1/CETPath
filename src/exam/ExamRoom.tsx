@@ -1773,6 +1773,7 @@ export function ExamRoom({
     <AgentSplit
       side={sideDock}
       width={agentWidth}
+      inset={compact && !barHidden ? toolH + 8 : 0}
       onWidth={(w) => {
         setAgentW(w);
         localStorage.setItem("yz-agent-w", String(w));
