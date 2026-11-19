@@ -50,7 +50,7 @@ PART_ROLES = {
 ROLES = MAIN_ROLES | PART_ROLES
 HEAD = re.compile(r"^(Passage (One|Two|Three)|Questions? \d|Section [ABC]|Part [IVX]+|Directions)", re.I)
 # 仔细阅读的固定指导语（"Each passage is followed by some questions…"）
-BOILER = re.compile(r"passages? in this section|each passage is followed by|there are \d+ choices|decide on the best choice|mark the corresponding letter|answer sheet", re.I)
+BOILER = re.compile(r"passages? in this section|each passage is followed by|there are \d+ choices|four choices marked|decide on the best choice|mark the corresponding letter|answer sheet", re.I)
 EN_WORD = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?")
 CJK = re.compile(r"[一-鿿]")
 
