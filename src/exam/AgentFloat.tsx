@@ -1,8 +1,21 @@
+import { useEffect } from "react";
 import { ArrowLeft, Sparkle, X } from "@phosphor-icons/react";
 import { AgentPanel, type AgentThread } from "./AgentPanel";
 
 /** 做题页右下角的 Agent：收起是一个按钮，点开是悬浮对话窗；默认聊整套卷（看得到作答、对错、用时），从卷面问一句时切到那句 */
 export function AgentFloat({ open, onOpen, thread, onBack, right }: { open: boolean; onOpen: (v: boolean) => void; thread: AgentThread; onBack?: () => void; right: number }) {
+  // Esc 先收起对话窗（抢在卷面的 Esc 处理之前）
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, onOpen]);
   if (!open)
     return (
       <button
