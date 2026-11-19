@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowCounterClockwise, BookBookmark, BookmarkSimple, ChatText, Lightbulb, NotePencil, NoteBlank, Receipt, SpeakerHigh, Trash, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, BookBookmark, CaretRight, BookmarkSimple, ChatText, Lightbulb, NotePencil, NoteBlank, Receipt, SpeakerHigh, Trash, X } from "@phosphor-icons/react";
 import * as G from "@/grasso";
 import { db, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { updateAttempt } from "@/lib/attempts";
@@ -55,7 +55,7 @@ function AnswerSheet({
   justSubmitted?: boolean;
   times: Record<string, number> | null;
   limits: Record<string, number>;
-  cols: 6 | "fill"; // 侧栏：每行 6 个大格子；底部抽屉（整屏宽）：能放几个放几个
+  cols: 6 | "fill"; // 侧栏：每行 8 个小格子；底部抽屉（整屏宽）：能放几个放几个
   onJump: (q: Question) => void;
   onSubmit: () => void;
   onRedo: () => void;
@@ -72,6 +72,10 @@ function AnswerSheet({
   // 可以只看没答的、标记了的；交卷后还能只看错题
   const [filter, setFilter] = useState<Filter>("all");
   useEffect(() => setFilter("all"), [submitted]);
+  // 按题型折叠，一次只展开一个：默认是第一道没答的题所在的题型（正在做的那部分）；筛选时全部展开
+  const current = paper.sections.find((s) => s.groups.some((g) => g.questions.some((q) => q.options?.length && !answers[q.id])))?.id ?? paper.sections[0]?.id;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const isOpen = (id: string) => filter !== "all" || (openId ?? current) === id;
   const keep = (q: Question) =>
     !!q.options?.length && (filter === "all" || (filter === "wrong" ? isWrong(q) : filter === "flagged" ? flags.has(q.id) : !answers[q.id]));
   const filters: { value: Filter; label: string; n?: number }[] = [
@@ -111,7 +115,7 @@ function AnswerSheet({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pt-4 pb-4">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pt-3 pb-4">
         {!choice.length && <p className="text-[14px] leading-6 text-[var(--ink-700)]">这套只有写作和翻译，在「作答」里写。</p>}
         {filter !== "all" && !choice.some(keep) && <p className="py-8 text-center text-[14px] text-[var(--ink-500)]">{filter === "wrong" ? "没有答错的题" : filter === "flagged" ? "没有标记的题" : "每道题都答了"}</p>}
         {paper.sections.map((s) => {
@@ -122,14 +126,26 @@ function AnswerSheet({
           const twin = paper.sections.filter((x) => x.kind === s.kind).length > 1;
           return (
             <section key={s.id}>
-              <h3 className="mb-2 flex items-baseline gap-2 truncate text-[14px] font-semibold text-[var(--ink)]">
-                {kindName(s.kind, paper.exam)}
-                {twin && s.subtitle && <span className="font-normal text-[var(--ink-500)]">{s.subtitle}</span>}
-                <span className="num font-normal text-[var(--ink-500)]">
-                  {all[0].number}–{all[all.length - 1].number}
+              <button
+                type="button"
+                onClick={() => setOpenId(isOpen(s.id) ? "" : s.id)}
+                aria-expanded={isOpen(s.id)}
+                className="-mx-1 flex w-[calc(100%+8px)] items-center gap-2 rounded-[8px] px-1 py-1.5 text-left text-[14px] font-semibold text-[var(--ink)] hover:bg-[var(--fill-quiet)]"
+              >
+                <CaretRight className={cn("size-3.5 flex-none text-[var(--ink-500)] transition-transform", isOpen(s.id) && "rotate-90")} />
+                <span className="truncate">
+                  {kindName(s.kind, paper.exam)}
+                  {twin && s.subtitle && <span className="ml-2 font-normal text-[var(--ink-500)]">{s.subtitle}</span>}
+                  <span className="num ml-2 font-normal text-[var(--ink-500)]">
+                    {all[0].number}–{all[all.length - 1].number}
+                  </span>
                 </span>
-              </h3>
-              <div className={cn("grid gap-2", cols === 6 ? "grid-cols-6" : "grid-cols-[repeat(auto-fill,minmax(56px,1fr))]")}>
+                <span className="num ml-auto flex-none text-[13px] font-normal text-[var(--ink-500)]">
+                  {all.filter((q) => answers[q.id]).length}/{all.length}
+                </span>
+              </button>
+              {isOpen(s.id) && (
+                <div className={cn("mt-1.5 grid gap-1.5", cols === 6 ? "grid-cols-8" : "grid-cols-[repeat(auto-fill,minmax(44px,1fr))]")}>
                 {qs.map((q) => {
                   const a = answers[q.id];
                   const tone = !judged(q)
@@ -148,18 +164,19 @@ function AnswerSheet({
                       type="button"
                       onClick={() => onJump(q)}
                       aria-label={`第 ${q.number} 题${a ? `，选了 ${a}` : "，没答"}${flags.has(q.id) ? "，已标记" : ""}${sec ? `，用时 ${clock(sec)}` : ""}`}
-                      className={cn("num relative flex h-11 w-full flex-col items-center justify-center rounded-[6px] text-[14px] leading-4 transition-colors duration-[120ms]", tone)}
+                      className={cn("num relative flex h-9 w-full flex-col items-center justify-center rounded-[6px] text-[13px] leading-4 transition-colors duration-[120ms]", tone)}
                     >
                       {q.number}
                       {/* 用时小字：和卷面上一样 11px，超过建议时长是红的；判过之后格子底色已经说了对错，用时不再标红 */}
                       {sec && sec >= 1 ? (
-                        <span className={cn("mt-px text-[11px] leading-3 font-medium", !judged(q) && sec > (limits[q.id] ?? Infinity) ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>{clock(sec)}</span>
+                        <span className={cn("text-[10px] leading-3 font-medium", !judged(q) && sec > (limits[q.id] ?? Infinity) ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>{clock(sec)}</span>
                       ) : null}
                       {flags.has(q.id) && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-[var(--mark-ink)]" />}
                     </button>
                   );
                 })}
-              </div>
+                </div>
+              )}
             </section>
           );
         })}

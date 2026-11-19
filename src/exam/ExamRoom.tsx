@@ -395,7 +395,8 @@ export function ExamRoom({
   const [winHeight, setWinHeight] = useState(innerHeight);
   const [search] = useSearchParams();
   // 缩略图栏：平板竖屏、窄屏默认收起
-  const [rail, setRail] = useState(() => innerWidth >= 1100 && innerWidth > innerHeight);
+  // 缩略图栏默认收起，把宽度留给卷面；工具栏按钮或 T 键打开
+  const [rail, setRail] = useState(false);
   // 卷面查找：focusKey 每按一次 Ctrl+F 加一，回到输入框
   const [find, setFind] = useState({ open: false, query: "", index: 0, focusKey: 0 });
   const findOpen = find.open;
