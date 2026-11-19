@@ -7,7 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import {
+import { Sparkle,
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -56,7 +56,7 @@ import { Stopwatch, useQuestionTimer } from "./Stopwatch";
 import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
 import { ThumbRail } from "./ThumbRail";
-import { AgentFloat } from "./AgentFloat";
+import { AgentSplit } from "./AgentSplit";
 import { FindBar, findInPages, pageTexts, type FindHit } from "./FindBar";
 import { ExportDialog } from "./ExportDialog";
 import { endPinch, gesture, startPinch } from "./gesture";
@@ -408,6 +408,12 @@ export function ExamRoom({
   // 只有写作和翻译的卷（一页纸的第 2、3 套）直接打开作答
   const hasChoiceQ = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => q.options?.length)));
   const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
+  // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentW, setAgentW] = useState(() => Number(localStorage.getItem("yz-agent-w")) || 460);
+  useEffect(() => {
+    if (panel) setAgentOpen(false);
+  }, [panel]);
   useEffect(() => {
     if (!panel) return;
     try {
@@ -548,7 +554,7 @@ export function ExamRoom({
   const compact = winWidth > winHeight && winHeight < 900;
   // 停靠区：横屏或宽 ≥ 1100 在右侧一栏（宽 360，把卷面挤窄）；竖屏窄屏是听力条上面的底部抽屉（把卷面挤矮）
   const sideDock = winWidth > winHeight || winWidth >= 1100;
-  const dockSpace = panel && sideDock ? DOCK_WIDTH + 8 : 0;
+  const dockSpace = !sideDock ? 0 : agentOpen ? agentW + 8 : panel ? DOCK_WIDTH + 8 : 0;
   const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && !floating ? RAIL_WIDTH : 0) - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
@@ -1511,12 +1517,12 @@ export function ExamRoom({
   const askAI = useCallback(
     (sentence: string, word?: string) => {
       setAgentThread({ id: `${sentenceKey(sentence)}:${word ?? ""}`, ctx: { paper: paper.title, sentence, word, syntax: synOf(sentence) ?? undefined } });
+      setPanel(null);
       setAgentOpen(true);
     },
     [paper.title, synOf],
   );
   // 右下角 Agent 默认聊整套卷：交卷后（练习模式选完就判）给它每题作答、对错和用时，交卷前只给进度
-  const [agentOpen, setAgentOpen] = useState(false);
   const reviewReady = submitted || practice;
   const paperThread = useMemo<AgentThread>(
     () => ({
@@ -1761,6 +1767,20 @@ export function ExamRoom({
         onHeight={embedded ? undefined : setBarH}
       />
     );
+  const agentEl = agentOpen && (
+    <AgentSplit
+      side={sideDock}
+      width={agentW}
+      onWidth={(w) => {
+        setAgentW(w);
+        localStorage.setItem("yz-agent-w", String(w));
+      }}
+      enabled={!!aiOn}
+      thread={agentThread ?? paperThread}
+      onBack={agentThread ? () => setAgentThread(null) : undefined}
+      onClose={() => setAgentOpen(false)}
+    />
+  );
   const dockEl = panel && dockView && (
     <Dock
       layout={sideDock ? "side" : "drawer"}
@@ -1981,6 +2001,21 @@ export function ExamRoom({
           )}
           {/* 本卷笔记、生词在"更多"里和停靠区的标签里 */}
           {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, `答题卡 ${practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, "")}`)}
+          <Tip label="Agent：分屏和 AI 对话，它看得到你的作答">
+            <button
+              type="button"
+              className={agentOpen ? "gr-tool gr-tool-soft" : "gr-tool"}
+              onClick={() => {
+                if (!agentOpen) setPanel(null);
+                setAgentOpen(!agentOpen);
+              }}
+              aria-label="Agent"
+              aria-pressed={agentOpen}
+            >
+              <Sparkle className="size-[19px]" />
+              {!narrow && <span className="gr-tool-text whitespace-nowrap">Agent</span>}
+            </button>
+          </Tip>
           {/* 更多：查找、双页、生词标记、导出（不常用的都收在这里，工具栏不加常驻按钮） */}
           <G.Popover
             label="更多"
@@ -2207,10 +2242,10 @@ export function ExamRoom({
           </div>
 
           {/* 停靠区：横屏在右侧一栏 */}
-          {sideDock && dockEl}
+          {sideDock && (agentOpen ? agentEl : dockEl)}
         </div>
         {/* 停靠区：竖屏是听力条上面的底部抽屉 */}
-        {!sideDock && dockEl}
+        {!sideDock && (agentOpen ? agentEl : dockEl)}
         </div>
 
         {paper.audio && (
@@ -2303,7 +2338,6 @@ export function ExamRoom({
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
         />
       )}
-      {<AgentFloat enabled={!!aiOn} open={agentOpen} onOpen={setAgentOpen} thread={agentThread ?? paperThread} onBack={agentThread ? () => setAgentThread(null) : undefined} />}
       <ConfirmDialog
         open={confirm === "redo"}
         onOpenChange={(o) => !o && setConfirm(null)}

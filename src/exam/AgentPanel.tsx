@@ -128,8 +128,8 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-[13px] text-[var(--ink-500)]">
-          <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
-          <span className="flex-1">AI 助教 · 结合你的记忆讲解</span>
+          {!inDock && <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />}
+          <span className="flex-1">{inDock ? "" : "AI 助教 · "}结合你的长期记忆讲解</span>
           {inDock && (
             <Link to="/ask" className="hover:text-[var(--ink)]">
               全部对话

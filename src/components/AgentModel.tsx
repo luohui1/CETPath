@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { resetAgentStatus } from "@/lib/agent";
 import { Button } from "@/components/ui";
 
-type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; error?: string; reply?: string; ms?: number };
+type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; models?: string[]; error?: string; reply?: string; ms?: number };
 
 async function api(path: string, body?: unknown, method?: string): Promise<[number, Cfg]> {
   try {
@@ -25,7 +25,7 @@ const field = "h-10 w-full rounded-[9px] bg-white px-3 text-[14px] shadow-[var(-
 export function AgentModel() {
   const [state, setState] = useState<"loading" | "login" | "form" | "off">("loading");
   const [pw, setPw] = useState("");
-  const [f, setF] = useState({ base_url: "", model: "", api_key: "", temperature: "" });
+  const [f, setF] = useState({ base_url: "", model: "", api_key: "", temperature: "", models: "" });
   const [keyInfo, setKeyInfo] = useState<{ set: boolean; tail: string }>({ set: false, tail: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,7 @@ export function AgentModel() {
     const [s, d] = await api("/api/admin/config");
     if (s === 401) return setState("login");
     if (s !== 200) return setState("off");
-    setF({ base_url: d.base_url ?? "", model: d.model ?? "", api_key: "", temperature: d.temperature == null ? "" : String(d.temperature) });
+    setF({ base_url: d.base_url ?? "", model: d.model ?? "", api_key: "", temperature: d.temperature == null ? "" : String(d.temperature), models: (d.models ?? []).join(", ") });
     setKeyInfo({ set: !!d.api_key_set, tail: d.api_key_tail ?? "" });
     setState("form");
   };
@@ -59,7 +59,7 @@ export function AgentModel() {
   const save = () =>
     run(async () => {
       const t = f.temperature.trim();
-      const [s, d] = await api("/api/admin/config", { base_url: f.base_url, model: f.model, api_key: f.api_key, temperature: t ? Number(t) : null }, "PUT");
+      const [s, d] = await api("/api/admin/config", { base_url: f.base_url, model: f.model, api_key: f.api_key, temperature: t ? Number(t) : null, models: f.models.split(/[,，\s]+/).filter(Boolean) }, "PUT");
       if (s === 401) return setState("login");
       if (s !== 200) return setMsg({ ok: false, text: d.error ?? "保存失败" });
       resetAgentStatus();
@@ -105,6 +105,10 @@ export function AgentModel() {
       <label className="block space-y-1.5">
         <span className="text-[13px] font-medium">模型名</span>
         <input value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} placeholder="deepseek-chat" className={field} />
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium">其他可选模型（逗号隔开，Agent 头上可以切换）</span>
+        <input value={f.models} onChange={(e) => setF({ ...f, models: e.target.value })} placeholder="gemini-3.8-flash, deepseek-v4.1-flash" className={field} />
       </label>
       <label className="block space-y-1.5">
         <span className="text-[13px] font-medium">API Key</span>

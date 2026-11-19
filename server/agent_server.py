@@ -189,9 +189,9 @@ def clean_turns(msgs) -> list[dict]:
 
 
 # ---------- 上游 ----------
-def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None):
+def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None, model: str | None = None):
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
-    body = {"model": cfg["model"], "messages": messages, "stream": stream, "max_tokens": max_tokens}
+    body = {"model": model or cfg["model"], "messages": messages, "stream": stream, "max_tokens": max_tokens}
     t = cfg.get("temperature") if temperature is None else temperature
     if t is not None:
         body["temperature"] = t
@@ -200,6 +200,13 @@ def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 18
     req.add_header("Authorization", f"Bearer {cfg.get('api_key', '')}")
     req.add_header("User-Agent", "yingyu-agent/1.0")  # 不少接口在 Cloudflare 后面，默认的 Python-urllib 会被拦（1010）
     return urllib.request.urlopen(req, timeout=90)
+
+
+def models(cfg: dict) -> list[str]:
+    """Agent 头上能切的模型：默认模型在第一个，后面是后台填的其他可选模型"""
+    extra = [m for m in cfg.get("models") or [] if isinstance(m, str) and m.strip()]
+    d = cfg.get("model")
+    return ([d] if d else []) + [m for m in extra if m != d]
 
 
 def ready(cfg: dict) -> bool:
@@ -278,11 +285,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
         elif path == "/api/agent/status":
             self.send_json(200, {"enabled": ready(cfg)})
+        elif path == "/api/agent/models":
+            self.send_json(200, {"models": models(cfg) if ready(cfg) else [], "default": cfg.get("model", "") if ready(cfg) else ""})
         elif path == "/api/admin/config":
             if not self.admin(cfg):
                 return self.send_json(401, {"error": "请先登录"})
             key = cfg.get("api_key", "")
-            self.send_json(200, {"base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
+            self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -312,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
             for k in ("base_url", "model"):
                 if isinstance(data.get(k), str):
                     cfg[k] = data[k].strip()
+            if isinstance(data.get("models"), list):
+                cfg["models"] = [str(m).strip() for m in data["models"] if str(m).strip()][:20]
             if isinstance(data.get("api_key"), str) and data["api_key"].strip():
                 cfg["api_key"] = data["api_key"].strip()
             t = data.get("temperature")
@@ -349,7 +360,8 @@ class Handler(BaseHTTPRequestHandler):
         if ctx:
             sys_msg += "\n\n" + ctx
         try:
-            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True)
+            pick = data.get("model") if data.get("model") in models(cfg) else None
+            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, model=pick)
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
         self.send_response(200)

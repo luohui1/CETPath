@@ -13,7 +13,10 @@ export type AgentContext = { paper?: string; sentence: string; question?: string
 
 let status: Promise<boolean> | null = null;
 /** 设置页改了模型后重新问一次是否开通 */
-export const resetAgentStatus = () => void (status = null);
+export const resetAgentStatus = () => {
+  status = null;
+  modelsP = null;
+};
 export function agentEnabled(): Promise<boolean> {
   status ??= fetch("/api/agent/status")
     .then((r) => (r.ok ? r.json() : { enabled: false }))
@@ -55,7 +58,7 @@ export async function streamChat(messages: ChatMsg[], context: AgentContext, onT
   const r = await fetch("/api/agent/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: trimTurns(messages), context, memory: await memoryForPrompt() }),
+    body: JSON.stringify({ messages: trimTurns(messages), context, memory: await memoryForPrompt(), model: pickedModel() }),
     signal,
   });
   if (!r.ok || !r.body) throw await failure(r);
@@ -178,4 +181,26 @@ export function reviewSummary(
     body += (body ? "\n" : "") + d;
   }
   return `${top}\n\n逐题明细：\n${body || "（全对，没有超时）"}`;
+}
+
+// ---------- 可选模型 ----------
+const MODEL_KEY = "yz-agent-model";
+export const pickedModel = () => localStorage.getItem(MODEL_KEY) || undefined;
+export const setPickedModel = (v: string) => localStorage.setItem(MODEL_KEY, v);
+type Models = { models: string[]; default: string };
+let modelsP: Promise<Models> | null = null;
+/** 后台允许切的模型（第一个是默认） */
+export function useAgentModels(): Models | null {
+  const [m, setM] = useState<Models | null>(null);
+  useEffect(() => {
+    modelsP ??= fetch("/api/agent/models")
+      .then((r) => (r.ok ? r.json() : { models: [], default: "" }))
+      .catch(() => ({ models: [], default: "" }));
+    let live = true;
+    void modelsP.then((d) => live && setM(d));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return m;
 }
