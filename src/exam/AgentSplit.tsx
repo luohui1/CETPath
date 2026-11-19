@@ -16,7 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { db, type ChatRow } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { AgentPanel, type AgentThread } from "./AgentPanel";
+import { AgentPanel, forgetThread, type AgentThread } from "./AgentPanel";
 import type { ToolEnv } from "@/lib/agentTools";
 
 const when = (t: number) => {
@@ -229,6 +229,7 @@ export function AgentSplit({
                   type="button"
                   onClick={() => {
                     void db.chats.delete(c.id);
+                    forgetThread(c.id);
                     if (c.id === thread.id) fresh();
                   }}
                   aria-label="删掉这个对话"
