@@ -74,8 +74,9 @@ export function AgentModel() {
     });
   const logout = () =>
     run(async () => {
-      await api("/api/admin/logout", {});
-      setState("login");
+      const [s] = await api("/api/admin/logout", {});
+      if (s === 200) setState("login");
+      else setMsg({ ok: false, text: "退出没成功，请重试" });
     });
 
   const note = msg && <p className={`text-[13px] leading-5 ${msg.ok ? "text-[var(--green,#16a34a)]" : "text-[var(--red,#dc2626)]"}`}>{msg.text}</p>;
