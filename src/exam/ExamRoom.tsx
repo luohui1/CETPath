@@ -7,7 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import {
+import { Sparkle,
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -1719,6 +1719,14 @@ export function ExamRoom({
           </Button>
         </Tip>
       )}
+      {/* AI 复盘：交卷后（练习模式选完就判，随时可以）把作答交给 AI；交卷前不给，免得看到答案 */}
+      {aiOn && (
+        <Tip label={submitted || practice ? "AI 看你每题选了什么、对错和用时，分析错因和时间分配" : "交卷后可以让 AI 复盘"}>
+          <Button size="sm" disabled={!submitted && !practice} onClick={reviewAI}>
+            <Sparkle className="size-4" weight="fill" /> AI 复盘
+          </Button>
+        </Tip>
+      )}
       {submitted ? (
         <Button size="sm" onClick={() => setConfirm("redo")}>
           <ArrowCounterClockwise className="size-4" /> 重做
@@ -1775,7 +1783,6 @@ export function ExamRoom({
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
-      onReview={aiOn ? reviewAI : undefined}
       onWriteFocus={(q) => timeStart(q.id)}
       attempt={attempt}
       answers={answers}
