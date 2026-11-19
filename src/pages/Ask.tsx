@@ -12,11 +12,14 @@ export function AskPage() {
   const chats = useLiveQuery(() => db.chats.orderBy("updatedAt").reverse().toArray(), []);
   const [thread, setThread] = useState<AgentThread | null>(null);
   const [draft, setDraft] = useState("");
+  // 删掉再问同一句时换一个新的对话面板（它记着"这句已经自动问过"）
+  const [gen, setGen] = useState(0);
 
   const ask = () => {
     const sentence = draft.trim().replace(/\s+/g, " ");
     if (!sentence) return;
     setThread({ id: `${sentenceKey(sentence)}:`, ctx: { sentence } });
+    setGen((g) => g + 1);
     setDraft("");
   };
 
@@ -58,6 +61,7 @@ export function AskPage() {
                     forgetThread(c.id);
                     void db.chats.delete(c.id);
                     if (thread?.id === c.id) setThread(null);
+                    setGen((g) => g + 1);
                   }}
                   className="mt-1.5 mr-1 grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] opacity-0 group-hover:opacity-100 hover:text-[var(--red)] focus:opacity-100"
                   aria-label="删掉这段对话"
@@ -69,7 +73,7 @@ export function AskPage() {
           </div>
         </div>
         <div className="card flex h-[calc(100dvh-180px)] min-h-[480px] flex-col overflow-hidden">
-          <AgentPanel thread={thread} />
+          <AgentPanel key={gen} thread={thread} />
         </div>
       </div>
     </div>
