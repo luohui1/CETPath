@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { db, type MarkRow, type MemoryRow } from "./db";
+import type { MarkRow, MemoryRow } from "./db";
+import { getProfile, learningStats, saveProfile } from "./profile";
 import { kindName, type Paper, type PdfWordsPage } from "@/lib/papers";
 
 /** AI 助教：问题经服务器（server/agent_server.py）转发到管理后台配好的模型；长期记忆存在本机 memory 表，每次提问随请求带上 */
@@ -83,10 +84,10 @@ export function useAgentEnabled(): boolean | null {
   return on;
 }
 
-const memoryForPrompt = async () =>
-  (await db.memory.orderBy("updatedAt").reverse().limit(60).toArray()).map(
-    (m) => ({ id: m.id, kind: m.kind, text: m.text }),
-  );
+const profileForPrompt = async () => ({
+  profile: await getProfile(),
+  stats: await learningStats(),
+});
 
 async function failure(r: Response) {
   try {
@@ -115,7 +116,7 @@ export async function streamChat(
     body: JSON.stringify({
       messages: trimTurns(messages),
       context,
-      memory: await memoryForPrompt(),
+      ...(await profileForPrompt()),
       model: pickedModel(),
       tools,
     }),
@@ -155,50 +156,28 @@ export async function streamChat(
 let editedAt = 0;
 export const touchMemory = () => void (editedAt = Date.now());
 
-/** 聊完一轮：让模型从这段对话里整理长期记忆，按它给的加、改、删写进本机。返回新记下的条目 */
-export async function remember(messages: ChatMsg[]): Promise<string[]> {
+/** 聊完一轮：让模型按这段对话改写学习者档案，有变化就存回本机。返回档案改没改 */
+export async function remember(messages: ChatMsg[]): Promise<boolean> {
   const started = Date.now();
+  const profile = await getProfile();
   const r = await fetch("/api/agent/remember", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: trimTurns(messages),
-      memory: await memoryForPrompt(),
-    }),
+    body: JSON.stringify({ messages: trimTurns(messages), profile }),
   });
-  if (!r.ok) return [];
-  const ops = (await r.json()) as {
-    add: Pick<MemoryRow, "kind" | "text">[];
-    update: { id: number; text: string }[];
-    remove: number[];
-  };
-  const added: string[] = [];
-  if (editedAt >= started) return added;
-  await db.transaction("rw", db.memory, async () => {
-    const now = Date.now();
-    const have = new Set((await db.memory.toArray()).map((m) => m.text));
-    for (const a of ops.add ?? []) {
-      if (have.has(a.text)) continue;
-      await db.memory.add({
-        kind: a.kind,
-        text: a.text,
-        createdAt: now,
-        updatedAt: now,
-      });
-      added.push(a.text);
-    }
-    for (const u of ops.update ?? [])
-      if (await db.memory.get(u.id))
-        await db.memory.update(u.id, { text: u.text, updatedAt: now });
-    if (ops.remove?.length) await db.memory.bulkDelete(ops.remove);
-  });
-  return added;
+  if (!r.ok) return false;
+  const d = (await r.json()) as { profile?: string | null };
+  // 整理期间学习者自己改过档案（或 Agent 用工具改过）：这次结果是按旧档案算的，丢掉
+  if (!d.profile || d.profile.trim() === profile.trim() || editedAt >= started) return false;
+  await saveProfile(d.profile);
+  return true;
 }
 
 export const MEMORY_KINDS: Record<MemoryRow["kind"], string> = {
   weak: "薄弱",
   pref: "偏好",
   fact: "情况",
+  profile: "档案",
 };
 
 const mmss = (s: number) =>

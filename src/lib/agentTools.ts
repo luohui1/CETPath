@@ -2,6 +2,8 @@ import { db } from "./db";
 import { getEntry, phonetic, toLemma, translationLines } from "./dict";
 import { addToVocab } from "./learning";
 import { masteryId, scoredQuestions } from "./mistakes";
+import { getProfile, saveProfile } from "./profile";
+import { touchMemory } from "./agent";
 import { KIND_NAMES, type Paper } from "./papers";
 import type { ToolCall } from "./agent";
 
@@ -113,9 +115,6 @@ export async function runTool(
         };
       }
       case "get_weak_points": {
-        const weak = (await db.memory.toArray())
-          .filter((m) => m.kind === "weak")
-          .map((m) => `- ${m.text}`);
         const open = (await db.mastery.toArray()).filter((r) => !r.retiredAt);
         const by = new Map<string, number>();
         for (const r of open)
@@ -128,8 +127,17 @@ export async function runTool(
           .map(([k, c]) => `- ${k}：${c} 题`);
         return {
           label: "看了你的薄弱点",
-          result: `长期记忆里的弱项：\n${weak.join("\n") || "（还没有）"}\n错题本里还没掌握的题（按题型）：\n${kinds.join("\n") || "（错题本是空的）"}`,
+          result: `学习者档案：
+${(await getProfile()) || "（还没有）"}
+错题本里还没掌握的题（按题型）：\n${kinds.join("\n") || "（错题本是空的）"}`,
         };
+      }
+      case "update_profile": {
+        const text = typeof a.profile === "string" ? a.profile.trim() : "";
+        if (!text) return { label: "档案：内容是空的", result: "profile 为空，没改" };
+        touchMemory(); // 聊完后台的整理是按旧档案算的，作废
+        await saveProfile(text);
+        return { label: "更新了学习者档案", result: "档案已更新" };
       }
       case "show_quiz": {
         const n = quizOf({ id: "", name, args: raw })?.questions.length ?? 0;

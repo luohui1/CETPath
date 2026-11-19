@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowUp, Sparkle, Stop, Wrench } from "@phosphor-icons/react";
 import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
 import { AgentQuiz } from "./AgentQuiz";
@@ -70,7 +69,6 @@ export function AgentPanel({
   env?: ToolEnv;
 }) {
   const enabled = useAgentEnabled();
-  const memCount = useLiveQuery(() => db.memory.count(), []);
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
     thread ? (threads.get(thread.id) ?? []) : [],
   );
@@ -167,7 +165,7 @@ export function AgentPanel({
       void remember(
         base.slice(-1).concat({ role: "assistant", content: answer }),
       ).then(
-        (added) => added.length && setNoted(added),
+        (changed) => changed && setNoted(["已更新学习者档案"]),
         () => {},
       );
     } catch (e) {
@@ -277,7 +275,7 @@ export function AgentPanel({
             </Link>
           )}
           <Link to="/settings#memory" className="hover:text-[var(--ink)]">
-            长期记忆 <span className="num">{memCount ?? 0}</span> 条
+            学习者档案
           </Link>
         </div>
         {thread.ctx.review && (
@@ -338,7 +336,7 @@ export function AgentPanel({
         )}
         {noted.length > 0 && !busy && (
           <p className="text-[12px] text-[var(--ink-500)]">
-            已记下：{noted.join("；")}
+            {noted.join("；")}
           </p>
         )}
         <div ref={end} />

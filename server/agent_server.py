@@ -16,6 +16,7 @@ import getpass
 import hashlib
 import hmac
 import json
+import re
 import os
 import secrets
 import sys
@@ -133,7 +134,8 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 错题挑重点讲，不用每题都展开；学习者追问某一题时再细讲那题。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案。
+- 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
 - 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
 - 出同类练习：对话里还不清楚弱项时先调 get_weak_points，再用 show_quiz 出 3–5 道四六级/考研风格的单选题。题目、答案和解析都放在工具参数里，正文只用一句话说练什么，不要再把题目和答案写一遍。
 - 工具返回后，用一两句话告诉学习者结果。
@@ -148,14 +150,33 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 ## 记忆
 结合下面「关于这位学习者」的记忆调整讲法：讲过的语法点简要带过并提醒"之前遇到过"，薄弱的点讲细一点，遵守他说过的偏好，按他的目标考试举例。"""
 
-REMEMBER = """你在维护一位英语学习者的长期记忆。下面是已有记忆（带 id）和刚才的一段对话。
-请找出以后讲解时值得记住的东西，只记长期有用的：
-- weak：他没掌握/反复卡住的语法点或句型（如"分不清 that 引导同位语从句还是定语从句"）
-- pref：他对讲解方式的偏好（如"希望先给译文再拆结构"）
-- fact：关于他的事实（如"在备考六级，目标 550 分"）
-不要记具体句子本身、不要记一次性的问题、不要重复已有记忆。已有记忆需要修正时用 update，已经掌握或过时的用 remove。
-只输出 JSON，不要别的文字：{"add":[{"kind":"weak|pref|fact","text":"..."}],"update":[{"id":1,"text":"..."}],"remove":[2]}
-没有要改的就输出 {"add":[],"update":[],"remove":[]}"""
+REMEMBER = """你在维护一位英语学习者的「学习者档案」，它是给备考老师（另一个模型）看的长期记忆。下面是现在的档案和刚才的一段对话。
+请根据对话改写档案，只保留长期有用的信息：
+- 栏目固定，按这个顺序：## 考试目标 / ## 语法弱项 / ## 词汇弱项 / ## 题型表现 / ## 讲解偏好 / ## 最近在练；每栏是简短的 - 列表，没有就留空。
+- 新信息写进对应栏目；和已有的重复就合并，矛盾的以新的为准；已经掌握或过时的删掉。
+- 不记具体句子原文、不记一次性的问题；写成以后讲解时用得上的结论，如“分不清 that 引导同位语从句和定语从句”“希望先给译文再拆结构”。
+- 全文不超过 1200 字。
+对话里没有值得记的新东西就只输出 NOCHANGE；否则只输出改写后的完整档案（Markdown），不要别的文字。"""
+
+
+def today() -> str:
+    """模型不知道今天几号：考试日期、“今年 12 月”这类要按北京时间换算"""
+    import datetime
+
+    d = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+    return f"{d.year} 年 {d.month} 月 {d.day} 日"
+
+
+def profile_block(data: dict) -> str:
+    """学习者档案 + 应用现算的学习数据；旧版前端发来的一条条记忆也认"""
+    parts = []
+    if isinstance(data.get("profile"), str) and data["profile"].strip():
+        parts.append("### 学习者档案（长期记忆）\n" + data["profile"][:3000])
+    elif data.get("memory"):
+        parts.append(memory_block(data.get("memory") or []))
+    if isinstance(data.get("stats"), str) and data["stats"].strip():
+        parts.append("### 学习数据（应用自动统计）\n" + data["stats"][:1500])
+    return "\n\n".join(parts) or "（还不了解这位学习者）"
 
 
 def memory_block(memory: list) -> str:
@@ -224,6 +245,12 @@ TOOLS = [
     _fn("lookup_word", "查学习者本机词典里一个英文单词的音标和中文释义。需要准确词义、熟词僻义时用。", {"word": {"type": "string", "description": "英文单词"}}, ["word"]),
     _fn("add_to_vocab", "把单词加进学习者的生词本（同时进入背词卡片）。学习者说要记、要收藏某个词时用。", {"word": {"type": "string"}, "sentence": {"type": "string", "description": "这个词出现的原句，可选"}}, ["word"]),
     _fn("add_to_mistakes", "把当前这套卷的某道选择题加进错题本，可附一句错因笔记。只在做题页（有试卷）时可用。", {"number": {"type": "integer", "description": "题号"}, "note": {"type": "string", "description": "错因或要点，可选"}}, ["number"]),
+    _fn(
+        "update_profile",
+        "改写学习者档案（长期记忆）。学习者让你“记住”什么、或说出考试目标/日期/偏好时用。传入改写后的完整档案，栏目同系统提示里的档案。",
+        {"profile": {"type": "string", "description": "完整的新档案（Markdown，栏目：考试目标、语法弱项、词汇弱项、题型表现、讲解偏好、最近在练）"}},
+        ["profile"],
+    ),
     _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
     _fn(
         "show_quiz",
@@ -418,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
         turns = clean_turns(data.get("messages"))
         if not turns or turns[-1]["role"] not in ("user", "tool"):
             return self.send_json(400, {"error": "没有问题"})
-        sys_msg = SYSTEM + "\n\n关于这位学习者：\n" + memory_block(data.get("memory") or [])
+        sys_msg = SYSTEM + f"\n\n今天是 {today()}。" + "\n\n## 关于这位学习者\n" + profile_block(data)
         ctx = context_block(data.get("context") or {})
         if ctx:
             sys_msg += "\n\n" + ctx
@@ -478,17 +505,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(429, {"error": "太频繁"})
         turns = clean_turns(data.get("messages"))
         if not turns:
-            return self.send_json(200, {"add": [], "update": [], "remove": []})
-        mem = [m for m in (data.get("memory") or [])[:MAX_MEMORY] if isinstance(m, dict)]
-        existing = "\n".join(f"{m.get('id')}. [{m.get('kind')}] {str(m.get('text'))[:200]}" for m in mem) or "（无）"
-        convo = "\n".join(f"{'学习者' if t['role'] == 'user' else '助教'}：{t['content'][:1500]}" for t in turns)
-        msgs = [{"role": "system", "content": REMEMBER}, {"role": "user", "content": f"已有记忆：\n{existing}\n\n对话：\n{convo}"}]
+            return self.send_json(200, {"profile": None})
+        profile = str(data.get("profile") or "")[:3000]
+        convo = "\n".join(f"{'学习者' if t['role'] == 'user' else '助教'}：{t['content'][:1500]}" for t in turns if t["role"] in ("user", "assistant") and t["content"])
+        msgs = [{"role": "system", "content": REMEMBER + f"\n今天是 {today()}，写日期时用完整年份。"}, {"role": "user", "content": f"现在的档案：\n{profile or '（空的）'}\n\n对话：\n{convo}"}]
         try:
-            with upstream(cfg, msgs, False, 400, 0) as r:
-                text = json.load(r)["choices"][0]["message"]["content"] or ""
+            with upstream(cfg, msgs, False, 1600, 0) as r:
+                text = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
-        self.send_json(200, parse_ops(text))
+        text = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", text).strip()
+        self.send_json(200, {"profile": None if not text or text.upper().startswith("NOCHANGE") else text[:4000]})
 
 
 def upstream_error(e: Exception) -> str:

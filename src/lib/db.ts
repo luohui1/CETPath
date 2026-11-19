@@ -114,7 +114,7 @@ export interface MarkRow {
 /** AI 助教的长期记忆：每条是一个要点，聊完由模型整理（加、改、删），设置里能看能改 */
 export interface MemoryRow {
   id?: number;
-  kind: "weak" | "pref" | "fact"; // 薄弱点、讲解偏好、个人情况
+  kind: "weak" | "pref" | "fact" | "profile"; // profile：学习者档案（现在只用这一行）；前三种是旧版的一条条记忆，读档案时会合并进去
   text: string;
   createdAt: number;
   updatedAt: number;

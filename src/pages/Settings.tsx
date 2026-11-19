@@ -1,7 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
-import { MEMORY_KINDS, touchMemory } from "@/lib/agent";
+import { useRef, useState, type ReactNode, useEffect } from "react";
+import { touchMemory } from "@/lib/agent";
+import { clearProfile, getProfile, learningStats, PROFILE_SECTIONS, saveProfile, useProfile } from "@/lib/profile";
 import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icons/react";
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
 import { setSetting, useSettings } from "@/lib/settings";
@@ -157,7 +156,7 @@ export function SettingsPage() {
         <AgentModel />
       </Group>
 
-      <Group title="AI 助教的长期记忆" id="memory">
+      <Group title="学习者档案（Agent 的长期记忆）" id="memory">
         <AgentMemory />
       </Group>
 
@@ -211,35 +210,36 @@ export function SettingsPage() {
   );
 }
 
-/** AI 助教记住的要点：每次问完由模型整理，这里能改、能删 */
+/** Agent 的长期记忆：一份学习者档案，聊完由模型改写，这里能直接改；下面是从本机数据现算的学习情况 */
 function AgentMemory() {
-  const rows = useLiveQuery(() => db.memory.orderBy("updatedAt").reverse().toArray(), []);
-  if (!rows) return null;
-  if (!rows.length) return <div className="px-5 py-4 text-[13px] leading-[21px] text-[var(--ink-500)]">还没有记忆。做题时点词或长按句子再点"问 AI"，聊完 AI 会把你卡住的语法点、喜欢的讲法记在这台设备上，下次讲解时用上。</div>;
+  const profile = useProfile();
+  const [stats, setStats] = useState("");
+  useEffect(() => {
+    void getProfile().then(() => learningStats().then(setStats));
+  }, []);
+  if (profile === undefined) return null;
   return (
     <>
-      {rows.map((m) => (
-        <div key={m.id} className="flex items-center gap-3 px-5 py-2.5">
-          <span className="tag-paper flex-none">{MEMORY_KINDS[m.kind] ?? "记忆"}</span>
-          <input
-            defaultValue={m.text}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v !== m.text) touchMemory();
-              if (!v) void db.memory.delete(m.id!);
-              else if (v !== m.text) void db.memory.update(m.id!, { text: v, updatedAt: Date.now() });
-            }}
-            className="min-w-0 flex-1 rounded-[6px] bg-transparent px-1.5 py-1 text-[14px] outline-none focus:bg-[var(--paper-100)]"
-            aria-label="记忆内容"
-          />
-          <button type="button" onClick={() => (touchMemory(), void db.memory.delete(m.id!))} className="grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--red)]" aria-label="删掉这条">
-            <Trash className="size-4" />
-          </button>
-        </div>
-      ))}
-      <Row title={`共 ${rows.length} 条`} desc="点文字可以直接改；清空后 AI 会重新认识你">
-        <Button variant="danger" size="sm" onClick={() => confirm("清空 AI 助教的全部记忆？") && (touchMemory(), void db.memory.clear())}>
-          清空记忆
+      <div className="space-y-2 px-5 py-4">
+        <textarea
+          key={profile}
+          defaultValue={profile || PROFILE_SECTIONS.map((t) => `## ${t}\n`).join("\n")}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v === profile.trim()) return;
+            touchMemory();
+            void saveProfile(v);
+          }}
+          rows={14}
+          className="block w-full resize-y rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-mono text-[13px] leading-[1.7] outline-none focus:shadow-[0_0_0_2px_var(--blue)]"
+          aria-label="学习者档案"
+        />
+        <p className="text-[12px] leading-[19px] text-[var(--ink-500)]">每次和 Agent 聊完，它会把值得记住的写进这份档案（合并重复、删掉过时的）；也可以直接在这里改，离开输入框就保存。档案只存在这台设备上。</p>
+        {stats && <p className="rounded-[10px] bg-[var(--fill-quiet)] px-3 py-2 text-[12px] leading-[19px] whitespace-pre-line text-[var(--ink-700)]">Agent 还会看到这些学习数据（每次现算，不用记）：{"\n"}{stats}</p>}
+      </div>
+      <Row title="清空档案" desc="清空后 Agent 会重新认识你">
+        <Button variant="danger" size="sm" onClick={() => confirm("清空学习者档案？") && (touchMemory(), void clearProfile())}>
+          清空
         </Button>
       </Row>
     </>

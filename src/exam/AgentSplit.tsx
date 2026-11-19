@@ -103,7 +103,7 @@ export function AgentSplit({
           to="/settings#memory"
           className="rounded-[8px] px-2 py-1 text-[13px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--ink)]"
         >
-          长期记忆
+          学习者档案
         </Link>
         <button
           type="button"
