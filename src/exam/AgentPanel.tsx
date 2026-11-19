@@ -12,6 +12,8 @@ export type AgentThread = { id: string; ctx: AgentContext };
 
 // 换标签、收起面板再打开，同一句的对话还在
 const threads = new Map<string, ChatMsg[]>();
+/** 删掉一段对话时连内存里的缓存一起清掉，不然同一句再问会把删掉的内容带回来 */
+export const forgetThread = (id: string) => void threads.delete(id);
 
 const QUICK = ["再讲简单点", "主干是哪几个词？", "这里为什么这样用？", "出一句类似的考考我"];
 

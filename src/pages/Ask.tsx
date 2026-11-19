@@ -4,7 +4,7 @@ import { Trash } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { sentenceKey } from "@/lib/trans";
 import { cn } from "@/lib/utils";
-import { AgentPanel, type AgentThread } from "@/exam/AgentPanel";
+import { AgentPanel, forgetThread, type AgentThread } from "@/exam/AgentPanel";
 import { Button, PageHeader } from "@/components/ui";
 
 /** AI 助教页：粘贴任意句子来问；左边是本机保存的历史对话（做题时"问 AI"的也在这里） */
@@ -55,6 +55,7 @@ export function AskPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    forgetThread(c.id);
                     void db.chats.delete(c.id);
                     if (thread?.id === c.id) setThread(null);
                   }}
