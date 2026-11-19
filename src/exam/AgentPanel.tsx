@@ -279,28 +279,40 @@ export function AgentPanel({
           </Link>
         </div>
         {thread.ctx.review && (
-          <div className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 text-[14px] leading-[1.6] text-[var(--ink-700)]">
-            这套卷 · {thread.ctx.paper}
-            <span className="block text-[12px] text-[var(--ink-500)]">
-              {thread.ctx.reviewReady === false
-                ? "交卷后能看到每题对错和用时；现在只知道你答到哪了"
-                : "能看到你每题选了什么、对错和用时"}
-            </span>
-          </div>
+          <p className="flex items-center gap-1.5 text-[12px] text-[var(--ink-500)]">
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                thread.ctx.reviewReady === false
+                  ? "bg-[var(--ink-300,#c4c8d0)]"
+                  : "bg-[var(--blue)]",
+              )}
+            />
+            {thread.ctx.reviewReady === false
+              ? "看得到整套卷和你的作答进度；交卷后还能看到对错和用时"
+              : "看得到整套卷、你每题选了什么、对错和用时"}
+          </p>
         )}
         {quote && (
-          <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">
+          <blockquote className="mt-1 border-l-[3px] border-[var(--blue-line,#bcd3f5)] py-0.5 pl-3 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">
             {quote}
           </blockquote>
         )}
       </div>
 
       <div className="flex-1 space-y-3 px-4 py-3" aria-live="polite">
+        {inDock && msgs.length === 0 && !busy && (
+          <div className="flex flex-col items-center gap-2 px-6 pt-16 text-center">
+            <Sparkle className="size-7 text-[var(--blue)]" weight="duotone" />
+            <p className="text-[15px] font-semibold">问这套卷的任何问题</p>
+            <p className="text-[13px] leading-[20px] text-[var(--ink-500)]">哪题怎么做、哪句看不懂、怎么分配时间都行；也能让它把词加进生词本、出几道同类题。</p>
+          </div>
+        )}
         {msgs.map((m, i) =>
           m.role === "user" ? (
             <div
               key={i}
-              className="ml-8 rounded-[12px] rounded-br-[4px] bg-[var(--blue)] px-3 py-2 text-[14px] leading-[1.6] text-white"
+              className="ml-auto w-fit max-w-[85%] rounded-[14px] rounded-br-[4px] bg-[var(--blue-tint)] px-3 py-2 text-[14px] leading-[1.6] whitespace-pre-wrap text-[var(--ink)]"
             >
               {m.content}
             </div>
@@ -342,7 +354,7 @@ export function AgentPanel({
         <div ref={end} />
       </div>
 
-      <div className="sticky bottom-0 bg-[var(--surface,white)] px-3 pt-2 pb-3 shadow-[0_-8px_16px_-12px_rgba(28,35,48,0.18)]">
+      <div className="sticky bottom-0 bg-[var(--surface,white)] px-3 pt-2 pb-3">
         {/* 快捷问题只在还没聊的时候出现，聊起来就让位给对话 */}
         <div
           className={cn(
@@ -370,7 +382,7 @@ export function AgentPanel({
           ))}
         </div>
         <form
-          className="rounded-[14px] bg-[var(--paper-100)] px-2 pt-1.5 pb-1.5 ring-1 ring-transparent transition-shadow focus-within:bg-white focus-within:ring-[color-mix(in_oklab,var(--blue)_45%,transparent)]"
+          className="rounded-[12px] border border-[var(--line)] bg-white px-2.5 pt-2 pb-1.5 transition-colors focus-within:border-[color-mix(in_oklab,var(--blue)_55%,transparent)]"
           onSubmit={(e) => {
             e.preventDefault();
             void send(draft);
@@ -390,8 +402,9 @@ export function AgentPanel({
               }
             }}
             rows={1}
-            placeholder="接着问，比如：that 指代什么？"
-            className="block max-h-32 min-h-10 w-full resize-none bg-transparent px-1.5 py-1.5 text-[14px] leading-6 outline-none"
+            placeholder="问点什么，Enter 发送"
+            className="block max-h-32 min-h-6 w-full resize-none bg-transparent px-0.5 text-[14px] leading-6 outline-none focus-visible:outline-none"
+            style={{ outline: "none" }}
             aria-label="追问"
           />
           <div className="flex items-center gap-2">
@@ -401,17 +414,17 @@ export function AgentPanel({
               <button
                 type="button"
                 onClick={() => abort.current?.abort()}
-                className="grid size-8 flex-none place-items-center rounded-full bg-[var(--ink)] text-white"
+                className="grid size-7 flex-none place-items-center rounded-full bg-[var(--ink-700)] text-white"
                 aria-label="停止"
               >
-                <Stop className="size-4" weight="fill" />
+                <Stop className="size-3" weight="fill" />
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={!draft.trim()}
                 className={cn(
-                  "grid size-8 flex-none place-items-center rounded-full bg-[var(--blue)] text-white transition-opacity",
+                  "grid size-7 flex-none place-items-center rounded-full bg-[var(--blue)] text-white transition-opacity",
                   !draft.trim() && "opacity-40",
                 )}
                 aria-label="发送"

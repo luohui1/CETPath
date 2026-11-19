@@ -1786,8 +1786,9 @@ export function ExamRoom({
         localStorage.setItem("yz-agent-w", String(w));
       }}
       enabled={!!aiOn}
-      thread={agentThread ?? paperThread}
-      onBack={agentThread ? () => setAgentThread(null) : undefined}
+      paperThread={paperThread}
+      sentence={agentThread}
+      onClearSentence={() => setAgentThread(null)}
       onClose={() => setAgentOpen(false)}
       env={{ paper, answers }}
     />
