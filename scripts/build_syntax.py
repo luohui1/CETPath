@@ -74,9 +74,21 @@ def squash(t):
     return re.sub(r"\s+", " ", t or "").strip()
 
 
-def reading_groups(paper):
+def passage_head(pages, after):
+    """after (页, y) 之后第一个"Passage One/Two/Three"标题的 (页, y)；找不到返回 None"""
+    p0, y0 = after
+    for pno in range(p0, len(pages) + 1):
+        w = pages[pno - 1]["w"]
+        for i in range(len(w) - 1):
+            if w[i][0] == "Passage" and w[i + 1][0] in ("One", "Two", "Three") and (pno > p0 or w[i][2] >= y0):
+                return (pno, w[i][2] - 1)
+    return None
+
+
+def reading_groups(paper, pages):
     """[(题组, 起点 (页, y), 终点 (页, y))]：文章在卷面上的范围是从这一篇的起点到它第一题的题号之前。
-    起点：第一篇是这一部分的标题，后面的是上一篇最后一题的题号（选项在文章开头的"Passage Two"之前，按句子过滤掉）"""
+    起点：第一篇是这一部分的标题，后面的是上一篇最后一题之后的"Passage Two"标题（跳过上一篇的题干和选项，
+    多句的选项拆出来的后半句没有 A) 开头，不能按句子过滤）；找不到标题才退到上一篇最后一题的题号"""
     out = []
     for sec in paper["sections"]:
         if sec.get("kind") != "reading":
@@ -90,6 +102,8 @@ def reading_groups(paper):
             first, last = qs[0], qs[-1]
             end = (first["page"], first["box"][1] - 1)
             start = prev or (first["page"], 0)
+            if out:
+                start = passage_head(pages, start) or start
             out.append((g, start, end))
             prev = (last["page"], last["box"][3])
     return out
@@ -103,7 +117,7 @@ def passage_sentences(pid):
         return []
     pages = jload(wp)["pages"]
     out, seen = [], set()
-    for g, (p0, y0), (p1, y1) in reading_groups(paper):
+    for g, (p0, y0), (p1, y1) in reading_groups(paper, pages):
         for pno in range(p0, p1 + 1):
             if pno > len(pages):
                 break
@@ -197,7 +211,7 @@ def clean_entry(e):
 
 
 def validate(pid, raw):
-    """(通过的 {键: 条目}, 问题 [(键, 说明)])"""
+    """(通过的 {键: 条目}, 问题 [(键, 说明)])；合并进已有的解析后某篇超过 PER_GROUP 句也算问题（check 和 merge 一个标准）"""
     sents = {k: (g, t) for k, g, t in passage_sentences(pid)}
     ok, bad = {}, []
     for k, e in raw.items():
@@ -209,6 +223,12 @@ def validate(pid, raw):
             bad.extend((k, x) for x in errs)
             continue
         ok[k] = {"group": sents[k][0], "en": sents[k][1], **clean_entry(e)}
+    per = {}
+    for e in {**load_layer(pid)["sentences"], **ok}.values():
+        per[e["group"]] = per.get(e["group"], 0) + 1
+    for g, n in per.items():
+        if n > PER_GROUP:
+            bad.append(("-", f"{g} 合并后 {n} 句，超过每篇 {PER_GROUP} 句"))
     return ok, bad
 
 
@@ -256,15 +276,12 @@ def cmd_merge(work, ids):
         if ids and pid not in ids:
             continue
         ok, bad = validate(pid, jload(f))
+        over = [why for k, why in bad if k == "-"]
+        if over:
+            print(pid, "不写：" + "；".join(over))
+            continue
         layer = load_layer(pid)
         layer["sentences"].update(ok)
-        per = {}
-        for e in layer["sentences"].values():
-            per[e["group"]] = per.get(e["group"], 0) + 1
-        over = [g for g, n in per.items() if n > PER_GROUP]
-        if over:
-            print(pid, f"不写：{over} 超过每篇 {PER_GROUP} 句")
-            continue
         order = {k: i for i, (k, _, _) in enumerate(passage_sentences(pid))}
         layer["sentences"] = dict(sorted(layer["sentences"].items(), key=lambda kv: order.get(kv[0], 1e9)))
         if ok:

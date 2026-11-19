@@ -139,7 +139,7 @@ const PAGE_WIDTH = 860; // 100% 时卷面宽度（px）
 const MIN_WIDTH = 760; // 平板竖屏 768 起
 const LONG_PRESS_MS = 500; // 手指按住一句不动这么久：出这句的译文
 const DOCK_KEY = "yz.dockTab"; // 停靠区上次开的标签（只是记住个习惯，存在浏览器里，取不到就算了）
-const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab"];
+const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax"];
 function lastDockTab(): DockTab | null {
   try {
     const t = localStorage.getItem(DOCK_KEY) as DockTab | null;
@@ -1383,12 +1383,14 @@ export function ExamRoom({
   const lowerDrawer = useCallback(() => {
     if (!sideDock) setSnap((s) => Math.min(s, DRAWER_SNAPS[0]));
   }, [sideDock]);
-  // 长难句在卷面上的位置：句子键 → 第几页、第几句、句首的 y；每页有哪几句
+  // 长难句在卷面上的位置：句子键 → 第几页、第几句、句首的 y；每页有哪几句。
+  // 只认卷面上显示的页；专项练习不是仔细阅读时一句都没有（停靠区也不出"长难句"标签）
   const syntaxAt = useMemo(() => {
     const at = new Map<string, { page: number; sid: number; y: number }>();
     const byPage = new Map<number, Set<number>>();
-    if (!syntaxFile || !pages) return { at, byPage };
+    if (!syntaxFile || !pages || (scope && scope.section.kind !== "reading")) return { at, byPage };
     pages.forEach((data, i) => {
+      if (i + 1 < firstPage || i + 1 > lastPage) return;
       data.s.forEach((s, sid) => {
         const k = sentenceKey(s);
         if (!syntaxFile.sentences[k] || at.has(k)) return;
@@ -1399,7 +1401,7 @@ export function ExamRoom({
       });
     });
     return { at, byPage };
-  }, [syntaxFile, pages]);
+  }, [syntaxFile, pages, scope, firstPage, lastPage]);
   const synOf = useCallback((sentence: string) => (sentence && syntaxFile?.sentences[sentenceKey(sentence)]) || null, [syntaxFile]);
   /** 打开一句长难句的解析：收起查词、选项条，卷面上这句淡黄底，底部条放解析；scroll 时把这句滚到卷面上三分之一处 */
   const openSyntax = useCallback(
@@ -1679,7 +1681,8 @@ export function ExamRoom({
     if (!syntaxFile || !syntaxAt.at.size) return null;
     const titles: Record<string, string> = {};
     for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
-    return { file: syntaxFile, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
+    const sentences = Object.fromEntries(Object.entries(syntaxFile.sentences).filter(([k]) => syntaxAt.at.has(k)));
+    return { file: { ...syntaxFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
   }, [syntaxFile, syntaxAt, paper.sections, sentKey, openSyntax]);
   const barEl = (embedded: boolean) =>
     barContent && (
