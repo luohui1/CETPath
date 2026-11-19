@@ -554,7 +554,9 @@ export function ExamRoom({
   const compact = winWidth > winHeight && winHeight < 900;
   // 停靠区：横屏或宽 ≥ 1100 在右侧一栏（宽 360，把卷面挤窄）；竖屏窄屏是听力条上面的底部抽屉（把卷面挤矮）
   const sideDock = winWidth > winHeight || winWidth >= 1100;
-  const dockSpace = !sideDock ? 0 : agentOpen ? agentW + 8 : panel ? DOCK_WIDTH + 8 : 0;
+  // 存的宽度按当前窗口再限一次（窄窗口里不能把卷面挤没）
+  const agentWidth = Math.min(agentW, Math.max(320, Math.round(winWidth * 0.6)));
+  const dockSpace = !sideDock ? 0 : agentOpen ? agentWidth + 8 : panel ? DOCK_WIDTH + 8 : 0;
   const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && !floating ? RAIL_WIDTH : 0) - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
@@ -1770,7 +1772,7 @@ export function ExamRoom({
   const agentEl = agentOpen && (
     <AgentSplit
       side={sideDock}
-      width={agentW}
+      width={agentWidth}
       onWidth={(w) => {
         setAgentW(w);
         localStorage.setItem("yz-agent-w", String(w));
