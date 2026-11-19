@@ -1502,7 +1502,7 @@ export function ExamRoom({
   const onPaperWord = showWord;
   const cover = `/papers/pdf/${encodeURIComponent(paper.id)}.thumb.jpg`;
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
-  const synOrder = useMemo(() => Object.keys(syntaxFile?.sentences ?? {}).filter((k) => syntaxAt.at.has(k)), [syntaxFile, syntaxAt]);
+  const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
     const i = synOrder.indexOf(key);
     if (i < 0 || !syntaxFile) return undefined;
