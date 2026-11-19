@@ -19,6 +19,7 @@ import json
 import os
 import secrets
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -45,13 +46,18 @@ def load() -> dict:
         return {}
 
 
+_save_lock = threading.Lock()
+
+
 def save(cfg: dict) -> None:
-    os.makedirs(os.path.dirname(os.path.abspath(CONFIG)), exist_ok=True)
-    tmp = CONFIG + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, CONFIG)
+    folder = os.path.dirname(os.path.abspath(CONFIG))
+    os.makedirs(folder, exist_ok=True)
+    with _save_lock:
+        # 每次一个独立的临时文件（mkstemp 权限就是 600），写完再原子替换
+        fd, tmp = tempfile.mkstemp(dir=folder, prefix=".agent-", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, CONFIG)
 
 
 def hash_pw(pw: str, salt: str | None = None) -> str:
