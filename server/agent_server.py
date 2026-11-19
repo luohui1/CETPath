@@ -198,6 +198,7 @@ def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 18
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", f"Bearer {cfg.get('api_key', '')}")
+    req.add_header("User-Agent", "yingyu-agent/1.0")  # 不少接口在 Cloudflare 后面，默认的 Python-urllib 会被拦（1010）
     return urllib.request.urlopen(req, timeout=90)
 
 
