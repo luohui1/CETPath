@@ -21,14 +21,14 @@ export async function getProfile(): Promise<string> {
   const items = (k: string) => old.filter((r) => r.kind === k).map((r) => `- ${r.text}`).join("\n");
   const body: Record<string, string> = { 考试目标: items("fact"), 语法弱项: items("weak"), 讲解偏好: items("pref") };
   const text = PROFILE_SECTIONS.map((s) => `## ${s}\n${body[s] ?? ""}`.trim()).join("\n\n");
-  await saveProfile(text);
+  await saveProfile(text, false); // 合并旧记忆不截断，免得删掉的旧条目没进档案
   await db.memory.bulkDelete(old.map((r) => r.id!));
   return text;
 }
 
-export async function saveProfile(text: string) {
+export async function saveProfile(text: string, cap = true) {
   const now = Date.now();
-  const t = text.trim().slice(0, PROFILE_MAX * 2);
+  const t = cap ? text.trim().slice(0, PROFILE_MAX * 2) : text.trim();
   await db.transaction("rw", db.memory, async () => {
     const row = await profileRow();
     if (row) await db.memory.update(row.id!, { text: t, updatedAt: now });
