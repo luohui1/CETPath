@@ -65,6 +65,7 @@ export interface ExamPageProps {
   activeWord?: number | null; // 正在查的词（这一页的单词序号）
   activeWords?: number[] | null; // 查词卡片认出的短语里的词（整个短语标出来）
   sentence?: number | null; // 长按出译文的那一句（这一页的句子序号）：整句淡黄底
+  longs?: Set<number> | null; // 这一页上有长难句解析的句子（句子序号）：句下一道虚线
   hintId?: string | null; // 一道都没答时的第一题（题号或 `${id}@blank`）：它的空圈闪几下
   flags: Set<string>; // 标记待检查的题
   struck: Record<string, string[]>; // 各题划掉的选项
@@ -463,6 +464,7 @@ const WordLayer = memo(function WordLayer({
   active,
   actives,
   sentence,
+  longs,
   onWord,
 }: {
   page: number;
@@ -474,6 +476,7 @@ const WordLayer = memo(function WordLayer({
   active?: number | null;
   actives?: number[] | null;
   sentence?: number | null;
+  longs?: Set<number> | null;
   onWord: (hit: WordClick | null) => void;
 }) {
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -494,8 +497,9 @@ const WordLayer = memo(function WordLayer({
     });
     return out;
   }, [data, marks]);
-  // 每个要画框的词：0 生词，4 长按出译文的那句，1 命中，2 当前命中，3 正在查
+  // 每个要画框的词：5 长难句，0 生词，4 长按出译文的那句，1 命中，2 当前命中，3 正在查（后面的盖前面的）
   const shown = new Map<number, number>();
+  if (longs?.size) data.w.forEach((w, i) => longs.has(w[5]) && shown.set(i, 5));
   for (const i of vocab) shown.set(i, 0);
   if (sentence != null) data.w.forEach((w, i) => w[5] === sentence && shown.set(i, 4));
   if (hits) for (const [a, b] of hits) for (let i = a; i <= b; i++) shown.set(i, 1);
@@ -509,7 +513,7 @@ const WordLayer = memo(function WordLayer({
         return (
           <span
             key={i}
-            className={cn("w pw pointer-events-none", kind === 0 && "is-vocab", kind === 1 && "is-hit", kind === 2 && "is-hit-cur", kind === 3 && "is-active", kind === 4 && "is-sent")}
+            className={cn("w pw pointer-events-none", kind === 0 && "is-vocab", kind === 1 && "is-hit", kind === 2 && "is-hit-cur", kind === 3 && "is-active", kind === 4 && "is-sent", kind === 5 && "is-long")}
             style={{ left: x0 * scale - 1.5, top: y0 * scale, width: (x1 - x0) * scale + 3, height: (y1 - y0) * scale }}
           />
         );
@@ -674,7 +678,7 @@ export const ExamPage = memo(function ExamPage(p: ExamPageProps) {
             {index + 1}
           </span>
           <div ref={host} className="absolute inset-0" />
-          <WordLayer page={index + 1} data={data} scale={scale} marks={p.marks} hits={p.hits} hitCur={p.hitCur} active={p.activeWord} actives={p.activeWords} sentence={p.sentence} onWord={p.onWord} />
+          <WordLayer page={index + 1} data={data} scale={scale} marks={p.marks} hits={p.hits} hitCur={p.hitCur} active={p.activeWord} actives={p.activeWords} sentence={p.sentence} longs={p.longs} onWord={p.onWord} />
         </div>
 
         {items.segments.map((g) => {

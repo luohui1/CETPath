@@ -17,6 +17,8 @@ import { cn, formatDuration } from "@/lib/utils";
 import { Button, EmptyState } from "@/components/ui";
 import { Tip } from "@/components/overlay";
 import { Explanation, ExplanationCard } from "./Explanation";
+import type { SyntaxFile } from "@/lib/syntax";
+import { RoleTag } from "./SyntaxCard";
 import type { Answers } from "./PaperPages";
 
 type Filter = "all" | "wrong" | "skipped" | "flagged";
@@ -636,8 +638,58 @@ function NotesPanel({ marks, history, onJumpMark, onClear }: { marks: MarkRow[];
 }
 
 /** 停靠区的标签；temp 是竖屏底部抽屉开着时临时出现的"查词""解析 N""译句"（底部条的内容放进抽屉） */
-export type DockTab = "sheet" | "listen" | "explain" | "write" | "notes" | "vocab";
+export type DockTab = "sheet" | "listen" | "explain" | "write" | "notes" | "vocab" | "syntax";
 export type DockView = DockTab | "temp";
+
+/** 停靠区"长难句"标签要的东西：长难句层、各篇的标题、点一句（跳到卷面那句，底部放它的解析）、正在看的那句 */
+export interface DockSyntax {
+  file: SyntaxFile;
+  titles: Record<string, string>;
+  current: string | null;
+  onOpen: (key: string) => void;
+}
+
+/** 长难句：按篇列出，每句一行（原句前半截 + 第一个难点），点了跳到卷面上那句、底部放解析 */
+function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
+  const groups = new Map<string, [string, SyntaxFile["sentences"][string]][]>();
+  for (const [k, e] of Object.entries(syntax.file.sentences)) {
+    const list = groups.get(e.group) ?? [];
+    list.push([k, e]);
+    groups.set(e.group, list);
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <p className="px-2.5 pt-1.5 pb-2 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上带蓝色虚线的句子都有解析：点句子里的词或长按句子也能打开。</p>
+      {[...groups].map(([g, list]) => (
+        <section key={g} className="mb-2">
+          <h4 className="px-2.5 pt-2 pb-1 text-[13px] font-semibold text-[var(--ink-500)]">{syntax.titles[g] ?? g}</h4>
+          {list.map(([k, e], i) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => syntax.onOpen(k)}
+              aria-current={syntax.current === k || undefined}
+              className={cn(
+                "flex w-full items-start gap-2 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--fill-quiet)]",
+                syntax.current === k && "bg-[var(--blue-tint)] hover:bg-[var(--blue-tint)]",
+              )}
+            >
+              <span className="num w-5 flex-none pt-0.5 text-[13px] text-[var(--ink-500)]">{i + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="serif line-clamp-2 text-[15px] leading-[1.5] text-[var(--ink)]">{e.en}</span>
+                <span className="mt-1 flex flex-wrap gap-1">
+                  {[...new Set(e.parts.map((p) => p.r))].slice(0, 3).map((r) => (
+                    <RoleTag key={r} r={r} part />
+                  ))}
+                </span>
+              </span>
+            </button>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
 
 export const DOCK_WIDTH = 360; // 横屏右侧停靠栏的宽
 /** 竖屏底部抽屉的三个停留高度：占"卷面 + 抽屉"这一块的比例 */
@@ -686,6 +738,7 @@ export function Dock({
   attemptKey,
   times,
   limits,
+  syntax,
 }: {
   layout: "side" | "drawer";
   view: DockView;
@@ -721,6 +774,7 @@ export function Dock({
   attemptKey: string;
   times: Record<string, number> | null;
   limits: Record<string, number>;
+  syntax?: DockSyntax | null;
 }) {
   const hasWrites = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => !q.options?.length)));
   // 解析交卷后才有（只有写作翻译的卷没有）；重做后回到答题卡
@@ -731,12 +785,13 @@ export function Dock({
       ? temp
         ? "temp"
         : "sheet"
-      : (view === "explain" && !canExplain) || (view === "listen" && !paper.audio) || (view === "write" && !hasWrites)
+      : (view === "explain" && !canExplain) || (view === "listen" && !paper.audio) || (view === "write" && !hasWrites) || (view === "syntax" && !syntax)
         ? "sheet"
         : view;
   const tabs = [
     { value: "sheet", label: "答题卡" },
     ...(paper.audio ? [{ value: "listen", label: "原文" }] : []),
+    ...(syntax ? [{ value: "syntax", label: `长难句 ${Object.keys(syntax.file.sentences).length}` }] : []),
     ...(canExplain ? [{ value: "explain", label: "解析" }] : []),
     ...(hasWrites && (showWrite || !hasChoice || shown === "write") ? [{ value: "write", label: "作答" }] : []),
     { value: "notes", label: marks.length ? `笔记 ${marks.length}` : "笔记" },
@@ -859,6 +914,7 @@ export function Dock({
       {shown === "write" && <WritePanel paper={paper} attemptKey={attemptKey} texts={texts} submitted={submitted} focus={focusWrite} onJump={onJump} onFocus={onWriteFocus} />}
       {shown === "notes" && <NotesPanel marks={marks} history={history} onJumpMark={onJumpMark} onClear={onClearMarks} />}
       {shown === "vocab" && <PaperVocab paper={paper} />}
+      {shown === "syntax" && syntax && <SyntaxPanel syntax={syntax} />}
     </aside>
   );
 }

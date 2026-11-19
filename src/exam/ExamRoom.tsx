@@ -43,11 +43,12 @@ import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
 import { prefetchAudio, touchAudio } from "@/lib/audioCache";
 import { findTrans, loadTrans, sentenceKey, type TransFile, type TransLookup } from "@/lib/trans";
+import { loadSyntax, type SyntaxFile } from "@/lib/syntax";
 import { ExamPage, questionCue, wordNth, wordRect, type Answers, type PageItems, type Timing } from "./PaperPages";
 import { AnswerBar, barLabel, type BarContent } from "./AnswerBar";
 import { WordCard } from "./WordCard";
 import { ListeningBar, type AnswerLine, type JudgedQs, type ListeningBarHandle } from "./ListeningBar";
-import { Dock, DOCK_WIDTH, DRAWER_SNAPS, type DockTab, type DockView } from "./SidePanel";
+import { Dock, DOCK_WIDTH, DRAWER_SNAPS, type DockSyntax, type DockTab, type DockView } from "./SidePanel";
 import type { InkState } from "./InkLayer";
 import { ExamTimer } from "./ExamTimer";
 import { Stopwatch, useQuestionTimer } from "./Stopwatch";
@@ -408,6 +409,16 @@ export function ExamRoom({
     let live = true;
     setTransFile(undefined);
     void loadTrans(paper.id).then((f) => live && setTransFile(f));
+    return () => {
+      live = false;
+    };
+  }, [paper.id]);
+  // 长难句层（只有仔细阅读两篇）：卷面上标虚线、长按或点词出解析、停靠区"长难句"标签
+  const [syntaxFile, setSyntaxFile] = useState<SyntaxFile | null>(null);
+  useEffect(() => {
+    let live = true;
+    setSyntaxFile(null);
+    void loadSyntax(paper.id).then((f) => live && setSyntaxFile(f));
     return () => {
       live = false;
     };
@@ -1372,6 +1383,41 @@ export function ExamRoom({
   const lowerDrawer = useCallback(() => {
     if (!sideDock) setSnap((s) => Math.min(s, DRAWER_SNAPS[0]));
   }, [sideDock]);
+  // 长难句在卷面上的位置：句子键 → 第几页、第几句、句首的 y；每页有哪几句
+  const syntaxAt = useMemo(() => {
+    const at = new Map<string, { page: number; sid: number; y: number }>();
+    const byPage = new Map<number, Set<number>>();
+    if (!syntaxFile || !pages) return { at, byPage };
+    pages.forEach((data, i) => {
+      data.s.forEach((s, sid) => {
+        const k = sentenceKey(s);
+        if (!syntaxFile.sentences[k] || at.has(k)) return;
+        const w = data.w.find((x) => x[5] === sid);
+        if (!w) return;
+        at.set(k, { page: i + 1, sid, y: w[2] });
+        byPage.set(i + 1, (byPage.get(i + 1) ?? new Set()).add(sid));
+      });
+    });
+    return { at, byPage };
+  }, [syntaxFile, pages]);
+  const synOf = useCallback((sentence: string) => (sentence && syntaxFile?.sentences[sentenceKey(sentence)]) || null, [syntaxFile]);
+  /** 打开一句长难句的解析：收起查词、选项条，卷面上这句淡黄底，底部条放解析；scroll 时把这句滚到卷面上三分之一处 */
+  const openSyntax = useCallback(
+    (key: string, scroll: boolean) => {
+      const at = syntaxAt.at.get(key);
+      const sentence = at && pages?.[at.page - 1]?.s[at.sid];
+      if (!at || !sentence) return;
+      setHit(null);
+      setOpenQ(null);
+      setSent({ page: at.page, sid: at.sid, sentence, n: Date.now() });
+      if (scroll) {
+        lowerDrawer();
+        setTool("select");
+        scrollToY(topOf(at.page, at.y) - (stage?.clientHeight ?? 600) / 3);
+      }
+    },
+    [syntaxAt, pages, lowerDrawer, scrollToY, topOf, stage],
+  );
   /** 原文里点了答案句的题号标签：卷面上打开这道题（选项条 + 解析） */
   const openAnswer = useCallback(
     (qid: string) => {
@@ -1450,7 +1496,7 @@ export function ExamRoom({
       ? // 练习模式还没作答的题：先不放解析
         { kind: "explain", q: curQ, id: openQ, cue, locked: practice && !submitted && !answers[curQ.id] }
       : sent
-        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence }
+        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence) }
         : null;
   // 竖屏底部抽屉开着时只有这一块底部区域：底部条的内容放进抽屉，当一个临时标签（新内容出来时切过去，收起时回到原来的标签）
   const barInDock = !!panel && !sideDock;
@@ -1628,6 +1674,13 @@ export function ExamRoom({
   const shortName = retry ? `重做错题 · 第 ${retryRound ?? 1} 次` : scope ? `${practice ? "练习" : "专项"} · ${KIND_NAMES[scope.section.kind]}` : shortTitle(paper);
 
   // 底部条：卷面那一栏下面一条；竖屏底部抽屉开着时放进抽屉，当一个临时标签
+  const sentKey = sent ? sentenceKey(sent.sentence) : null;
+  const dockSyntax = useMemo<DockSyntax | null>(() => {
+    if (!syntaxFile || !syntaxAt.at.size) return null;
+    const titles: Record<string, string> = {};
+    for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
+    return { file: syntaxFile, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
+  }, [syntaxFile, syntaxAt, paper.sections, sentKey, openSyntax]);
   const barEl = (embedded: boolean) =>
     barContent && (
       <AnswerBar
@@ -1678,6 +1731,7 @@ export function ExamRoom({
         lowerDrawer();
         onJumpMark(m);
       }}
+      syntax={dockSyntax}
       onClearMarks={() => setConfirm("clear")}
       onSubmit={() => setConfirm("submit")}
       onRedo={() => setConfirm("redo")}
@@ -2035,6 +2089,7 @@ export function ExamRoom({
                       playingSeg={playing.on ? playing.seg : null}
                       hits={hitsByPage.get(firstPage + k)}
                       hitCur={curHit?.page === firstPage + k ? curHit.range : null}
+                      longs={syntaxAt.byPage.get(firstPage + k)}
                       activeWord={hit?.page === firstPage + k ? hit.index : null}
                       activeWords={hit?.page === firstPage + k ? phraseWords : null}
                       sentence={sent?.page === firstPage + k ? sent.sid : cardTrans && hit?.page === firstPage + k && hit.index != null ? (p.w[hit.index]?.[5] ?? null) : null}
@@ -2229,6 +2284,7 @@ export function ExamRoom({
             onLookedUp={onLookedUp}
             onClose={closeWord}
             onTransOpen={setCardTrans}
+            onSyntax={hit.page != null && synOf(hit.sentence) ? () => openSyntax(sentenceKey(hit.sentence), false) : undefined}
           />,
           document.body,
         )}

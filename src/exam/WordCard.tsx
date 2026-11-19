@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, SpeakerHigh, Translate, X } from "@phosphor-icons/react";
+import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { lookup, phonetic, TAG_LABELS, translationLines, type LookupResult } from "@/lib/dict";
 import { addToVocab, removeFromVocab } from "@/lib/learning";
@@ -141,6 +141,7 @@ export function WordCard({
   onClose,
   onTransOpen,
   onPhrase,
+  onSyntax,
 }: {
   hit: WordClick;
   /** 这句的词序列和点的是第几个（认短语用） */
@@ -159,6 +160,8 @@ export function WordCard({
   onTransOpen?: (open: boolean) => void;
   /** 认出的短语里每个词在词序列里的位置（卷面上把短语标出来，卡片让开它们） */
   onPhrase?: (pos: number[] | null) => void;
+  /** 这句是有解析的长难句：多一个"长难句"按钮，点了收起卡片、底部放这句的解析 */
+  onSyntax?: () => void;
 }) {
   // "可能是 government"：点了就改查那个词
   const [alt, setAlt] = useState<string | null>(null);
@@ -516,6 +519,16 @@ export function WordCard({
               >
                 <Translate className="size-4" />
                 {showTrans ? "收起译文" : "译整句"}
+              </button>
+            )}
+            {onSyntax && (
+              <button
+                type="button"
+                onClick={onSyntax}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[var(--blue-tint)] px-4 text-[14px] font-medium text-[var(--blue)] transition hover:bg-[color-mix(in_oklab,var(--blue)_18%,transparent)] active:scale-[0.98]"
+              >
+                <TreeStructure className="size-4" />
+                长难句
               </button>
             )}
             {win && (
