@@ -167,7 +167,7 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
 
       <div className="sticky bottom-0 border-t border-[var(--line-soft)] bg-[var(--surface,white)] px-3 pt-2 pb-3">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {(thread.ctx.review ? (thread.ctx.reviewReady ? QUICK_R : QUICK_P) : thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
+          {(thread.ctx.review ? (thread.ctx.reviewReady === false ? QUICK_P : QUICK_R) : thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
             <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="pill disabled:opacity-40">
               {q}
             </button>
