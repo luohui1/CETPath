@@ -1501,6 +1501,20 @@ export function ExamRoom({
   // 卷面上点了词（点在空白处是 null：收起）
   const onPaperWord = showWord;
   const cover = `/papers/pdf/${encodeURIComponent(paper.id)}.thumb.jpg`;
+  // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
+  const synOrder = useMemo(() => Object.keys(syntaxFile?.sentences ?? {}).filter((k) => syntaxAt.at.has(k)), [syntaxFile, syntaxAt]);
+  const synNav = (key: string) => {
+    const i = synOrder.indexOf(key);
+    if (i < 0 || !syntaxFile) return undefined;
+    const group = syntaxFile.sentences[key].group;
+    const groups = [...new Set(synOrder.map((k) => syntaxFile.sentences[k].group))];
+    const same = synOrder.filter((k) => syntaxFile.sentences[k].group === group);
+    return {
+      pos: `${["第一篇", "第二篇", "第三篇"][groups.indexOf(group)] ?? group} ${same.indexOf(key) + 1}/${same.length}`,
+      prev: i > 0 ? () => openSyntax(synOrder[i - 1], true) : undefined,
+      next: i < synOrder.length - 1 ? () => openSyntax(synOrder[i + 1], true) : undefined,
+    };
+  };
 
   // 打开的那道题：选项条贴在卷面上题号下面（ExamPage 画）；点了条上的"解析"，底部的条放这道题的解析；点了词，底部的条是查词。
   // 条、解析、卷面上描蓝的题号都只认 openQ 这一个状态：翻题时解析开着就跟着换，收起选项条才收起解析
@@ -1516,7 +1530,7 @@ export function ExamRoom({
       ? // 练习模式还没作答的题：先不放解析
         { kind: "explain", q: curQ, id: openQ, cue, locked: practice && !submitted && !answers[curQ.id] }
       : sent
-        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence) }
+        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)) }
         : null;
   // 竖屏底部抽屉开着时只有这一块底部区域：底部条的内容放进抽屉，当一个临时标签（新内容出来时切过去，收起时回到原来的标签）
   const barInDock = !!panel && !sideDock;

@@ -506,8 +506,18 @@ const WordLayer = memo(function WordLayer({
   if (hitCur) for (let i = hitCur[0]; i <= hitCur[1]; i++) shown.set(i, 2);
   if (actives) for (const i of actives) if (i < data.w.length) shown.set(i, Math.max(shown.get(i) ?? 3, 3));
   if (active != null && active < data.w.length) shown.set(active, Math.max(shown.get(active) ?? 3, 3));
+  // 每句长难句句首一个小"析"字
+  const heads: number[] = [];
+  if (longs?.size) {
+    const seen = new Set<number>();
+    data.w.forEach((w, i) => longs.has(w[5]) && !seen.has(w[5]) && (seen.add(w[5]), heads.push(i)));
+  }
   return (
     <div className="absolute inset-0 z-[1] cursor-text" onClick={onClick}>
+      {heads.map((i) => {
+        const [, x0, y0] = data.w[i];
+        return <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 7, top: y0 * scale - 10 }}>析</span>;
+      })}
       {[...shown].map(([i, kind]) => {
         const [, x0, y0, x1, y1] = data.w[i];
         return (

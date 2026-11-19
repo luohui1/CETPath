@@ -64,7 +64,7 @@ export function RoleTag({ r, part }: { r: string; part?: boolean }) {
 
 export function SyntaxCard({ e }: { e: SyntaxEntry }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <figure className="rounded-[10px] bg-[var(--paper-50)] px-3.5 py-2 shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
         <SyntaxSentence e={e} />
       </figure>
@@ -93,7 +93,11 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
         </ul>
       </CardSection>
       {e.parts.length > 0 && (
-        <CardSection label="修饰成分">
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]">
+            <span className="transition-transform group-open:rotate-90">›</span>修饰成分 <span className="num">{e.parts.length}</span> 处
+          </summary>
+          <div className="mt-2">
           <ol className="space-y-2">
             {e.parts.map((p, k) => (
               <li key={k} className="flex gap-2 text-[15px] leading-[1.6]">
@@ -111,7 +115,8 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
               </li>
             ))}
           </ol>
-        </CardSection>
+          </div>
+        </details>
       )}
     </div>
   );

@@ -123,7 +123,7 @@ button:disabled {
 /* 有长难句解析的句子：每个词下面一道浅蓝虚线（不铺底色，不挡字）；长按这句或点句里的词就能看解析 */
 .w.pw.is-long {
   background: none;
-  border-bottom: 1.5px dashed color-mix(in oklab, var(--blue) 55%, transparent);
+  border-bottom: 2px dashed color-mix(in oklab, var(--blue) 85%, transparent);
   border-radius: 0;
   margin-left: -0.5px;
   padding-right: 1px;
@@ -319,4 +319,19 @@ html.yz-memdb .min-h-dvh {
   .animate-slot-hint {
     animation: none;
   }
+}
+
+/* 长难句句首的小"析"字 */
+.syn-head {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 600;
 }
