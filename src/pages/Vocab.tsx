@@ -8,6 +8,7 @@ import { useEntries } from "@/lib/useEntries";
 import { speak } from "@/lib/speech";
 import { cn, downloadText, fromNow, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { WordsTabs } from "@/components/WordsTabs";
 import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 
 import { DefinitionLines } from "@/components/WordPopover";
@@ -109,6 +110,7 @@ export function VocabPage() {
 
   return (
     <div>
+      <WordsTabs />
       <PageHeader
         title="生词本"
         desc={`共 ${items.length} 个词${dueCount ? ` · ${dueCount} 个待复习` : ""}。在真题里查过并加入的词，都会带上出处原句。`}

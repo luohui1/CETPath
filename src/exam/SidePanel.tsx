@@ -925,7 +925,7 @@ export function Dock({
       {shown === "notes" && <NotesPanel marks={marks} history={history} onJumpMark={onJumpMark} onClear={onClearMarks} />}
       {shown === "vocab" && <PaperVocab paper={paper} />}
       {shown === "syntax" && syntax && <SyntaxPanel syntax={syntax} />}
-      {shown === "ask" && <AgentPanel thread={agent ?? null} />}
+      {shown === "ask" && <AgentPanel thread={agent ?? null} inDock />}
     </aside>
   );
 }

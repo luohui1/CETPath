@@ -10,6 +10,7 @@ import { getSettings, setSetting, useSettings, type ReviewMode } from "@/lib/set
 import { speak } from "@/lib/speech";
 import { cn, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { WordsTabs } from "@/components/WordsTabs";
 import { Button, LoadingBlock, PageHeader, ProgressBar, Segmented } from "@/components/ui";
 import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
@@ -118,6 +119,7 @@ function StartScreen({ onStart }: { onStart: () => void }) {
 
   return (
     <div className="space-y-5">
+      <WordsTabs />
       <PageHeader title="背单词" desc="按遗忘曲线（FSRS 算法）安排复习：快忘的时候再出现，记得牢的间隔越来越长。" />
 
       <div className="grid gap-5 lg:grid-cols-3">

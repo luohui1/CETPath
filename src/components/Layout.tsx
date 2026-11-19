@@ -7,6 +7,7 @@ import { useSettings } from "@/lib/settings";
 import { cn, daysUntil } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { PixelIcon, type PixelName } from "./PixelIcon";
+import { WORD_PAGES } from "./WordsTabs";
 
 const KEY = "yy-sidebar-collapsed";
 
@@ -39,24 +40,28 @@ interface NavItem {
   end?: boolean;
   badge?: number;
   red?: boolean; // 徽标用红笔色（错题本的待重做数）
+  match?: readonly string[]; // 这几页也算当前项（单词：背单词、词书、生词本）
 }
 
 /** 主导航项：双色文具图标 + 文字；当前页是一张抬起的白纸，左边一道品牌蓝 */
-function Item({ to, label, short, icon, end, badge, red, collapsed }: NavItem & { collapsed: boolean }) {
+function Item({ to, label, short, icon, end, badge, red, match, collapsed }: NavItem & { collapsed: boolean }) {
+  const { pathname } = useLocation();
+  const also = !!match?.some((p) => pathname === p || pathname.startsWith(p + "/"));
   return (
     <NavLink
       to={to}
       end={end}
       title={label}
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive: hit }) => {
+        const isActive = hit || also;
+        return cn(
           "relative flex items-center rounded-[10px] font-medium transition-[background-color,color,box-shadow] duration-150",
           collapsed ? "flex-col justify-center gap-1 py-2" : "h-10 gap-3 px-3",
           isActive
             ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2 before:bottom-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
             : "text-[var(--ink-700)] hover:bg-white/70 hover:text-[var(--ink)]",
-        )
-      }
+        );
+      }}
     >
       <PixelIcon name={icon} size={collapsed ? 22 : 20} />
       <span className={cn("leading-none whitespace-nowrap", collapsed ? "text-[11px]" : "text-[14px]")}>{collapsed ? (short ?? label) : label}</span>
@@ -138,8 +143,8 @@ export function Layout() {
     { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
     { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
     { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: mistakes ?? 0, red: true },
-    { to: "/review", label: "背单词", short: "背词", icon: "bolt", badge: counts ? counts.dueReviews + counts.newLeft : 0 },
-    { to: "/vocab", label: "生词本", short: "生词", icon: "star" },
+    { to: "/review", label: "单词", short: "单词", icon: "bolt", badge: counts ? counts.dueReviews + counts.newLeft : 0, match: WORD_PAGES.map((p) => p.to) },
+    { to: "/ask", label: "AI 助教", short: "AI", icon: "star" },
   ];
   const width = collapsed ? 72 : 200;
 
@@ -165,7 +170,6 @@ export function Layout() {
           {/* 首页已经有倒计时牌，同一件事不说两遍 */}
           {pathname !== "/" && <Countdown collapsed={collapsed} />}
           <nav className="flex flex-col gap-0.5" aria-label="更多">
-            <Quiet to="/books" label="词书" icon="books" collapsed={collapsed} />
             <Quiet to="/stats" label="学习统计" icon="graph" collapsed={collapsed} />
             <Quiet to="/settings" label="设置" icon="ruler" collapsed={collapsed} />
           </nav>

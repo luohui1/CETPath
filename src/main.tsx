@@ -39,6 +39,7 @@ const router = createBrowserRouter([
       { path: "/vocab", ...page(() => import("./pages/Vocab").then((m) => m.VocabPage)) },
       { path: "/books", ...page(() => import("./pages/Books").then((m) => m.BooksPage)) },
       { path: "/stats", ...page(() => import("./pages/Stats").then((m) => m.StatsPage)) },
+      { path: "/ask", ...page(() => import("./pages/Ask").then((m) => m.AskPage)) },
       { path: "/settings", ...page(() => import("./pages/Settings").then((m) => m.SettingsPage)) },
       { path: "*", element: <NotFoundPage /> },
     ],

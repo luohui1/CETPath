@@ -24,7 +24,8 @@ function Rich({ text }: { text: string }) {
   return <>{out}</>;
 }
 
-export function AgentPanel({ thread }: { thread: AgentThread | null }) {
+/** inDock：做题页右侧面板里，多一个"去 AI 助教页"的链接 */
+export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inDock?: boolean }) {
   const enabled = useAgentEnabled();
   const memCount = useLiveQuery(() => db.memory.count(), []);
   const [msgs, setMsgs] = useState<ChatMsg[]>(() => (thread ? (threads.get(thread.id) ?? []) : []));
@@ -37,9 +38,20 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
   const asked = useRef<string | null>(null);
 
   useEffect(() => {
+    let live = true;
     setMsgs(thread ? (threads.get(thread.id) ?? []) : []);
     setError(null);
     setNoted([]);
+    // 历史对话（AI 助教页、上次打开）从本机库里取
+    if (thread && !threads.has(thread.id))
+      void db.chats.get(thread.id).then((row) => {
+        if (!live || !row?.messages.length || threads.has(thread.id)) return;
+        threads.set(thread.id, row.messages);
+        setMsgs(row.messages);
+      });
+    return () => {
+      live = false;
+    };
   }, [thread]);
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
@@ -50,9 +62,11 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
     if (!thread || busy || !text.trim()) return;
     const id = thread.id;
     const base = [...(threads.get(id) ?? []), { role: "user" as const, content: text.trim() }];
-    const put = (list: ChatMsg[]) => {
+    const ctx = thread.ctx;
+    const put = (list: ChatMsg[], persist = false) => {
       threads.set(id, list);
       setMsgs(list);
+      if (persist) void (list.length ? db.chats.put({ id, ctx, messages: list, updatedAt: Date.now() }) : db.chats.delete(id));
     };
     put([...base, { role: "assistant", content: "" }]);
     setDraft("");
@@ -62,7 +76,7 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
     abort.current = ctl;
     try {
       const answer = await streamChat(base, thread.ctx, (all) => put([...base, { role: "assistant", content: all }]), ctl.signal);
-      put([...base, { role: "assistant", content: answer }]);
+      put([...base, { role: "assistant", content: answer }], true);
       // 后台整理长期记忆：只看这一问一答，不拖慢下一次提问
       void remember(base.slice(-1).concat({ role: "assistant", content: answer })).then((added) => added.length && setNoted(added), () => {});
     } catch (e) {
@@ -75,11 +89,15 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
     }
   };
 
-  // 第一次打开这句：自动问一句
+  // 第一次打开这句（本机也没有历史）：自动问一句
   useEffect(() => {
     if (!thread || !enabled || asked.current === thread.id || (threads.get(thread.id)?.length ?? 0) > 0) return;
     asked.current = thread.id;
-    void send(firstAsk(thread.ctx));
+    const id = thread.id;
+    void db.chats.get(id).then((row) => {
+      if (row?.messages.length || (threads.get(id)?.length ?? 0) > 0) return;
+      void send(firstAsk(thread.ctx));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread, enabled]);
 
@@ -93,7 +111,7 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
   if (!thread)
     return (
       <div className="px-4 py-10">
-        <EmptyState icon={<Sparkle className="size-6" />} title="点卷面上的词，再点“问 AI”" desc="也可以长按一句，在底部条上点“问 AI”。" />
+        <EmptyState icon={<Sparkle className="size-6" />} title={inDock ? "点卷面上的词，再点“问 AI”" : "粘贴一句英文开始"} desc={inDock ? "也可以长按一句，在底部条上点“问 AI”。" : "左边粘贴句子，或从历史对话里选一段接着聊。"} />
       </div>
     );
 
@@ -108,6 +126,11 @@ export function AgentPanel({ thread }: { thread: AgentThread | null }) {
         <div className="flex items-center gap-2 text-[13px] text-[var(--ink-500)]">
           <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
           <span className="flex-1">AI 助教 · 结合你的记忆讲解</span>
+          {inDock && (
+            <Link to="/ask" className="hover:text-[var(--ink)]">
+              全部对话
+            </Link>
+          )}
           <Link to="/settings#memory" className="hover:text-[var(--ink)]">
             长期记忆 <span className="num">{memCount ?? 0}</span> 条
           </Link>

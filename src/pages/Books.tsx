@@ -6,6 +6,7 @@ import { loadBook, loadBookMeta, phonetic, shortTranslation, type BookInfo, type
 import { setSetting, useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { WordsTabs } from "@/components/WordsTabs";
 import { Button, Card, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { PixelIcon } from "@/components/PixelIcon";
 import { Bubbles } from "@/components/paper-ui";
@@ -113,6 +114,7 @@ export function BooksPage() {
 
   return (
     <div>
+      <WordsTabs />
       <PageHeader title="词书" desc="选一本词书，每天按计划学新词；学过的词按遗忘曲线自动安排复习。" />
 
       <div className="grid gap-3 md:grid-cols-3">
