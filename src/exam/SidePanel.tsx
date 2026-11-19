@@ -347,6 +347,7 @@ function AnswerBox({
   value,
   submitted,
   attemptKey,
+  attemptInit,
   focus,
   onJump,
   onFocus,
@@ -357,6 +358,7 @@ function AnswerBox({
   name: string; // 题目那一行的名字："写作""翻译"，或一部分里有几道时的题号
   submitted: boolean;
   attemptKey: string; // 作答记录的键（专项训练是"试卷#部分"）
+  attemptInit?: { mode: "exam" | "free" | "practice" | "retry" }; // 第一次写入时建记录用（带上做题方式）
   focus: number;
   onJump: () => void;
   onFocus: () => void;
@@ -374,7 +376,7 @@ function AnswerBox({
     if (!submitted) input.current?.focus({ preventScroll: true });
   }, [focus, submitted]);
 
-  const save = (v: string) => updateAttempt(attemptKey, (a) => (a.texts[q.id] = v));
+  const save = (v: string) => updateAttempt(attemptKey, (a) => (a.texts[q.id] = v), attemptInit);
   const writing = kind === "writing";
   const goal = target(q);
   const count = countText(text);
@@ -439,6 +441,7 @@ function AnswerBox({
 function WritePanel({
   paper,
   attemptKey,
+  attemptInit,
   texts,
   submitted,
   focus,
@@ -447,6 +450,7 @@ function WritePanel({
 }: {
   paper: Paper;
   attemptKey: string;
+  attemptInit?: { mode: "exam" | "free" | "practice" | "retry" }; // 第一次写入时建记录用（带上做题方式）
   texts: Answers;
   submitted: boolean;
   focus: { id: string; n: number } | null;
@@ -475,7 +479,7 @@ function WritePanel({
                   kind={s.kind}
                   value={texts[q.id] ?? ""}
                   submitted={submitted}
-                  attemptKey={attemptKey}
+                  attemptKey={attemptKey} attemptInit={attemptInit}
                   focus={focus?.id === q.id ? focus.n : 0}
                   onJump={() => onJump(q)}
                   onFocus={() => onFocus(q)}
@@ -736,6 +740,7 @@ export function Dock({
   onWriteFocus,
   mode,
   attemptKey,
+  attemptInit,
   times,
   limits,
   syntax,
@@ -772,6 +777,7 @@ export function Dock({
   onWriteFocus: (q: Question) => void;
   mode: AttemptMode;
   attemptKey: string;
+  attemptInit?: { mode: "exam" | "free" | "practice" | "retry" }; // 第一次写入时建记录用（带上做题方式）
   times: Record<string, number> | null;
   limits: Record<string, number>;
   syntax?: DockSyntax | null;
@@ -911,7 +917,7 @@ export function Dock({
         />
       )}
       {shown === "explain" && <ExplainPanel paper={paper} answers={answers} elapsed={elapsed} onJump={onJump} />}
-      {shown === "write" && <WritePanel paper={paper} attemptKey={attemptKey} texts={texts} submitted={submitted} focus={focusWrite} onJump={onJump} onFocus={onWriteFocus} />}
+      {shown === "write" && <WritePanel paper={paper} attemptKey={attemptKey} attemptInit={attemptInit} texts={texts} submitted={submitted} focus={focusWrite} onJump={onJump} onFocus={onWriteFocus} />}
       {shown === "notes" && <NotesPanel marks={marks} history={history} onJumpMark={onJumpMark} onClear={onClearMarks} />}
       {shown === "vocab" && <PaperVocab paper={paper} />}
       {shown === "syntax" && syntax && <SyntaxPanel syntax={syntax} />}

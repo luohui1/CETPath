@@ -1737,6 +1737,7 @@ export function ExamRoom({
       paper={paper}
       mode={mode}
       attemptKey={attemptKey}
+      attemptInit={{ mode }}
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
