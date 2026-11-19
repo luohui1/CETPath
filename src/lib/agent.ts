@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { db, type MemoryRow } from "./db";
+import { kindName, type Paper } from "@/lib/papers";
 
 /** AI 助教：问题经服务器（server/agent_server.py）转发到管理后台配好的模型；长期记忆存在本机 memory 表，每次提问随请求带上 */
 export type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -8,7 +9,7 @@ const MAX_TURNS = 12;
 const MAX_CHARS = 3000;
 const trimTurns = (m: ChatMsg[]) => m.slice(-MAX_TURNS).map((x) => ({ role: x.role, content: x.content.slice(0, MAX_CHARS) }));
 // question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
-export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown };
+export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string };
 
 let status: Promise<boolean> | null = null;
 export function agentEnabled(): Promise<boolean> {
@@ -110,3 +111,32 @@ export async function remember(messages: ChatMsg[]): Promise<string[]> {
 }
 
 export const MEMORY_KINDS: Record<MemoryRow["kind"], string> = { weak: "薄弱", pref: "偏好", fact: "情况" };
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+/** 复盘用的作答摘要：总分、各题型对错和用时，逐条列出错题、没答的和超过建议用时的题 */
+export function reviewSummary(paper: Paper, answers: Record<string, string>, sec: Record<string, number> | null, limits: Record<string, number>): string {
+  const all = paper.sections.flatMap((s) => s.groups.flatMap((g) => g.questions).filter((q) => q.options?.length).map((q) => ({ s, q })));
+  const right = all.filter(({ q }) => answers[q.id] === q.answer).length;
+  const spent = all.reduce((t, { q }) => t + (sec?.[q.id] ?? 0), 0);
+  const lines = [`选择题答对 ${right}/${all.length}，没答 ${all.filter(({ q }) => !answers[q.id]).length} 题，记录到的作答用时 ${mmss(spent)}`];
+  for (const s of paper.sections) {
+    const qs = all.filter((x) => x.s === s).map((x) => x.q);
+    if (!qs.length) continue;
+    const ok = qs.filter((q) => answers[q.id] === q.answer).length;
+    const t = qs.reduce((a, q) => a + (sec?.[q.id] ?? 0), 0);
+    const lim = qs.reduce((a, q) => a + (limits[q.id] ?? 0), 0);
+    lines.push("", `【${kindName(s.kind, paper.exam)} ${qs[0].number}–${qs[qs.length - 1].number}】对 ${ok}/${qs.length}，用时 ${mmss(t)}${lim ? `（建议 ${mmss(lim)}）` : ""}`);
+    for (const q of qs) {
+      const a = answers[q.id];
+      const used = sec?.[q.id] ?? 0;
+      const slow = used > (limits[q.id] ?? Infinity);
+      if (a === q.answer && !slow) continue;
+      const why = a === q.answer ? "对了但超时" : a ? `选 ${a}，正确 ${q.answer}` : `没答，正确 ${q.answer}`;
+      const stem = q.stem ? `；题干：${q.stem.replace(/\s+/g, " ").slice(0, 140)}` : "";
+      const exp = a !== q.answer && q.explanation ? `；解析：${q.explanation.replace(/\s+/g, " ").slice(0, 160)}` : "";
+      lines.push(`- 第 ${q.number} 题：${why}${used ? `，用时 ${mmss(used)}${slow ? `（建议 ${mmss(limits[q.id])}）` : ""}` : ""}${stem}${exp}`);
+    }
+  }
+  return lines.join("\n").slice(0, 9000);
+}

@@ -19,8 +19,12 @@ export const forgetThread = (id: string) => void threads.delete(id);
 const QUICK = ["再讲简单点", "主干是哪几个词？", "这里为什么这样用？", "出一句类似的考考我"];
 // 一般备考问题（不针对某一句）的快捷追问
 const QUICK_Q = ["再讲简单点", "举个真题里的例子", "给我出一道练习"];
+// 复盘一套卷子的快捷追问
+const QUICK_R = ["逐题讲讲我的错题", "哪类题最拖时间？", "给我一周的练习计划"];
 
-const firstAsk = (ctx: AgentContext) => ctx.question || (ctx.word ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。` : "这句我没看懂，帮我解析一下。");
+const firstAsk = (ctx: AgentContext) =>
+  (ctx.review && "帮我复盘这套卷子：错在哪、为什么错、哪类题花的时间多，接下来怎么练。") ||
+  ctx.question || (ctx.word ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。` : "这句我没看懂，帮我解析一下。");
 
 /** inDock：做题页右侧面板里，多一个"去 AI 助教页"的链接 */
 export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inDock?: boolean }) {
@@ -133,6 +137,12 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
             长期记忆 <span className="num">{memCount ?? 0}</span> 条
           </Link>
         </div>
+        {thread.ctx.review && (
+          <div className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 text-[14px] leading-[1.6] text-[var(--ink-700)]">
+            复盘 · {thread.ctx.paper}
+            <span className="block text-[12px] text-[var(--ink-500)]">AI 能看到每题选了什么、对错和用时</span>
+          </div>
+        )}
         {quote && <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">{quote}</blockquote>}
       </div>
 
@@ -155,7 +165,7 @@ export function AgentPanel({ thread, inDock }: { thread: AgentThread | null; inD
 
       <div className="sticky bottom-0 border-t border-[var(--line-soft)] bg-[var(--surface,white)] px-3 pt-2 pb-3">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {(thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
+          {(thread.ctx.review ? QUICK_R : thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
             <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="pill disabled:opacity-40">
               {q}
             </button>

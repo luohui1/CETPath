@@ -52,7 +52,7 @@ export function AskPage() {
             {chats?.map((c) => (
               <div key={c.id} className={cn("group flex items-start gap-1 rounded-[10px] transition-colors hover:bg-[var(--fill-quiet)]", thread?.id === c.id && "bg-[var(--blue-tint)] hover:bg-[var(--blue-tint)]")}>
                 <button type="button" onClick={() => setThread({ id: c.id, ctx: c.ctx })} className="min-w-0 flex-1 px-2.5 py-2 text-left">
-                  <p className={cn("line-clamp-2 text-[14px] leading-[1.5] text-[var(--ink)]", c.ctx.sentence && "font-serif")}>{c.ctx.sentence || c.ctx.question}</p>
+                  <p className={cn("line-clamp-2 text-[14px] leading-[1.5] text-[var(--ink)]", c.ctx.sentence && "font-serif")}>{c.ctx.sentence || c.ctx.question || `复盘 · ${c.ctx.paper ?? ""}`}</p>
                   <p className="mt-0.5 truncate text-[12px] text-[var(--ink-500)]">
                     {[c.ctx.paper, c.ctx.word && `「${c.ctx.word}」`, `${Math.ceil(c.messages.length / 2)} 问`].filter(Boolean).join(" · ")}
                   </p>

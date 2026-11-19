@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowCounterClockwise, BookBookmark, CaretRight, BookmarkSimple, ChatText, Lightbulb, NotePencil, NoteBlank, Receipt, SpeakerHigh, Trash, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, BookBookmark, CaretRight, Sparkle, BookmarkSimple, ChatText, Lightbulb, NotePencil, NoteBlank, Receipt, SpeakerHigh, Trash, X } from "@phosphor-icons/react";
 import * as G from "@/grasso";
 import { db, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { updateAttempt } from "@/lib/attempts";
@@ -45,6 +45,7 @@ function AnswerSheet({
   onRedo,
   onExplain,
   onReport,
+  onReview,
 }: {
   paper: Paper;
   attempt?: AttemptRow;
@@ -61,6 +62,7 @@ function AnswerSheet({
   onRedo: () => void;
   onExplain: () => void;
   onReport: () => void;
+  onReview?: () => void; // AI 复盘（开了 AI 助教才有）
 }) {
   const practice = mode === "practice";
   const choice = paper.sections.flatMap((s) => s.groups.flatMap((g) => g.questions)).filter((q) => q.options?.length);
@@ -101,6 +103,11 @@ function AnswerSheet({
             {submitted && (
               <button type="button" onClick={onReport} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-[8px] px-2.5 text-[13px] font-medium text-[var(--blue)] hover:bg-[var(--blue-tint)]">
                 <Receipt className="size-4" /> 交卷单
+              </button>
+            )}
+            {submitted && onReview && (
+              <button type="button" onClick={onReview} className="inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-[var(--blue-tint)] px-2.5 text-[13px] font-medium text-[var(--blue)] hover:brightness-95">
+                <Sparkle className="size-4" weight="fill" /> AI 复盘
               </button>
             )}
           </div>
@@ -755,6 +762,7 @@ export function Dock({
   onSubmit,
   onRedo,
   onReport,
+  onReview,
   onWriteFocus,
   mode,
   attemptKey,
@@ -793,6 +801,7 @@ export function Dock({
   onSubmit: () => void;
   onRedo: () => void;
   onReport: () => void;
+  onReview?: () => void; // AI 复盘（开了 AI 助教才有）
   onWriteFocus: (q: Question) => void;
   mode: AttemptMode;
   attemptKey: string;
@@ -935,6 +944,7 @@ export function Dock({
           onRedo={onRedo}
           onExplain={() => onView("explain")}
           onReport={onReport}
+          onReview={onReview}
         />
       )}
       {shown === "explain" && <ExplainPanel paper={paper} answers={answers} elapsed={elapsed} onJump={onJump} />}

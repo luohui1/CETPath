@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { useAgentEnabled } from "@/lib/agent";
+import { reviewSummary, useAgentEnabled } from "@/lib/agent";
 import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -1514,6 +1514,11 @@ export function ExamRoom({
     },
     [paper.title, synOf, openTab],
   );
+  // AI 复盘：把这套的作答（每题选了什么、对错、用时）交给 AI
+  const reviewAI = useCallback(() => {
+    setAgentThread({ id: `review:${paper.id}:${attempt?.submittedAt ?? 0}`, ctx: { paper: paper.title, sentence: "", review: reviewSummary(paper, answers, questionSec, limits) } });
+    openTab("ask");
+  }, [paper, attempt?.submittedAt, answers, questionSec, limits, openTab]);
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
@@ -1770,6 +1775,7 @@ export function ExamRoom({
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
+      onReview={aiOn ? reviewAI : undefined}
       onWriteFocus={(q) => timeStart(q.id)}
       attempt={attempt}
       answers={answers}
