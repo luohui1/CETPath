@@ -193,7 +193,10 @@ def context_block(ctx: dict) -> str:
 def clean_turns(msgs) -> list[dict]:
     """用户、助手（可带工具调用）、工具结果三种；开头不是用户的截掉，免得工具结果没有对应的调用"""
     out = []
-    for m in (msgs if isinstance(msgs, list) else [])[-MAX_TURNS:]:
+    msgs = msgs if isinstance(msgs, list) else []
+    users = [i for i, m in enumerate(msgs) if isinstance(m, dict) and m.get("role") == "user"]
+    start = max(0, min(len(msgs) - MAX_TURNS, users[-1] if users else 0))  # 至少从最后一个提问开始
+    for m in msgs[start:]:
         if not isinstance(m, dict) or not isinstance(m.get("content"), str):
             continue
         role = m.get("role")

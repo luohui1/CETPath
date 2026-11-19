@@ -16,8 +16,17 @@ export type ChatMsg = {
 const MAX_TURNS = 12;
 const MAX_CHARS = 3000;
 const trimTurns = (m: ChatMsg[]) =>
+  // 至少从最后一个提问开始带上：一轮里工具调用多了也不能把问题本身截掉
   m
-    .slice(-MAX_TURNS)
+    .slice(
+      Math.max(
+        0,
+        Math.min(
+          m.length - MAX_TURNS,
+          m.map((x) => x.role).lastIndexOf("user"),
+        ),
+      ),
+    )
     .map((x) =>
       x.role === "tool"
         ? {
