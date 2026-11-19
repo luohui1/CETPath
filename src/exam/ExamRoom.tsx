@@ -1789,6 +1789,7 @@ export function ExamRoom({
       thread={agentThread ?? paperThread}
       onBack={agentThread ? () => setAgentThread(null) : undefined}
       onClose={() => setAgentOpen(false)}
+      env={{ paper, answers }}
     />
   );
   const dockEl = panel && dockView && (

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { ArrowLeft, Sparkle, X } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { AgentPanel, type AgentThread } from "./AgentPanel";
+import type { ToolEnv } from "@/lib/agentTools";
 
 /**
  * 做题页的 Agent 分屏：横屏时卷面在左、Agent 在右（占停靠区那一栏，左边沿可拖宽窄），竖屏时在底部占一半。
@@ -17,6 +18,7 @@ export function AgentSplit({
   thread,
   onBack,
   onClose,
+  env,
 }: {
   side: boolean;
   width: number;
@@ -26,6 +28,7 @@ export function AgentSplit({
   thread: AgentThread;
   onBack?: () => void;
   onClose: () => void;
+  env?: ToolEnv;
 }) {
   const self = useRef<HTMLElement>(null);
   // 拖的时候直接改宽度，松手才让卷面重排
@@ -113,6 +116,7 @@ export function AgentSplit({
       </header>
       {enabled ? (
         <AgentPanel
+          env={env}
           key={thread.id}
           thread={thread}
           inDock

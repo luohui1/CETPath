@@ -124,7 +124,7 @@ export interface MemoryRow {
 export interface ChatRow {
   id: string; // 句子键 + 词
   ctx: { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: import("./agent").ChatMsg[];
   updatedAt: number;
 }
 

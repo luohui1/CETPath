@@ -132,6 +132,12 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 2–3 条具体可执行的建议（练哪类题、每天多少、用什么方法）。
 错题挑重点讲，不用每题都展开；学习者追问某一题时再细讲那题。
 
+## 工具
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题。
+- 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
+- 出同类练习：对话里还不清楚弱项时先调 get_weak_points，再用 show_quiz 出 3–5 道四六级/考研风格的单选题。题目、答案和解析都放在工具参数里，正文只用一句话说练什么，不要再把题目和答案写一遍。
+- 工具返回后，用一两句话告诉学习者结果。
+
 ## 追问
 只回答追问的那一点，不重复整句解析；短问题短答，可以不用小标题。
 
@@ -185,17 +191,67 @@ def context_block(ctx: dict) -> str:
 
 
 def clean_turns(msgs) -> list[dict]:
+    """用户、助手（可带工具调用）、工具结果三种；开头不是用户的截掉，免得工具结果没有对应的调用"""
     out = []
     for m in (msgs if isinstance(msgs, list) else [])[-MAX_TURNS:]:
-        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
-            out.append({"role": m["role"], "content": m["content"][:4000]})
+        if not isinstance(m, dict) or not isinstance(m.get("content"), str):
+            continue
+        role = m.get("role")
+        if role == "user":
+            out.append({"role": "user", "content": m["content"][:4000]})
+        elif role == "assistant":
+            item = {"role": "assistant", "content": m["content"][:4000]}
+            calls = [c for c in m.get("tool_calls") or [] if isinstance(c, dict) and isinstance(c.get("id"), str) and isinstance(c.get("name"), str)]
+            if calls:
+                item["tool_calls"] = [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": str(c.get("args") or "{}")[:6000]}} for c in calls]
+            out.append(item)
+        elif role == "tool" and isinstance(m.get("tool_call_id"), str):
+            out.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"][:4000]})
+    while out and out[0]["role"] != "user":
+        out.pop(0)
     return out
 
 
+# Agent 能调用的应用功能：模型只发起调用，真正执行在浏览器里（词典、生词本、错题本都存在学习者本机）
+def _fn(name: str, desc: str, props: dict, required: list[str]) -> dict:
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": {"type": "object", "properties": props, "required": required}}}
+
+
+TOOLS = [
+    _fn("lookup_word", "查学习者本机词典里一个英文单词的音标和中文释义。需要准确词义、熟词僻义时用。", {"word": {"type": "string", "description": "英文单词"}}, ["word"]),
+    _fn("add_to_vocab", "把单词加进学习者的生词本（同时进入背词卡片）。学习者说要记、要收藏某个词时用。", {"word": {"type": "string"}, "sentence": {"type": "string", "description": "这个词出现的原句，可选"}}, ["word"]),
+    _fn("add_to_mistakes", "把当前这套卷的某道选择题加进错题本，可附一句错因笔记。只在做题页（有试卷）时可用。", {"number": {"type": "integer", "description": "题号"}, "note": {"type": "string", "description": "错因或要点，可选"}}, ["number"]),
+    _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
+    _fn(
+        "show_quiz",
+        "给学习者出一组能直接点选作答的单选练习题，界面上显示成题卡，他点了立即判对错、看解析。针对弱项出同类题时用。",
+        {
+            "title": {"type": "string", "description": "这组题练什么，如“细节题·同义替换”"},
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "stem": {"type": "string", "description": "题干，英文；需要短文时把短文写在题干前面"},
+                        "options": {"type": "array", "items": {"type": "string"}, "description": "四个选项，不带 A) 前缀"},
+                        "answer": {"type": "string", "enum": ["A", "B", "C", "D"]},
+                        "explain": {"type": "string", "description": "中文解析：为什么对、其他错在哪"},
+                    },
+                    "required": ["stem", "options", "answer", "explain"],
+                },
+            },
+        },
+        ["questions"],
+    ),
+]
+
+
 # ---------- 上游 ----------
-def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None, model: str | None = None):
+def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None, model: str | None = None, tools: list | None = None):
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
     body = {"model": model or cfg["model"], "messages": messages, "stream": stream, "max_tokens": max_tokens}
+    if tools:
+        body["tools"] = tools
     t = cfg.get("temperature") if temperature is None else temperature
     if t is not None:
         body["temperature"] = t
@@ -357,7 +413,7 @@ class Handler(BaseHTTPRequestHandler):
         if limited(_hits, self.ip(), *RATE):
             return self.send_json(429, {"error": "问得太快了，歇一会儿再问"})
         turns = clean_turns(data.get("messages"))
-        if not turns or turns[-1]["role"] != "user":
+        if not turns or turns[-1]["role"] not in ("user", "tool"):
             return self.send_json(400, {"error": "没有问题"})
         sys_msg = SYSTEM + "\n\n关于这位学习者：\n" + memory_block(data.get("memory") or [])
         ctx = context_block(data.get("context") or {})
@@ -365,7 +421,7 @@ class Handler(BaseHTTPRequestHandler):
             sys_msg += "\n\n" + ctx
         try:
             pick = data.get("model") if data.get("model") in models(cfg) else None
-            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, model=pick)
+            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, model=pick, tools=TOOLS if data.get("tools") else None)
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
         self.send_response(200)
@@ -375,6 +431,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
+        calls: dict[int, dict] = {}  # 流式的工具调用按 index 一段段拼起来
         try:
             with r:
                 for line in r:
@@ -385,12 +442,22 @@ class Handler(BaseHTTPRequestHandler):
                     if payload == b"[DONE]":
                         break
                     try:
-                        delta = json.loads(payload)["choices"][0].get("delta", {}).get("content")
-                    except (json.JSONDecodeError, KeyError, IndexError):
+                        d = json.loads(payload)["choices"][0].get("delta") or {}
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
+                    delta = d.get("content")
+                    for tc in d.get("tool_calls") or []:
+                        c = calls.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
+                        f = tc.get("function") or {}
+                        c["id"] = tc.get("id") or c["id"]
+                        c["name"] = c["name"] or f.get("name") or ""
+                        c["args"] += f.get("arguments") or ""
                     if delta:
                         self.wfile.write(b"data: " + json.dumps({"t": delta}, ensure_ascii=False).encode() + b"\n\n")
                         self.wfile.flush()
+            if calls:
+                out = [{"id": c["id"] or f"call_{k}", "name": c["name"], "args": c["args"] or "{}"} for k, c in sorted(calls.items()) if c["name"]]
+                self.wfile.write(b"data: " + json.dumps({"calls": out}, ensure_ascii=False).encode() + b"\n\n")
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):

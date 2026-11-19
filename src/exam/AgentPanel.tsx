@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowUp, Sparkle, Stop } from "@phosphor-icons/react";
+import { ArrowUp, Sparkle, Stop, Wrench } from "@phosphor-icons/react";
+import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
+import { AgentQuiz } from "./AgentQuiz";
 import { db } from "@/lib/db";
 import {
   pickedModel,
@@ -60,10 +62,12 @@ export function AgentPanel({
   thread,
   inDock,
   noAutoAsk,
+  env,
 }: {
   thread: AgentThread | null;
   inDock?: boolean;
   noAutoAsk?: boolean;
+  env?: ToolEnv;
 }) {
   const enabled = useAgentEnabled();
   const memCount = useLiveQuery(() => db.memory.count(), []);
@@ -122,13 +126,43 @@ export function AgentPanel({
     const ctl = new AbortController();
     abort.current = ctl;
     try {
-      const answer = await streamChat(
-        base,
-        thread.ctx,
-        (all) => put([...base, { role: "assistant", content: all }]),
-        ctl.signal,
-      );
-      put([...base, { role: "assistant", content: answer }], true);
+      let list: ChatMsg[] = base;
+      let answer = "";
+      // 模型要用工具：在本机执行，把结果接回去再问，最多 4 轮
+      for (let step = 0; step < 4; step++) {
+        const cur = list;
+        const r = await streamChat(
+          cur,
+          thread.ctx,
+          (all) => put([...cur, { role: "assistant", content: all }]),
+          ctl.signal,
+          true,
+        );
+        if (r.text) answer = r.text;
+        list = [
+          ...cur,
+          {
+            role: "assistant",
+            content: r.text,
+            ...(r.calls.length ? { calls: r.calls } : {}),
+          },
+        ];
+        if (!r.calls.length) break;
+        for (const c of r.calls) {
+          const res = await runTool(c.name, c.args, env ?? {});
+          list = [
+            ...list,
+            {
+              role: "tool",
+              callId: c.id,
+              label: res.label,
+              content: res.result,
+            },
+          ];
+        }
+        put([...list, { role: "assistant", content: "" }]);
+      }
+      put(list, true);
       // 后台整理长期记忆：只看这一问一答，不拖慢下一次提问
       void remember(
         base.slice(-1).concat({ role: "assistant", content: answer }),
@@ -272,15 +306,28 @@ export function AgentPanel({
             >
               {m.content}
             </div>
+          ) : m.role === "tool" ? (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 text-[12px] text-[var(--ink-500)]"
+            >
+              <Wrench className="size-3.5" /> {m.label ?? "用了一个工具"}
+            </div>
           ) : (
             <div key={i}>
               {m.content ? (
                 <Markdown text={m.content} />
               ) : (
-                <span className="inline-flex items-center gap-2 text-[var(--ink-500)]">
-                  <Spinner /> 在想…
-                </span>
+                !m.calls?.length && (
+                  <span className="inline-flex items-center gap-2 text-[var(--ink-500)]">
+                    <Spinner /> 在想…
+                  </span>
+                )
               )}
+              {m.calls?.map((c) => {
+                const quiz = c.name === "show_quiz" ? quizOf(c) : null;
+                return quiz ? <AgentQuiz key={c.id} quiz={quiz} /> : null;
+              })}
             </div>
           ),
         )}

@@ -3,14 +3,34 @@ import { db, type MarkRow, type MemoryRow } from "./db";
 import { kindName, type Paper, type PdfWordsPage } from "@/lib/papers";
 
 /** AI 助教：问题经服务器（server/agent_server.py）转发到管理后台配好的模型；长期记忆存在本机 memory 表，每次提问随请求带上 */
-export type ChatMsg = { role: "user" | "assistant"; content: string };
+export type ToolCall = { id: string; name: string; args: string };
+/** 对话里的一条：助手可以带工具调用（calls），工具结果是 role: "tool"（label 是给人看的一行） */
+export type ChatMsg = {
+  role: "user" | "assistant" | "tool";
+  content: string;
+  calls?: ToolCall[];
+  callId?: string;
+  label?: string;
+};
 // 只带最近几轮、每条截短：长对话也不会超过后端的请求上限
 const MAX_TURNS = 12;
 const MAX_CHARS = 3000;
 const trimTurns = (m: ChatMsg[]) =>
   m
     .slice(-MAX_TURNS)
-    .map((x) => ({ role: x.role, content: x.content.slice(0, MAX_CHARS) }));
+    .map((x) =>
+      x.role === "tool"
+        ? {
+            role: "tool",
+            tool_call_id: x.callId,
+            content: x.content.slice(0, MAX_CHARS),
+          }
+        : {
+            role: x.role,
+            content: x.content.slice(0, MAX_CHARS),
+            ...(x.calls?.length ? { tool_calls: x.calls } : {}),
+          },
+    );
 // question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
 export type AgentContext = {
   paper?: string;
@@ -78,7 +98,8 @@ export async function streamChat(
   context: AgentContext,
   onText: (all: string) => void,
   signal?: AbortSignal,
-): Promise<string> {
+  tools = false,
+): Promise<{ text: string; calls: ToolCall[] }> {
   const r = await fetch("/api/agent/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,6 +108,7 @@ export async function streamChat(
       context,
       memory: await memoryForPrompt(),
       model: pickedModel(),
+      tools,
     }),
     signal,
   });
@@ -95,6 +117,7 @@ export async function streamChat(
   const dec = new TextDecoder();
   let buf = "";
   let all = "";
+  let calls: ToolCall[] = [];
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -105,13 +128,18 @@ export async function streamChat(
       buf = buf.slice(i + 2);
       if (!line.startsWith("data:")) continue;
       const payload = line.slice(5).trim();
-      if (payload === "[DONE]") return all;
-      const d = JSON.parse(payload) as { t?: string; error?: string };
+      if (payload === "[DONE]") return { text: all, calls };
+      const d = JSON.parse(payload) as {
+        t?: string;
+        error?: string;
+        calls?: ToolCall[];
+      };
       if (d.error) throw new Error(d.error);
       if (d.t) onText((all += d.t));
+      if (d.calls) calls = d.calls;
     }
   }
-  return all;
+  return { text: all, calls };
 }
 
 // 学习者在设置里改过、删过、清空过记忆的时间：整理期间有人动过，就丢掉这次整理的结果（它是按旧记忆算的）
