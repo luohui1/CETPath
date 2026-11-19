@@ -43,6 +43,13 @@ export async function runTool(
         const w = String(a.word ?? "").trim();
         if (!w) return { label: "生词本：没有词", result: "没给要加的词" };
         const lemma = await toLemma(w);
+        const entry = await getEntry(lemma);
+        // 词典里没有的不加：生词本和背词卡片都要靠词典释义
+        if (!entry)
+          return {
+            label: `生词本：词典里没有 ${w}`,
+            result: `本机词典里没有 ${w}，没加进生词本；可以告诉学习者它的意思，让他自己决定怎么记`,
+          };
         const sentence =
           typeof a.sentence === "string" ? a.sentence.slice(0, 400) : "";
         await addToVocab(
@@ -50,7 +57,7 @@ export async function runTool(
           env.paper && sentence
             ? { paperId: env.paper.id, paperTitle: env.paper.title, sentence }
             : undefined,
-          await getEntry(lemma),
+          entry,
         );
         return {
           label: `已加入生词本 · ${lemma}`,
