@@ -3,7 +3,16 @@ import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowUp, Sparkle, Stop } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
-import { remember, streamChat, useAgentEnabled, type AgentContext, type ChatMsg } from "@/lib/agent";
+import {
+  pickedModel,
+  remember,
+  setPickedModel,
+  streamChat,
+  useAgentEnabled,
+  useAgentModels,
+  type AgentContext,
+  type ChatMsg,
+} from "@/lib/agent";
 import { cn } from "@/lib/utils";
 import { EmptyState, Spinner } from "@/components/ui";
 import { Markdown } from "@/components/Markdown";
@@ -16,23 +25,51 @@ const threads = new Map<string, ChatMsg[]>();
 /** 删掉一段对话时连内存里的缓存一起清掉，不然同一句再问会把删掉的内容带回来 */
 export const forgetThread = (id: string) => void threads.delete(id);
 
-const QUICK = ["再讲简单点", "主干是哪几个词？", "这里为什么这样用？", "出一句类似的考考我"];
+const QUICK = [
+  "再讲简单点",
+  "主干是哪几个词？",
+  "这里为什么这样用？",
+  "出一句类似的考考我",
+];
 // 一般备考问题（不针对某一句）的快捷追问
 const QUICK_Q = ["再讲简单点", "举个真题里的例子", "给我出一道练习"];
 // 复盘一套卷子的快捷追问
-const QUICK_R = ["帮我复盘这套卷", "逐题讲讲我的错题", "哪类题最拖时间？", "给我一周的练习计划"];
+const QUICK_R = [
+  "帮我复盘这套卷",
+  "逐题讲讲我的错题",
+  "哪类题最拖时间？",
+  "给我一周的练习计划",
+];
 // 还没交卷时
-const QUICK_P = ["我现在做得怎么样？", "这部分时间怎么分配？", "这类题有什么技巧？"];
+const QUICK_P = [
+  "我现在做得怎么样？",
+  "这部分时间怎么分配？",
+  "这类题有什么技巧？",
+];
 
 const firstAsk = (ctx: AgentContext) =>
-  (ctx.review && "帮我复盘这套卷子：错在哪、为什么错、哪类题花的时间多，接下来怎么练。") ||
-  ctx.question || (ctx.word ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。` : "这句我没看懂，帮我解析一下。");
+  (ctx.review &&
+    "帮我复盘这套卷子：错在哪、为什么错、哪类题花的时间多，接下来怎么练。") ||
+  ctx.question ||
+  (ctx.word
+    ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。`
+    : "这句我没看懂，帮我解析一下。");
 
 /** inDock：做题页右侧面板里，多一个"去 AI 助教页"的链接 */
-export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread | null; inDock?: boolean; noAutoAsk?: boolean }) {
+export function AgentPanel({
+  thread,
+  inDock,
+  noAutoAsk,
+}: {
+  thread: AgentThread | null;
+  inDock?: boolean;
+  noAutoAsk?: boolean;
+}) {
   const enabled = useAgentEnabled();
   const memCount = useLiveQuery(() => db.memory.count(), []);
-  const [msgs, setMsgs] = useState<ChatMsg[]>(() => (thread ? (threads.get(thread.id) ?? []) : []));
+  const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
+    thread ? (threads.get(thread.id) ?? []) : [],
+  );
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,12 +102,18 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
   const send = async (text: string) => {
     if (!thread || busy || !text.trim()) return;
     const id = thread.id;
-    const base = [...(threads.get(id) ?? []), { role: "user" as const, content: text.trim() }];
+    const base = [
+      ...(threads.get(id) ?? []),
+      { role: "user" as const, content: text.trim() },
+    ];
     const ctx = thread.ctx;
     const put = (list: ChatMsg[], persist = false) => {
       threads.set(id, list);
       setMsgs(list);
-      if (persist) void (list.length ? db.chats.put({ id, ctx, messages: list, updatedAt: Date.now() }) : db.chats.delete(id));
+      if (persist)
+        void (list.length
+          ? db.chats.put({ id, ctx, messages: list, updatedAt: Date.now() })
+          : db.chats.delete(id));
     };
     put([...base, { role: "assistant", content: "" }]);
     setDraft("");
@@ -79,14 +122,25 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
     const ctl = new AbortController();
     abort.current = ctl;
     try {
-      const answer = await streamChat(base, thread.ctx, (all) => put([...base, { role: "assistant", content: all }]), ctl.signal);
+      const answer = await streamChat(
+        base,
+        thread.ctx,
+        (all) => put([...base, { role: "assistant", content: all }]),
+        ctl.signal,
+      );
       put([...base, { role: "assistant", content: answer }], true);
       // 后台整理长期记忆：只看这一问一答，不拖慢下一次提问
-      void remember(base.slice(-1).concat({ role: "assistant", content: answer })).then((added) => added.length && setNoted(added), () => {});
+      void remember(
+        base.slice(-1).concat({ role: "assistant", content: answer }),
+      ).then(
+        (added) => added.length && setNoted(added),
+        () => {},
+      );
     } catch (e) {
       put(base.slice(0, -1));
       setDraft(text);
-      if ((e as Error).name !== "AbortError") setError((e as Error).message || "出错了");
+      if ((e as Error).name !== "AbortError")
+        setError((e as Error).message || "出错了");
     } finally {
       setBusy(false);
       abort.current = null;
@@ -95,7 +149,14 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
 
   // 第一次打开这句（本机也没有历史）：自动问一句
   useEffect(() => {
-    if (!thread || !enabled || noAutoAsk || asked.current === thread.id || (threads.get(thread.id)?.length ?? 0) > 0) return;
+    if (
+      !thread ||
+      !enabled ||
+      noAutoAsk ||
+      asked.current === thread.id ||
+      (threads.get(thread.id)?.length ?? 0) > 0
+    )
+      return;
     asked.current = thread.id;
     const id = thread.id;
     void db.chats.get(id).then((row) => {
@@ -105,31 +166,77 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread, enabled]);
 
-  if (enabled === null) return <div className="grid place-items-center py-16"><Spinner /></div>;
+  if (enabled === null)
+    return (
+      <div className="grid place-items-center py-16">
+        <Spinner />
+      </div>
+    );
   if (!enabled)
     return (
       <div className="px-4 py-10">
-        <EmptyState icon={<Sparkle className="size-6" />} title="AI 助教还没开通" desc="管理员在后台（/admin）填好模型接口后就能用。" />
+        <EmptyState
+          icon={<Sparkle className="size-6" />}
+          title="AI 助教还没开通"
+          desc="管理员在后台（/admin）填好模型接口后就能用。"
+        />
       </div>
     );
   if (!thread)
     return (
       <div className="px-4 py-10">
-        <EmptyState icon={<Sparkle className="size-6" />} title={inDock ? "点卷面上的词，再点“问 AI”" : "粘贴一句英文，或直接提问"} desc={inDock ? "也可以长按一句，在底部条上点“问 AI”。" : "比如粘贴阅读里看不懂的句子，或者问“六级翻译怎么拆长句”。"} />
+        <EmptyState
+          icon={<Sparkle className="size-6" />}
+          title={
+            inDock ? "点卷面上的词，再点“问 AI”" : "粘贴一句英文，或直接提问"
+          }
+          desc={
+            inDock
+              ? "也可以长按一句，在底部条上点“问 AI”。"
+              : "比如粘贴阅读里看不懂的句子，或者问“六级翻译怎么拆长句”。"
+          }
+        />
       </div>
     );
 
   const word = thread.ctx.word;
   const quote = word
-    ? thread.ctx.sentence.split(new RegExp(`(\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b)`, "i")).map((p, i) => (i % 2 ? <mark key={i} className="rounded-[3px] bg-[var(--blue-tint)] px-0.5 text-[var(--blue)]">{p}</mark> : p))
+    ? thread.ctx.sentence
+        .split(
+          new RegExp(
+            `(\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b)`,
+            "i",
+          ),
+        )
+        .map((p, i) =>
+          i % 2 ? (
+            <mark
+              key={i}
+              className="rounded-[3px] bg-[var(--blue-tint)] px-0.5 text-[var(--blue)]"
+            >
+              {p}
+            </mark>
+          ) : (
+            p
+          ),
+        )
     : thread.ctx.sentence;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="px-4 pt-3">
-        <div className="flex items-center gap-2 text-[13px] text-[var(--ink-500)]">
-          {!inDock && <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />}
-          <span className="flex-1">{inDock ? "" : "AI 助教 · "}结合你的长期记忆讲解</span>
+        <div
+          className={cn(
+            "flex items-center gap-2 text-[13px] text-[var(--ink-500)]",
+            inDock && "hidden",
+          )}
+        >
+          {!inDock && (
+            <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
+          )}
+          <span className="flex-1">
+            {inDock ? "" : "AI 助教 · "}结合你的长期记忆讲解
+          </span>
           {inDock && (
             <Link to="/ask" className="hover:text-[var(--ink)]">
               全部对话
@@ -142,39 +249,77 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
         {thread.ctx.review && (
           <div className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 text-[14px] leading-[1.6] text-[var(--ink-700)]">
             这套卷 · {thread.ctx.paper}
-            <span className="block text-[12px] text-[var(--ink-500)]">{thread.ctx.reviewReady === false ? "交卷后能看到每题对错和用时；现在只知道你答到哪了" : "能看到你每题选了什么、对错和用时"}</span>
+            <span className="block text-[12px] text-[var(--ink-500)]">
+              {thread.ctx.reviewReady === false
+                ? "交卷后能看到每题对错和用时；现在只知道你答到哪了"
+                : "能看到你每题选了什么、对错和用时"}
+            </span>
           </div>
         )}
-        {quote && <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">{quote}</blockquote>}
+        {quote && (
+          <blockquote className="mt-2 rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-serif text-[15px] leading-[1.6] text-[var(--ink-700)]">
+            {quote}
+          </blockquote>
+        )}
       </div>
 
       <div className="flex-1 space-y-3 px-4 py-3" aria-live="polite">
         {msgs.map((m, i) =>
           m.role === "user" ? (
-            <div key={i} className="ml-8 rounded-[12px] rounded-br-[4px] bg-[var(--blue)] px-3 py-2 text-[14px] leading-[1.6] text-white">
+            <div
+              key={i}
+              className="ml-8 rounded-[12px] rounded-br-[4px] bg-[var(--blue)] px-3 py-2 text-[14px] leading-[1.6] text-white"
+            >
               {m.content}
             </div>
           ) : (
             <div key={i}>
-              {m.content ? <Markdown text={m.content} /> : <span className="inline-flex items-center gap-2 text-[var(--ink-500)]"><Spinner /> 在想…</span>}
+              {m.content ? (
+                <Markdown text={m.content} />
+              ) : (
+                <span className="inline-flex items-center gap-2 text-[var(--ink-500)]">
+                  <Spinner /> 在想…
+                </span>
+              )}
             </div>
           ),
         )}
-        {error && <p className="rounded-[10px] bg-[var(--red-tint,#fdecec)] px-3 py-2 text-[14px] text-[var(--red)]">{error}</p>}
-        {noted.length > 0 && !busy && <p className="text-[12px] text-[var(--ink-500)]">已记下：{noted.join("；")}</p>}
+        {error && (
+          <p className="rounded-[10px] bg-[var(--red-tint,#fdecec)] px-3 py-2 text-[14px] text-[var(--red)]">
+            {error}
+          </p>
+        )}
+        {noted.length > 0 && !busy && (
+          <p className="text-[12px] text-[var(--ink-500)]">
+            已记下：{noted.join("；")}
+          </p>
+        )}
         <div ref={end} />
       </div>
 
-      <div className="sticky bottom-0 border-t border-[var(--line-soft)] bg-[var(--surface,white)] px-3 pt-2 pb-3">
+      <div className="sticky bottom-0 bg-[var(--surface,white)] px-3 pt-2 pb-3 shadow-[0_-8px_16px_-12px_rgba(28,35,48,0.18)]">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {(thread.ctx.review ? (thread.ctx.reviewReady === false ? QUICK_P : QUICK_R) : thread.ctx.sentence ? QUICK : QUICK_Q).map((q) => (
-            <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="pill disabled:opacity-40">
+          {(thread.ctx.review
+            ? thread.ctx.reviewReady === false
+              ? QUICK_P
+              : QUICK_R
+            : thread.ctx.sentence
+              ? QUICK
+              : QUICK_Q
+          ).map((q) => (
+            <button
+              key={q}
+              type="button"
+              disabled={busy}
+              onClick={() => void send(q)}
+              className="pill disabled:opacity-40"
+            >
               {q}
             </button>
           ))}
         </div>
         <form
-          className="flex items-end gap-2"
+          className="rounded-[14px] bg-[var(--paper-100)] px-2 pt-1.5 pb-1.5 ring-1 ring-transparent transition-shadow focus-within:bg-white focus-within:ring-[color-mix(in_oklab,var(--blue)_45%,transparent)]"
           onSubmit={(e) => {
             e.preventDefault();
             void send(draft);
@@ -184,27 +329,79 @@ export function AgentPanel({ thread, inDock, noAutoAsk }: { thread: AgentThread 
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
                 e.preventDefault();
                 void send(draft);
               }
             }}
             rows={1}
             placeholder="接着问，比如：that 指代什么？"
-            className="max-h-28 min-h-10 flex-1 resize-none rounded-[10px] bg-[var(--paper-100)] px-3 py-2 text-[14px] leading-6 outline-none focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--blue)_35%,transparent)]"
+            className="block max-h-32 min-h-10 w-full resize-none bg-transparent px-1.5 py-1.5 text-[14px] leading-6 outline-none"
             aria-label="追问"
           />
-          {busy ? (
-            <button type="button" onClick={() => abort.current?.abort()} className="grid size-10 flex-none place-items-center rounded-full bg-[var(--ink)] text-white" aria-label="停止">
-              <Stop className="size-4" weight="fill" />
-            </button>
-          ) : (
-            <button type="submit" disabled={!draft.trim()} className={cn("grid size-10 flex-none place-items-center rounded-full bg-[var(--blue)] text-white transition-opacity", !draft.trim() && "opacity-40")} aria-label="发送">
-              <ArrowUp className="size-4" weight="bold" />
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <ModelPicker />
+            <span className="flex-1" />
+            {busy ? (
+              <button
+                type="button"
+                onClick={() => abort.current?.abort()}
+                className="grid size-8 flex-none place-items-center rounded-full bg-[var(--ink)] text-white"
+                aria-label="停止"
+              >
+                <Stop className="size-4" weight="fill" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!draft.trim()}
+                className={cn(
+                  "grid size-8 flex-none place-items-center rounded-full bg-[var(--blue)] text-white transition-opacity",
+                  !draft.trim() && "opacity-40",
+                )}
+                aria-label="发送"
+              >
+                <ArrowUp className="size-4" weight="bold" />
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>
+  );
+}
+
+/** 输入框下面的模型下拉：后台设了几个可选模型就能切，选的记在本机 */
+function ModelPicker() {
+  const m = useAgentModels();
+  const [v, setV] = useState(() => pickedModel() ?? "");
+  if (!m?.default) return null;
+  if (m.models.length < 2)
+    return (
+      <span className="max-w-[200px] truncate pl-1.5 text-[12px] text-[var(--ink-500)]">
+        {m.default}
+      </span>
+    );
+  const cur = m.models.includes(v) ? v : m.default;
+  return (
+    <select
+      aria-label="模型"
+      value={cur}
+      onChange={(e) => {
+        setV(e.target.value);
+        setPickedModel(e.target.value);
+      }}
+      className="h-7 max-w-[200px] cursor-pointer truncate rounded-[7px] bg-transparent pr-1 pl-1.5 text-[12px] font-medium text-[var(--ink-500)] outline-none hover:bg-[var(--fill-quiet)] hover:text-[var(--ink-700)] focus:shadow-[0_0_0_2px_var(--blue)]"
+    >
+      {m.models.map((x) => (
+        <option key={x} value={x}>
+          {x}
+        </option>
+      ))}
+    </select>
   );
 }
