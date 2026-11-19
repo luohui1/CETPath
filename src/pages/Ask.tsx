@@ -60,8 +60,10 @@ export function AskPage() {
                   onClick={() => {
                     forgetThread(c.id);
                     void db.chats.delete(c.id);
-                    if (thread?.id === c.id) setThread(null);
-                    setGen((g) => g + 1);
+                    if (thread?.id === c.id) {
+                      setThread(null);
+                      setGen((g) => g + 1);
+                    }
                   }}
                   className="mt-1.5 mr-1 grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] opacity-0 group-hover:opacity-100 hover:text-[var(--red)] focus:opacity-100"
                   aria-label="删掉这段对话"
