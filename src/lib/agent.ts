@@ -12,6 +12,8 @@ const trimTurns = (m: ChatMsg[]) => m.slice(-MAX_TURNS).map((x) => ({ role: x.ro
 export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
 
 let status: Promise<boolean> | null = null;
+/** 设置页改了模型后重新问一次是否开通 */
+export const resetAgentStatus = () => void (status = null);
 export function agentEnabled(): Promise<boolean> {
   status ??= fetch("/api/agent/status")
     .then((r) => (r.ok ? r.json() : { enabled: false }))

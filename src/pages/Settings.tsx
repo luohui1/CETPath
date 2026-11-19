@@ -8,6 +8,7 @@ import { setSetting, useSettings } from "@/lib/settings";
 import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
 import { downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
+import { AgentModel } from "@/components/AgentModel";
 import { Button, Card, PageHeader, Segmented, Switch } from "@/components/ui";
 
 function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
@@ -150,6 +151,10 @@ export function SettingsPage() {
             className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)]"
           />
         </Row>
+      </Group>
+
+      <Group title="Agent 模型" id="agent">
+        <AgentModel />
       </Group>
 
       <Group title="AI 助教的长期记忆" id="memory">
