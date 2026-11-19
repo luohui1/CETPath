@@ -8,7 +8,7 @@ import { setSetting, useSettings } from "@/lib/settings";
 import { pct, useAttemptItems, usePaperIndex } from "@/lib/insights";
 import { cn, daysUntil } from "@/lib/utils";
 import { EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
-import { Bubbles, PaperThumb, StickyTab } from "@/components/paper-ui";
+import { Bubbles, PaperThumb, StickyTab, useCurrentYear } from "@/components/paper-ui";
 
 type Status = "all" | "new" | "doing" | "done";
 
@@ -63,32 +63,6 @@ function PaperCard({ paper, attempt }: { paper: PaperIndexItem; attempt?: Attemp
       </div>
     </Link>
   );
-}
-
-/** 滚动时看现在读到哪一年（顶边过了 140px 的最后一个） */
-function useCurrentYear(years: number[]) {
-  const [cur, setCur] = useState<number | undefined>(years[0]);
-  const key = years.join(",");
-  useEffect(() => {
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        let c = years[0];
-        for (const y of years) if ((document.getElementById(`y${y}`)?.getBoundingClientRect().top ?? Infinity) <= 140) c = y;
-        setCur(c);
-      });
-    };
-    onScroll();
-    addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      removeEventListener("scroll", onScroll);
-    };
-    // key 概括了 years
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return cur;
 }
 
 /** 真题训练只回答"做哪套"：像一个试卷架——每年一个档案夹，左边伸出年份便签，里面按场次放卷子 */

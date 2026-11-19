@@ -9,7 +9,7 @@ import { setSetting, useSettings } from "@/lib/settings";
 import { cn, timeAgo } from "@/lib/utils";
 import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { KIND_PIXELS, PixelIcon } from "@/components/PixelIcon";
-import { Bubbles, PaperThumb } from "@/components/paper-ui";
+import { Bubbles, PaperThumb, StickyTab, useCurrentYear } from "@/components/paper-ui";
 
 const SUBJECTIVE = new Set<SectionKind>(["translation", "writing"]);
 type Status = "all" | "new" | "doing" | "done";
@@ -89,6 +89,18 @@ export function PracticePage() {
   const kind = asked && kinds.includes(asked) ? asked : kinds[0];
   const rows = kind ? rowsOf(kind) : [];
   const shown = rows.filter((r) => status === "all" || statusOf(r.attempt) === status);
+  // 和真题训练一样：年份 → 上半年 / 下半年（rows 已按时间倒序）
+  const years: { year: number; halves: { half: number; rows: Row[] }[] }[] = [];
+  for (const r of shown) {
+    const half = r.paper.month ? (r.paper.month <= 9 ? 1 : 2) : 0;
+    let y = years.at(-1);
+    if (y?.year !== r.paper.year) years.push((y = { year: r.paper.year, halves: [] }));
+    let h = y.halves.at(-1);
+    if (h?.half !== half) y.halves.push((h = { half, rows: [] }));
+    h.rows.push(r);
+  }
+  const showIndex = years.length > 6;
+  const curYear = useCurrentYear(years.map((y) => y.year));
   const count = (s: Status) => (s === "all" ? rows.length : rows.filter((r) => statusOf(r.attempt) === s).length);
 
   const chooseKind = (k: SectionKind) => {
@@ -191,31 +203,68 @@ export function PracticePage() {
               ))}
             </div>
           </div>
-          <div className="card divide-y divide-[var(--line-soft)] p-1.5">
-            {!shown.length && <p className="py-10 text-center text-[14px] text-[var(--ink-500)]">没有符合条件的篇目</p>}
-            {shown.map((row) => {
-              const { paper, section, attempt } = row;
-              const action = !attempt ? "开始" : attempt.submittedAt ? "查看" : "继续";
-              return (
-                <Link
-                  key={`${paper.id}-${section.id}`}
-                  to={startPath(row)}
-                  className="group flex min-h-[56px] items-center gap-4 rounded-[8px] px-3 py-2 transition-colors duration-[var(--dur-fast)] hover:bg-[var(--paper-50)]"
-                >
-                  <PaperThumb id={paper.id} width={24} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14px] font-semibold">{sittingName(paper)}</div>
-                    <div className="mt-0.5 truncate text-[13px] text-[var(--ink-500)]">{[section.part, section.subtitle, `${section.questionCount} 题`, kind === "listening" && paper.hasAudio && "含录音"].filter(Boolean).join(" · ")}</div>
+          {!shown.length && <p className="py-10 text-center text-[14px] text-[var(--ink-500)]">没有符合条件的篇目</p>}
+          <div className={cn(showIndex && "grid grid-cols-[minmax(0,1fr)_48px] gap-4")}>
+            <div className="space-y-6">
+              {years.map(({ year, halves }) => (
+                <section key={year} id={`y${year}`} className="grid scroll-mt-6 grid-cols-[36px_minmax(0,1fr)]">
+                  <StickyTab vertical className="sticky top-6 mt-3 self-start">
+                    <span className="num text-[16px] tracking-[0.04em]">{year}</span>
+                  </StickyTab>
+                  <div className="space-y-4 rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
+                    {halves.map(({ half, rows }) => (
+                      <div key={half}>
+                        {half > 0 && <h3 className="mb-2 px-1 text-[14px] font-semibold text-[var(--ink-700)]">{half === 1 ? "上半年" : "下半年"}</h3>}
+                        <div className="card divide-y divide-[var(--line-soft)] p-1.5">
+                          {rows.map((row) => {
+                            const { paper, section, attempt } = row;
+                            const action = !attempt ? "开始" : attempt.submittedAt ? "查看" : "继续";
+                            return (
+                              <Link
+                                key={`${paper.id}-${section.id}`}
+                                to={startPath(row)}
+                                className="group flex min-h-[52px] items-center gap-4 rounded-[8px] px-3 py-2 transition-colors duration-[var(--dur-fast)] hover:bg-[var(--paper-50)]"
+                              >
+                                <PaperThumb id={paper.id} width={24} />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-[14px] font-semibold">{sittingName(paper)}</div>
+                                  <div className="mt-0.5 truncate text-[13px] text-[var(--ink-500)]">{[section.part, section.subtitle, `${section.questionCount} 题`, kind === "listening" && paper.hasAudio && "含录音"].filter(Boolean).join(" · ")}</div>
+                                </div>
+                                <div className="flex flex-none justify-end">
+                                  <Status row={row} />
+                                </div>
+                                <span className="inline-flex w-14 flex-none items-center justify-end gap-1 text-[13px] font-medium text-[var(--blue)]">
+                                  {action} <ArrowRight className="size-3.5 transition-transform duration-[var(--dur-fast)] group-hover:translate-x-0.5" />
+                                </span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex flex-none justify-end">
-                    <Status row={row} />
-                  </div>
-                  <span className="inline-flex w-14 flex-none items-center justify-end gap-1 text-[13px] font-medium text-[var(--blue)]">
-                    {action} <ArrowRight className="size-3.5 transition-transform duration-[var(--dur-fast)] group-hover:translate-x-0.5" />
-                  </span>
-                </Link>
-              );
-            })}
+                </section>
+              ))}
+            </div>
+            {showIndex && (
+              <nav aria-label="跳到年份" className="sticky top-8 flex flex-col items-stretch gap-0.5 self-start">
+                {years.map(({ year }) => (
+                  <a
+                    key={year}
+                    href={`#y${year}`}
+                    aria-current={curYear === year ? "true" : undefined}
+                    className={cn(
+                      "num relative flex h-10 items-center justify-center rounded-[8px] text-[13px] transition-colors",
+                      curYear === year
+                        ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2.5 before:bottom-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
+                        : "text-[var(--ink-500)] hover:text-[var(--ink)]",
+                    )}
+                  >
+                    {year}
+                  </a>
+                ))}
+              </nav>
+            )}
           </div>
         </section>
       )}
