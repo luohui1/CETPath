@@ -9,7 +9,7 @@ const MAX_TURNS = 12;
 const MAX_CHARS = 3000;
 const trimTurns = (m: ChatMsg[]) => m.slice(-MAX_TURNS).map((x) => ({ role: x.role, content: x.content.slice(0, MAX_CHARS) }));
 // question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
-export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string };
+export type AgentContext = { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
 
 let status: Promise<boolean> | null = null;
 export function agentEnabled(): Promise<boolean> {
@@ -113,6 +113,16 @@ export async function remember(messages: ChatMsg[]): Promise<string[]> {
 export const MEMORY_KINDS: Record<MemoryRow["kind"], string> = { weak: "薄弱", pref: "偏好", fact: "情况" };
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+/** 还没交卷时给 Agent 的进度：只有每个题型答了几题，不带答案 */
+export function progressSummary(paper: Paper, answers: Record<string, string>): string {
+  const lines = ["还没交卷。"];
+  for (const s of paper.sections) {
+    const qs = s.groups.flatMap((g) => g.questions).filter((q) => q.options?.length);
+    if (qs.length) lines.push(`【${kindName(s.kind, paper.exam)} ${qs[0].number}–${qs[qs.length - 1].number}】已答 ${qs.filter((q) => answers[q.id]).length}/${qs.length}`);
+  }
+  return lines.join("\n");
+}
 
 /**
  * 复盘用的作答摘要：先是总分和每个题型的对错、用时（单题秒表没开时用按部分累计的时间），

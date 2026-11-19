@@ -169,7 +169,9 @@ def context_block(ctx: dict) -> str:
         parts.append(f"正在看的句子：{str(ctx['sentence'])[:1200]}")
     if ctx.get("question") and not ctx.get("sentence"):
         parts.append("这次不是针对某个句子，是一般的备考问题。")
-    if ctx.get("review"):
+    if ctx.get("review") and ctx.get("reviewReady") is False:
+        parts.append("学习者正在做这套卷，还没交卷。下面只有作答进度；不要透露、暗示任何题目的答案：\n" + str(ctx["review"])[:2000])
+    elif ctx.get("review"):
         parts.append("这次是做完一套题后的复盘。作答数据（错题、没答和超时的题逐条列出）：\n" + str(ctx["review"])[:9000])
     if ctx.get("word"):
         parts.append(f"他点的词：{str(ctx['word'])[:60]}")

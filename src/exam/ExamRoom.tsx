@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
 import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -7,7 +7,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { Sparkle,
+import {
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -56,6 +56,7 @@ import { Stopwatch, useQuestionTimer } from "./Stopwatch";
 import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
 import { ThumbRail } from "./ThumbRail";
+import { AgentFloat } from "./AgentFloat";
 import { FindBar, findInPages, pageTexts, type FindHit } from "./FindBar";
 import { ExportDialog } from "./ExportDialog";
 import { endPinch, gesture, startPinch } from "./gesture";
@@ -1510,15 +1511,20 @@ export function ExamRoom({
   const askAI = useCallback(
     (sentence: string, word?: string) => {
       setAgentThread({ id: `${sentenceKey(sentence)}:${word ?? ""}`, ctx: { paper: paper.title, sentence, word, syntax: synOf(sentence) ?? undefined } });
-      openTab("ask");
+      setAgentOpen(true);
     },
-    [paper.title, synOf, openTab],
+    [paper.title, synOf],
   );
-  // AI 复盘：把这套的作答（每题选了什么、对错、用时）交给 AI
-  const reviewAI = useCallback(() => {
-    setAgentThread({ id: `review:${attemptKey}:${attempt?.submittedAt ?? 0}`, ctx: { paper: paper.title, sentence: "", review: reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) } });
-    openTab("ask");
-  }, [paper, attemptKey, attempt?.submittedAt, attempt?.sectionSec, answers, questionSec, limits, openTab]);
+  // 右下角 Agent 默认聊整套卷：交卷后（练习模式选完就判）给它每题作答、对错和用时，交卷前只给进度
+  const [agentOpen, setAgentOpen] = useState(false);
+  const reviewReady = submitted || practice;
+  const paperThread = useMemo<AgentThread>(
+    () => ({
+      id: `paper:${attemptKey}:${attempt?.submittedAt ?? 0}`,
+      ctx: { paper: paper.title, sentence: "", reviewReady, review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers) },
+    }),
+    [paper, attemptKey, attempt?.submittedAt, attempt?.sectionSec, reviewReady, answers, questionSec, limits],
+  );
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
@@ -1719,14 +1725,6 @@ export function ExamRoom({
           </Button>
         </Tip>
       )}
-      {/* AI 复盘：交卷后（练习模式选完就判，随时可以）把作答交给 AI；交卷前不给，免得看到答案 */}
-      {aiOn && (
-        <Tip label={submitted || practice ? "AI 看你每题选了什么、对错和用时，分析错因和时间分配" : "交卷后可以让 AI 复盘"}>
-          <Button size="sm" disabled={!submitted && !practice} onClick={reviewAI}>
-            <Sparkle className="size-4" weight="fill" /> AI 复盘
-          </Button>
-        </Tip>
-      )}
       {submitted ? (
         <Button size="sm" onClick={() => setConfirm("redo")}>
           <ArrowCounterClockwise className="size-4" /> 重做
@@ -1779,7 +1777,6 @@ export function ExamRoom({
       mode={mode}
       attemptKey={attemptKey}
       attemptInit={{ mode }}
-      agent={agentThread}
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
@@ -2306,6 +2303,7 @@ export function ExamRoom({
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
         />
       )}
+      {aiOn && <AgentFloat open={agentOpen} onOpen={setAgentOpen} thread={agentThread ?? paperThread} onBack={agentThread ? () => setAgentThread(null) : undefined} right={dockSpace + 20} />}
       <ConfirmDialog
         open={confirm === "redo"}
         onOpenChange={(o) => !o && setConfirm(null)}
