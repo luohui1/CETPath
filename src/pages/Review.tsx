@@ -15,7 +15,7 @@ import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
 import { Tip } from "@/components/overlay";
 import { PixelIcon } from "@/components/PixelIcon";
-import { Bubbles, Punch, Stamp } from "@/components/paper-ui";
+import { Bubbles, Stamp } from "@/components/paper-ui";
 import { DayColumns, MemoryStrip } from "@/components/viz";
 import { SpellCard } from "@/review/SpellCard";
 import { WordContext } from "@/review/WordContext";
@@ -77,7 +77,7 @@ const RATING_NAMES: Record<number, { label: string; tone: string }> = {
 };
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
-/** 开始页：今天的任务做成一张答题卡（装订孔、三行小泡），旁边是记忆状态；下面是未来 7 天的复习量和最近复习的词 */
+/** 开始页：今天的任务做成一张答题卡（三行小泡），旁边是记忆状态；下面是未来 7 天的复习量和最近复习的词 */
 function StartScreen({ onStart }: { onStart: () => void }) {
   const settings = useSettings();
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
@@ -123,8 +123,7 @@ function StartScreen({ onStart }: { onStart: () => void }) {
       <div className="grid gap-5 lg:grid-cols-3">
         {/* 今天的任务：一张答题卡 */}
         <div className="card card-raised flex flex-col px-5 pt-3 pb-5 lg:col-span-2 lg:px-7 lg:pb-6">
-          <Punch />
-          <h2 className="t-h2 mt-4">今天的任务</h2>
+          <h2 className="t-h2 mt-2">今天的任务</h2>
           <div className="mt-3 flex items-end gap-2">
             <span className="num text-[56px] leading-[0.9] tracking-[-0.02em]">{total}</span>
             <span className="mb-1 text-[15px] text-[var(--ink-700)]">个词要背</span>

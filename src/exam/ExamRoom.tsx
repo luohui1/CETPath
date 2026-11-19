@@ -10,11 +10,11 @@ import {
   ArrowLeft,
   ArrowUUpLeft,
   ArrowUUpRight,
-  BookmarkSimple,
   CaretDown,
   Check,
   Cursor,
   DotsThreeVertical,
+  Timer,
   Eraser,
   Exam,
   Headphones,
@@ -23,7 +23,6 @@ import {
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
   NoteBlank,
-  NotePencil,
   Pen,
   SidebarSimple,
   TextUnderline,
@@ -138,6 +137,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `${workerUrl}?mime=js`;
 const PAGE_WIDTH = 860; // 100% 时卷面宽度（px）
 const MIN_WIDTH = 760; // 平板竖屏 768 起
 const LONG_PRESS_MS = 500; // 手指按住一句不动这么久：出这句的译文
+const HINT_KEY = "yz.examHintSeen"; // 底部"怎么选答案、查词"的提示只在第一次做题时出
 const DOCK_KEY = "yz.dockTab"; // 停靠区上次开的标签（只是记住个习惯，存在浏览器里，取不到就算了）
 const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax"];
 function lastDockTab(): DockTab | null {
@@ -161,12 +161,13 @@ const MAX_ZOOM = 3;
 const NO_HITS: FindHit[] = [];
 
 // 工具按功能分三组：选择 / 笔 / 擦和套索
-const TOOLS: { id: Tool; label: string; key: string; Icon: Icon; group: 0 | 1 | 2 }[] = [
-  { id: "select", label: "选择：查词、作答", key: "V", Icon: Cursor, group: 0 },
-  { id: "pen", label: "手写笔", key: "P", Icon: Pen, group: 1 },
-  { id: "highlight", label: "高亮", key: "H", Icon: Highlighter, group: 1 },
-  { id: "underline", label: "下划线", key: "U", Icon: TextUnderline, group: 1 },
-  { id: "note", label: "便签", key: "N", Icon: NoteBlank, group: 1 },
+/** short：工具栏上图标旁的字（套索、橡皮擦不常用，只放图标） */
+const TOOLS: { id: Tool; label: string; short?: string; key: string; Icon: Icon; group: 0 | 1 | 2 }[] = [
+  { id: "select", label: "选择：查词、作答", short: "选择", key: "V", Icon: Cursor, group: 0 },
+  { id: "pen", label: "手写笔", short: "笔", key: "P", Icon: Pen, group: 1 },
+  { id: "highlight", label: "高亮", short: "高亮", key: "H", Icon: Highlighter, group: 1 },
+  { id: "underline", label: "下划线", short: "划线", key: "U", Icon: TextUnderline, group: 1 },
+  { id: "note", label: "便签", short: "便签", key: "N", Icon: NoteBlank, group: 1 },
   { id: "lasso", label: "套索", key: "L", Icon: Lasso, group: 2 },
   { id: "eraser", label: "橡皮擦", key: "E", Icon: Eraser, group: 2 },
 ];
@@ -335,6 +336,7 @@ export function ExamRoom({
   onLookedUp,
   onQuestionTime,
   onSectionTime,
+  onMock,
 }: {
   paper: Paper;
   scope?: ExamScope;
@@ -356,6 +358,8 @@ export function ExamRoom({
   onLookedUp: () => void;
   onQuestionTime: (qid: string, sec: number) => void;
   onSectionTime: (delta: Record<string, number>) => void;
+  /** 整套卷还没动笔时改成全真模拟；不能改时不传 */
+  onMock?: () => void;
 }) {
   const settings = useSettings();
   const navigate = useNavigate();
@@ -363,6 +367,20 @@ export function ExamRoom({
   const texts = useSame(textsIn);
   const practice = mode === "practice";
   const retry = mode === "retry";
+  const [hintSeen] = useState(() => {
+    try {
+      return localStorage.getItem(HINT_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(HINT_KEY, "1");
+    } catch {
+      /* 存不了就每次都提示 */
+    }
+  }, []);
   // 总倒计时只在全真模拟（整套）时有；其余都是单题秒表
   const countdown = mode === "exam" && !scope;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -1611,19 +1629,20 @@ export function ExamRoom({
       : { to: `/papers?exam=${paper.exam}`, label: "返回真题训练" };
 
   /** 工具栏上的一个按钮：Phosphor 双色图标；当前项品牌蓝底白图标 */
-  const tool$ = (label: string, icon: ReactNode, onClick: () => void, opts: { active?: boolean; soft?: boolean; disabled?: boolean; kbd?: string } = {}): G.ToolItem => ({
+  const tool$ = (label: string, icon: ReactNode, onClick: () => void, opts: { active?: boolean; soft?: boolean; disabled?: boolean; kbd?: string; text?: string } = {}): G.ToolItem => ({
     icon: "pencil",
     label,
     render: (
       <Tip label={label} kbd={opts.kbd}>
         <button type="button" className={cn("gr-tool", opts.active && (opts.soft ? "gr-tool-soft" : "gr-tool-on"))} onClick={onClick} disabled={opts.disabled} aria-label={label} aria-pressed={opts.active}>
           {icon}
+          {opts.text && !narrow && <span className="gr-tool-text whitespace-nowrap">{opts.text}</span>}
         </button>
       </Tip>
     ),
   });
   const toolGroup = (g: 0 | 1 | 2) =>
-    TOOLS.filter((t) => t.group === g).map((t) => tool$(t.label, <t.Icon className="size-[19px]" weight={tool === t.id ? "fill" : "duotone"} />, () => setTool(t.id), { active: tool === t.id, kbd: t.key }));
+    TOOLS.filter((t) => t.group === g).map((t) => tool$(t.label, <t.Icon className="size-[19px]" weight={tool === t.id ? "fill" : "duotone"} />, () => setTool(t.id), { active: tool === t.id, kbd: t.key, text: t.short }));
   const presets = settings.penPresets;
   const zoomOut = () => setZoom((z) => Math.max(MIN_ZOOM, +(z - 0.1).toFixed(1)));
   const zoomIn = () => setZoom((z) => Math.min(MAX_ZOOM, +(z + 0.1).toFixed(1)));
@@ -1645,7 +1664,7 @@ export function ExamRoom({
     <Tip label={label}>
       <button type="button" className={dockView === tab ? "gr-tool gr-tool-soft" : "gr-tool"} onClick={() => togglePanel(tab)} aria-label={label} aria-pressed={dockView === tab}>
         {icon}
-        {text !== undefined && !slim && <span className="gr-tool-text num">{text}</span>}
+        {text !== undefined && !narrow && <span className="gr-tool-text num whitespace-nowrap">{text}</span>}
       </button>
     </Tip>
   );
@@ -1661,6 +1680,13 @@ export function ExamRoom({
     <>
       {/* 总倒计时只在全真模拟时有 */}
       {countdown && <ExamTimer elapsed={elapsed} running={!submitted} limit={paper.durationMinutes ? paper.durationMinutes * 60 : null} />}
+      {onMock && !submitted && (
+        <Tip label={paper.durationMinutes ? `从现在起按 ${paper.durationMinutes} 分钟倒计时，交卷前不看解析` : "按考试时长倒计时，交卷前不看解析"}>
+          <Button size="sm" onClick={onMock}>
+            <Timer className="size-4" /> 全真模拟
+          </Button>
+        </Tip>
+      )}
       {submitted ? (
         <Button size="sm" onClick={() => setConfirm("redo")}>
           <ArrowCounterClockwise className="size-4" /> 重做
@@ -1909,13 +1935,12 @@ export function ExamRoom({
             <Tip label={listenOpen ? "收起听力" : "打开听力"}>
               <button type="button" className={listenOpen ? "gr-tool gr-tool-soft" : "gr-tool"} onClick={() => setListenOpen(!listenOpen)} aria-label="听力" aria-pressed={listenOpen}>
                 <Headphones className="size-[19px]" weight={listenOpen ? "fill" : "duotone"} />
+                {!narrow && <span className="gr-tool-text whitespace-nowrap">听力</span>}
               </button>
             </Tip>
           )}
-          {/* 窄屏时笔记、生词从答题卡打开的面板标签里进 */}
-          {!slim && panelButton("notes", "本卷笔记", <NotePencil className="size-[19px]" />, marks.length || undefined)}
-          {!slim && panelButton("vocab", "本卷生词", <BookmarkSimple className="size-[19px]" />, vocabCount || undefined)}
-          {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, ""))}
+          {/* 本卷笔记、生词在"更多"里和停靠区的标签里 */}
+          {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, `答题卡 ${practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, "")}`)}
           {/* 更多：查找、双页、生词标记、导出（不常用的都收在这里，工具栏不加常驻按钮） */}
           <G.Popover
             label="更多"
@@ -1929,6 +1954,8 @@ export function ExamRoom({
           >
             {(close: () => void) => (
               <div className="py-0.5">
+                {moreItem("本卷笔记", () => (close(), togglePanel("notes")), marks.length ? <span className="num">{marks.length}</span> : undefined)}
+                {moreItem("本卷生词", () => (close(), togglePanel("vocab")), vocabCount ? <span className="num">{vocabCount}</span> : undefined)}
                 {moreItem(
                   "在卷面查找",
                   () => {
@@ -2174,7 +2201,7 @@ export function ExamRoom({
               // 内存库（本地数据库没响应）时记录不保存，不能说"已自动保存"
               memoryDb ? { label: "这次不保存", dot: true, tone: "warning" } : { label: "已自动保存", dot: true, tone: "success" },
               { label: progress },
-              ...(TOOL_HINTS[tool] ? [{ label: `${TOOLS.find((t) => t.id === tool)!.label}：${TOOL_HINTS[tool]} · Esc 退出` }] : fresh ? [{ label: "点题号旁边的圆圈选答案 · 点单词查词" }] : []),
+              ...(TOOL_HINTS[tool] ? [{ label: `${TOOLS.find((t) => t.id === tool)!.label}：${TOOL_HINTS[tool]} · Esc 退出` }] : fresh && !hintSeen ? [{ label: "点题号旁边的圆圈选答案 · 点单词查词" }] : []),
             ]}
             right={[
               { label: <span className="num">{Math.round(zoom * 100)}%</span> },

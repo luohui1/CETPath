@@ -7,7 +7,7 @@ import { kindName, KIND_NAMES, loadPaper, peekPaper, type Paper, type Question, 
 import { backfillMastery, restoreMistake, retireMistake, useMistakes } from "@/lib/mistakes";
 import { KINDS, usePaperIndex } from "@/lib/insights";
 import { cn } from "@/lib/utils";
-import { Button, LoadingBlock, PageHeader } from "@/components/ui";
+import { Button, EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
 import { PaperDialog } from "@/components/overlay";
 import { PaperThumb } from "@/components/paper-ui";
 import { ExplainContext, ExplanationCard } from "@/exam/Explanation";
@@ -92,18 +92,19 @@ function MistakeRow({ row, q, paper }: { row: MasteryRow; q?: Question; paper?: 
   );
 }
 
-/** 空状态：一张空的答题卡 */
+/** 空状态：一句说明 + 去做题 */
 function EmptySheet() {
   return (
-    <div className="card flex flex-col items-center px-6 py-14 text-center">
-      <div className="grid grid-cols-6 gap-1.5" aria-hidden>
-        {Array.from({ length: 18 }, (_, i) => (
-          <span key={i} className="num grid size-8 place-items-center rounded-[6px] bg-white text-[13px] text-[var(--ink-300)] shadow-[inset_0_0_0_1px_var(--line)]">
-            {i + 1}
-          </span>
-        ))}
-      </div>
-      <p className="mt-6 text-[16px] font-medium">交过卷的错题会自动收进来</p>
+    <div className="card px-6 py-12">
+      <EmptyState
+        title="还没有错题"
+        desc="交卷后做错的题会自动收进来，重做对两次就移出。"
+        action={
+          <Link to="/papers">
+            <Button variant="primary">去做一套真题</Button>
+          </Link>
+        }
+      />
     </div>
   );
 }

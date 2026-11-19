@@ -18,6 +18,7 @@ export interface Settings {
   penPresets: PenPreset[]; // 手写笔的 3 个预设槽（长按保存）
   twoUpPages: boolean; // 做题页双页视图（横屏、页面够窄时才生效）
   reviewMode: ReviewMode; // 背单词怎么考：认读 / 拼写 / 听写
+  lastExam: string | null; // 真题、专项页上次选的考试（ExamId）；首页推荐和倒计时默认跟它
   focusBand: FocusBand | null; // 本周重点：词书里的一个词频段，每日新词先从这里出
 }
 
@@ -56,6 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   twoUpPages: false,
   reviewMode: "recognize",
   focusBand: null,
+  lastExam: null,
 };
 
 export const settingsRows = () => db.settings.toArray();
