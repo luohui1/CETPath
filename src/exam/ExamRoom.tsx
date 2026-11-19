@@ -2303,7 +2303,7 @@ export function ExamRoom({
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
         />
       )}
-      {<AgentFloat enabled={!!aiOn} open={agentOpen} onOpen={setAgentOpen} thread={agentThread ?? paperThread} onBack={agentThread ? () => setAgentThread(null) : undefined} right={dockSpace + 20} />}
+      {<AgentFloat enabled={!!aiOn} open={agentOpen} onOpen={setAgentOpen} thread={agentThread ?? paperThread} onBack={agentThread ? () => setAgentThread(null) : undefined} />}
       <ConfirmDialog
         open={confirm === "redo"}
         onOpenChange={(o) => !o && setConfirm(null)}

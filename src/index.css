@@ -270,8 +270,19 @@ button:disabled {
 .animate-bar-in {
   animation: bar-in 160ms var(--ease-out);
 }
+/* 解析换题：新内容淡入，不闪 */
+@keyframes body-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.animate-body-in {
+  animation: body-in 140ms var(--ease-out);
+}
 @media (prefers-reduced-motion: reduce) {
-  .animate-bar-in {
+  .animate-bar-in,
+  .animate-body-in {
     animation: none;
   }
 }
