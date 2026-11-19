@@ -27,7 +27,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONFIG = os.environ.get("YZ_AGENT_CONFIG", "/srv/yingyu/config/agent.json")
-MAX_BODY = 64 * 1024
+MAX_BODY = 256 * 1024
 MAX_TURNS = 24
 MAX_MEMORY = 60
 SESSION_SEC = 7 * 86400

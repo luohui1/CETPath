@@ -3,6 +3,10 @@ import { db, type MemoryRow } from "./db";
 
 /** AI 助教：问题经服务器（server/agent_server.py）转发到管理后台配好的模型；长期记忆存在本机 memory 表，每次提问随请求带上 */
 export type ChatMsg = { role: "user" | "assistant"; content: string };
+// 只带最近几轮、每条截短：长对话也不会超过后端的请求上限
+const MAX_TURNS = 12;
+const MAX_CHARS = 3000;
+const trimTurns = (m: ChatMsg[]) => m.slice(-MAX_TURNS).map((x) => ({ role: x.role, content: x.content.slice(0, MAX_CHARS) }));
 export type AgentContext = { paper?: string; sentence: string; word?: string; syntax?: unknown };
 
 let status: Promise<boolean> | null = null;
@@ -47,7 +51,7 @@ export async function streamChat(messages: ChatMsg[], context: AgentContext, onT
   const r = await fetch("/api/agent/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, context, memory: await memoryForPrompt() }),
+    body: JSON.stringify({ messages: trimTurns(messages), context, memory: await memoryForPrompt() }),
     signal,
   });
   if (!r.ok || !r.body) throw await failure(r);
