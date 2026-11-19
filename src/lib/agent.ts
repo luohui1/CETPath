@@ -169,6 +169,8 @@ export async function remember(messages: ChatMsg[]): Promise<boolean> {
   const d = (await r.json()) as { profile?: string | null };
   // 整理期间学习者自己改过档案（或 Agent 用工具改过）：这次结果是按旧档案算的，丢掉
   if (!d.profile || d.profile.trim() === profile.trim() || editedAt >= started) return false;
+  // 另一段对话先存了新档案：这次也是按旧档案算的，丢掉，免得把它刚记下的覆盖掉
+  if ((await getProfile()).trim() !== profile.trim()) return false;
   await saveProfile(d.profile);
   return true;
 }
