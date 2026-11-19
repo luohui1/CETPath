@@ -298,7 +298,13 @@ export function AgentPanel({
       </div>
 
       <div className="sticky bottom-0 bg-[var(--surface,white)] px-3 pt-2 pb-3 shadow-[0_-8px_16px_-12px_rgba(28,35,48,0.18)]">
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        {/* 快捷问题只在还没聊的时候出现，聊起来就让位给对话 */}
+        <div
+          className={cn(
+            "mb-2 flex flex-wrap gap-1.5",
+            msgs.length > 0 && "hidden",
+          )}
+        >
           {(thread.ctx.review
             ? thread.ctx.reviewReady === false
               ? QUICK_P

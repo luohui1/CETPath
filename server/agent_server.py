@@ -173,6 +173,10 @@ def context_block(ctx: dict) -> str:
         parts.append("学习者正在做这套卷，还没交卷。下面是作答进度；他问到具体题目时照常直接解答：\n" + str(ctx["review"])[:2000])
     elif ctx.get("review"):
         parts.append("这次是做完一套题后的复盘。作答数据（错题、没答和超时的题逐条列出）：\n" + str(ctx["review"])[:9000])
+    if ctx.get("marks"):
+        parts.append("学习者在卷面上的标注（高亮、划线、便签）：\n" + str(ctx["marks"])[:3000])
+    if ctx.get("paperText"):
+        parts.append("这套卷的原文（按页，从卷面文字层取；扫描卷可能有个别识别错字，按上下文理解）。问到某题时直接从这里找题目、选项和文章：\n" + str(ctx["paperText"])[:30000])
     if ctx.get("word"):
         parts.append(f"他点的词：{str(ctx['word'])[:60]}")
     if ctx.get("syntax"):

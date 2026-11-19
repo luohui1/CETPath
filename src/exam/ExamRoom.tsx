@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
 import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -1529,9 +1529,16 @@ export function ExamRoom({
   const paperThread = useMemo<AgentThread>(
     () => ({
       id: `paper:${attemptKey}:${attempt?.submittedAt ?? 0}`,
-      ctx: { paper: paper.title, sentence: "", reviewReady, review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers) },
+      ctx: {
+        paper: paper.title,
+        sentence: "",
+        reviewReady,
+        review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers),
+        paperText: paperText(pages),
+        marks: marksSummary(marksRaw),
+      },
     }),
-    [paper, attemptKey, attempt?.submittedAt, attempt?.sectionSec, reviewReady, answers, questionSec, limits],
+    [paper, attemptKey, attempt?.submittedAt, attempt?.sectionSec, reviewReady, answers, questionSec, limits, pages, marksRaw],
   );
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
