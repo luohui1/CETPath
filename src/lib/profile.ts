@@ -36,10 +36,8 @@ export async function saveProfile(text: string, cap = true) {
   });
 }
 
-export const clearProfile = async () => {
-  const row = await profileRow();
-  if (row) await db.memory.delete(row.id!);
-};
+/** 清空：档案和（导入备份带进来的）旧版记忆条目一起删 */
+export const clearProfile = () => db.memory.clear();
 
 export const useProfile = () => useLiveQuery(async () => (await profileRow())?.text ?? "", []);
 
