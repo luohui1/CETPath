@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
-import { MEMORY_KINDS } from "@/lib/agent";
+import { MEMORY_KINDS, touchMemory } from "@/lib/agent";
 import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icons/react";
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
 import { setSetting, useSettings } from "@/lib/settings";
@@ -220,19 +220,20 @@ function AgentMemory() {
             defaultValue={m.text}
             onBlur={(e) => {
               const v = e.target.value.trim();
+              if (v !== m.text) touchMemory();
               if (!v) void db.memory.delete(m.id!);
               else if (v !== m.text) void db.memory.update(m.id!, { text: v, updatedAt: Date.now() });
             }}
             className="min-w-0 flex-1 rounded-[6px] bg-transparent px-1.5 py-1 text-[14px] outline-none focus:bg-[var(--paper-100)]"
             aria-label="记忆内容"
           />
-          <button type="button" onClick={() => void db.memory.delete(m.id!)} className="grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--red)]" aria-label="删掉这条">
+          <button type="button" onClick={() => (touchMemory(), void db.memory.delete(m.id!))} className="grid size-8 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--red)]" aria-label="删掉这条">
             <Trash className="size-4" />
           </button>
         </div>
       ))}
       <Row title={`共 ${rows.length} 条`} desc="点文字可以直接改；清空后 AI 会重新认识你">
-        <Button variant="danger" size="sm" onClick={() => confirm("清空 AI 助教的全部记忆？") && void db.memory.clear()}>
+        <Button variant="danger" size="sm" onClick={() => confirm("清空 AI 助教的全部记忆？") && (touchMemory(), void db.memory.clear())}>
           清空记忆
         </Button>
       </Row>

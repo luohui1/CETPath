@@ -78,16 +78,22 @@ export async function streamChat(messages: ChatMsg[], context: AgentContext, onT
   return all;
 }
 
+// 学习者在设置里改过、删过、清空过记忆的时间：整理期间有人动过，就丢掉这次整理的结果（它是按旧记忆算的）
+let editedAt = 0;
+export const touchMemory = () => void (editedAt = Date.now());
+
 /** 聊完一轮：让模型从这段对话里整理长期记忆，按它给的加、改、删写进本机。返回新记下的条目 */
 export async function remember(messages: ChatMsg[]): Promise<string[]> {
+  const started = Date.now();
   const r = await fetch("/api/agent/remember", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, memory: await memoryForPrompt() }),
+    body: JSON.stringify({ messages: trimTurns(messages), memory: await memoryForPrompt() }),
   });
   if (!r.ok) return [];
   const ops = (await r.json()) as { add: Pick<MemoryRow, "kind" | "text">[]; update: { id: number; text: string }[]; remove: number[] };
   const added: string[] = [];
+  if (editedAt >= started) return added;
   await db.transaction("rw", db.memory, async () => {
     const now = Date.now();
     const have = new Set((await db.memory.toArray()).map((m) => m.text));
