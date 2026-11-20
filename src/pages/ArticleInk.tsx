@@ -58,7 +58,8 @@ export function ArticleInk({ id, box, on, hidden, onClose }: { id: string; box: 
   }, [on]);
 
   const lookupAt = useCallback((cx: number, cy: number) => {
-    (document.elementFromPoint(cx, cy)?.closest(".w") as HTMLElement | null)?.click();
+    // 笔记层盖在字上面，要穿过它找到下面的词
+    (document.elementsFromPoint(cx, cy).find((el) => el.classList.contains("w")) as HTMLElement | undefined)?.click();
   }, []);
   const active: Tool = on ? tool : "select";
   const ct = colorTool(active);
