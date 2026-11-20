@@ -17,7 +17,15 @@ jobs:
       - name: 取服务器上现有的列表（已抓过的不重抓）
         run: |
           mkdir -p public/articles-data
-          curl -sf http://8.162.0.101/articles-data/index.json -o public/articles-data/index.json || true
+          # 取不到（网络错误、5xx）就停：不然会用一份不全的列表盖掉服务器上的
+          code=$(curl -s -o /tmp/index.json -w '%{http_code}' http://8.162.0.101/articles-data/index.json) || { echo "取列表失败"; exit 1; }
+          if [ "$code" = 200 ] && python3 -c "import json,sys; json.load(open('/tmp/index.json'))"; then
+            mv /tmp/index.json public/articles-data/index.json
+          elif [ "$code" = 404 ]; then
+            echo "服务器上还没有列表，从头抓"
+          else
+            echo "列表取回来不对（HTTP $code）"; exit 1
+          fi
       - name: 取词表（估难度用；词表不在仓库里，从站上拿）
         run: |
           mkdir -p public/dict/books
