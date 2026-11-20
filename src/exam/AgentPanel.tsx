@@ -127,7 +127,8 @@ export function AgentPanel({
     abort.current = ctl;
     try {
       // 做题页：先把手写笔记识别成文字带上（识别过的有缓存）
-      const ink = env?.ink ? await env.ink().catch(() => "") : "";
+      const ink = env?.ink ? await env.ink(ctl.signal).catch(() => "") : "";
+      if (ctl.signal.aborted) throw new DOMException("stopped", "AbortError");
       const live = ink ? { ...thread.ctx, ink } : thread.ctx;
       let list: ChatMsg[] = base;
       let answer = "";
