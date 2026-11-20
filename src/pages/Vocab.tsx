@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { sourceHref } from "@/lib/articles";
 import { Link, useSearchParams } from "react-router";
 import { BookBookmark, Brain, CaretDown, DownloadSimple, MagnifyingGlass, Plus, Printer, SpeakerHigh, Trash } from "@phosphor-icons/react";
 import { db, type CardRow, type VocabItem } from "@/lib/db";
@@ -253,7 +254,7 @@ export function VocabPage() {
                         {it.sources.map((s, i) => (
                           <div key={i} className="card px-3.5 py-2.5">
                             <HighlightSentence sentence={s.sentence} word={it.word} className="serif text-[15px] leading-relaxed" />
-                            <Link to={`/paper/${s.paperId}`} className="mt-1 block text-[13px] text-[var(--blue)] hover:underline">
+                            <Link to={sourceHref(s.paperId)} className="mt-1 block text-[13px] text-[var(--blue)] hover:underline">
                               {s.paperTitle}
                             </Link>
                           </div>

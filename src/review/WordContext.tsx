@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { sourceHref } from "@/lib/articles";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { NoteBlank } from "@phosphor-icons/react";
@@ -81,7 +82,7 @@ export function WordContext({ word, sources }: { word: string; sources: VocabSou
                 <HighlightSentence sentence={s.sentence} word={word} className="serif" />
                 <div className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-[var(--ink-500)]">
                   <span>{title(s.paperId, s.paperTitle)}</span>
-                  <GoLink to={`/paper/${s.paperId}?sent=${encodeURIComponent(s.sentence)}`} />
+                  <GoLink to={sourceHref(s.paperId, `?sent=${encodeURIComponent(s.sentence)}`)} />
                 </div>
               </li>
             ))}
