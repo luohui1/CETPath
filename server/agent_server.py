@@ -138,7 +138,8 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 错题挑重点讲，不用每题都展开；学习者追问某一题时再细讲那题。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握。
+- 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
 - 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
 - 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
@@ -283,6 +284,14 @@ TOOLS = [
         },
         ["text", "style"],
     ),
+    _fn(
+        "list_vocab",
+        "查看学习者的生词本：给 word 就查这个词在不在、背到哪了；否则按 filter 列出 recent（最近加的）或 due（今天该复习的）。",
+        {"word": {"type": "string"}, "filter": {"type": "string", "enum": ["recent", "due"]}, "limit": {"type": "integer", "description": "最多列几个，默认 20"}},
+        [],
+    ),
+    _fn("remove_from_vocab", "把一个词从学习者的生词本删掉。学习者说不要这个词了时用。", {"word": {"type": "string"}}, ["word"]),
+    _fn("mark_known", "把生词本里的一个词标成已掌握（两个月后再复习）。学习者说这个词会了时用。", {"word": {"type": "string"}}, ["word"]),
     _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
     _fn(
         "show_quiz",

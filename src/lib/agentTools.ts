@@ -1,6 +1,18 @@
 import { db } from "./db";
-import { getEntry, phonetic, toLemma, translationLines } from "./dict";
-import { addToVocab } from "./learning";
+import {
+  getEntry,
+  phonetic,
+  shortTranslation,
+  toLemma,
+  translationLines,
+} from "./dict";
+import { State } from "ts-fsrs";
+import {
+  addToVocab,
+  isMastered,
+  removeFromVocab,
+  STATE_LABELS,
+} from "./learning";
 import { masteryId, scoredQuestions } from "./mistakes";
 import { getProfile, saveProfile } from "./profile";
 import { touchMemory } from "./agent";
@@ -70,6 +82,86 @@ export async function runTool(
         return {
           label: `已加入生词本 · ${lemma}`,
           result: `已把 ${lemma} 加进生词本`,
+        };
+      }
+      case "list_vocab": {
+        const w = typeof a.word === "string" ? a.word.trim() : "";
+        if (w) {
+          const lemma = await toLemma(w);
+          const item = await db.vocab.get(lemma);
+          if (!item)
+            return {
+              label: `生词本 · ${lemma} 不在里面`,
+              result: `${lemma} 不在生词本里`,
+            };
+          const card = await db.cards.get(lemma);
+          const e = item.gloss ?? (await getEntry(lemma));
+          return {
+            label: `查了生词本 · ${lemma}`,
+            result: `${lemma} 在生词本里（${new Date(item.addedAt).toLocaleDateString()} 加入${item.sources[0] ? `，出自 ${item.sources[0].paperTitle}` : ""}）；${e ? shortTranslation(e) : ""}；${card ? (isMastered(card) ? "已掌握" : `${STATE_LABELS[card.state]}，下次复习 ${new Date(card.due).toLocaleDateString()}`) : "还没开始背"}`,
+          };
+        }
+        const limit = Math.min(50, Math.max(1, Number(a.limit) || 20));
+        const now = Date.now();
+        let words: string[];
+        let title: string;
+        if (a.filter === "due") {
+          const due = (
+            await db.cards.where("due").belowOrEqual(now).toArray()
+          ).filter((c) => c.origin === "vocab");
+          words = due.map((c) => c.word);
+          title = `今天该复习的生词 ${words.length} 个`;
+        } else {
+          const all = await db.vocab.orderBy("addedAt").reverse().toArray();
+          words = all.map((v) => v.word);
+          title = `生词本共 ${all.length} 个词，最近加的`;
+        }
+        const lines = await Promise.all(
+          words.slice(0, limit).map(async (x) => {
+            const item = await db.vocab.get(x);
+            const e = item?.gloss ?? (await getEntry(x));
+            return `- ${x}${e ? `：${shortTranslation(e)}` : ""}`;
+          }),
+        );
+        return {
+          label: `看了生词本（${words.length} 个）`,
+          result: `${title}：\n${lines.join("\n") || "（没有）"}`,
+        };
+      }
+      case "remove_from_vocab": {
+        const lemma = await toLemma(String(a.word ?? "").trim());
+        if (!(await db.vocab.get(lemma)))
+          return {
+            label: `生词本 · ${lemma} 本来就不在`,
+            result: `${lemma} 不在生词本里`,
+          };
+        await removeFromVocab(lemma);
+        return {
+          label: `从生词本删了 · ${lemma}`,
+          result: `已把 ${lemma} 从生词本删掉`,
+        };
+      }
+      case "mark_known": {
+        const lemma = await toLemma(String(a.word ?? "").trim());
+        const card = await db.cards.get(lemma);
+        if (!card)
+          return {
+            label: `生词本 · ${lemma} 没有记忆卡片`,
+            result: `${lemma} 不在生词本/背词卡片里，先加进生词本`,
+          };
+        // 标成已掌握：进入复习状态、稳定度拉到 30 天以上，两个月后再出现
+        const now = Date.now();
+        await db.cards.put({
+          ...card,
+          state: State.Review,
+          stability: Math.max(card.stability, 30),
+          scheduled_days: 60,
+          due: now + 60 * 86_400_000,
+          last_review: now,
+        });
+        return {
+          label: `标成已掌握 · ${lemma}`,
+          result: `已把 ${lemma} 标成已掌握，两个月后再复习`,
         };
       }
       case "add_to_mistakes": {
