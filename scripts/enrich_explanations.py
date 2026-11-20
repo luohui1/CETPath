@@ -11,7 +11,7 @@ import json, sys, glob, os
 ROOT = os.path.join(os.path.dirname(__file__), "..", "public", "papers")
 TRAPS = {"偷换对象", "程度篡改", "无中生有", "常识绑架", "因果颠倒", "范围扩大", "张冠李戴", "正反颠倒", "原词照搬", "答非所问", "词性不符", "语义不符"}
 KINDS = {"主旨", "细节", "原因", "观点态度", "建议", "推断", "推理", "态度", "词义", "例证", "段落匹配", "词义辨析", "固定搭配", "逻辑关系", "语法", "段落排序"}
-LIM = {"brief": 48, "signal": 48}
+LIM = {"brief": 48, "signal": 64}
 
 
 def load(p):
@@ -46,7 +46,7 @@ def merge(pid, batch):
         if brief and (len(brief) > LIM["brief"] or (ans and ans not in brief[:6])):
             bad.append("brief 太长或开头没写答案")
         if len(signal) > LIM["signal"]:
-            bad.append("signal 超过 48 字")
+            bad.append("signal 超过 64 字")
         if not isinstance(traps, dict) or any(k == ans or k not in letters or t not in TRAPS for k, t in traps.items()):
             bad.append("traps 键必须是错误选项字母、值必须在陷阱表里")
         if bad:
