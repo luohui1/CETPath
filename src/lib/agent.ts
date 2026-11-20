@@ -43,6 +43,7 @@ const trimTurns = (m: ChatMsg[]) =>
     );
 // question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
 export type AgentContext = {
+  ink?: string; // 手写笔记识别出的文字
   paper?: string;
   sentence: string;
   question?: string;
@@ -56,7 +57,7 @@ export type AgentContext = {
 
 // 激活码：服务器设了激活码时，没激活的设备用不了 Agent（省模型额度）。输一次存在本机，每次请求带上
 const CODE_KEY = "yz-agent-code";
-const agentHeaders = (json = false): Record<string, string> => {
+export const agentHeaders = (json = false): Record<string, string> => {
   const code = localStorage.getItem(CODE_KEY);
   return {
     ...(json ? { "Content-Type": "application/json" } : {}),

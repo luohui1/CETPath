@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { inkNotes } from "@/lib/ink";
 import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -1790,7 +1791,7 @@ export function ExamRoom({
       sentence={agentThread}
       onClearSentence={() => setAgentThread(null)}
       onClose={() => setAgentOpen(false)}
-      env={{ paper, answers }}
+      env={{ paper, answers, ink: () => inkNotes(marksRaw ?? [], pages) }}
     />
   );
   const dockEl = panel && dockView && (

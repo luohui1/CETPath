@@ -35,7 +35,8 @@ SESSION_SEC = 7 * 86400
 RATE = (40, 600)  # 每个 IP 每 10 分钟最多 40 次提问
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
-_bad_codes: dict[str, list[float]] = {}  # 激活码输错的次数
+_bad_codes: dict[str, list[float]] = {}
+_ink_hits: dict[str, list[float]] = {}  # 手写识别（一块笔迹一次）  # 激活码输错的次数
 _fails: dict[str, list[float]] = {}
 
 
@@ -168,6 +169,12 @@ def today() -> str:
     return f"{d.year} 年 {d.month} 月 {d.day} 日"
 
 
+INK = """这是一位学习者在英语试卷上手写的笔记（只截了笔迹，白底）。把手写内容转写成文字：
+- 写的是字（中文、英文、符号、箭头）就逐字转写，看不清的字用 □；
+- 只是圈、下划线、勾、叉、括号之类的记号，就简短说明是什么记号；
+- 只输出转写结果，一行，不要解释。"""
+
+
 def profile_block(data: dict) -> str:
     """学习者档案 + 应用现算的学习数据；旧版前端发来的一条条记忆也认"""
     parts = []
@@ -203,6 +210,8 @@ def context_block(ctx: dict) -> str:
         parts.append("这次是做完一套题后的复盘。作答数据（错题、没答和超时的题逐条列出）：\n" + str(ctx["review"])[:9000])
     if ctx.get("marks"):
         parts.append("学习者在卷面上的标注（高亮、划线、便签）：\n" + str(ctx["marks"])[:3000])
+    if ctx.get("ink"):
+        parts.append("学习者的手写笔记（已从笔迹识别成文字，可能有个别字认错）：\n" + str(ctx["ink"])[:3000])
     if ctx.get("paperText"):
         parts.append("这套卷的原文（按页，从卷面文字层取；扫描卷可能有个别识别错字，按上下文理解）。问到某题时直接从这里找题目、选项和文章：\n" + str(ctx["paperText"])[:30000])
     if ctx.get("word"):
@@ -453,6 +462,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(403, {"error": "这台设备还没激活 Agent，请输入激活码"})
         if path == "/api/agent/chat":
             return self.chat(cfg, data)
+        if path == "/api/agent/ink":
+            return self.ink(cfg, data)
         if path == "/api/agent/remember":
             return self.remember(cfg, data)
         self.send_json(404, {"error": "not found"})
@@ -474,6 +485,27 @@ class Handler(BaseHTTPRequestHandler):
             return True
         limited(_bad_codes, self.ip(), 10, 900)
         return False
+
+    def ink(self, cfg: dict, data: dict):
+        """手写笔记截图 → 文字：用能看图的模型（可选模型里第一个 Gemini，没有就用默认模型）"""
+        if not ready(cfg):
+            return self.send_json(503, {"error": "AI 助教还没配置好"})
+        if limited(_ink_hits, self.ip(), 200, 600):
+            return self.send_json(429, {"error": "识别太频繁"})
+        png = data.get("png")
+        if not isinstance(png, str) or not png.startswith("data:image/png;base64,") or len(png) > 240_000:
+            return self.send_json(400, {"error": "图片不对"})
+        text = INK
+        if isinstance(data.get("near"), str) and data["near"].strip():
+            text += "\n参考：这块笔迹写在这些印刷文字旁边（图里没有印刷字，图里看到的全是手写，都要转写；这些文字只帮你认字）：" + data["near"][:300]
+        msgs = [{"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": png}}]}]
+        vision = cfg.get("vision_model") or next((m for m in models(cfg) if "gemini" in m.lower()), None)
+        try:
+            with upstream(cfg, msgs, False, 300, 0, model=vision) as r:
+                out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
+        except Exception as e:  # noqa: BLE001
+            return self.send_json(502, {"error": upstream_error(e)})
+        self.send_json(200, {"text": out[:300]})
 
     def chat(self, cfg: dict, data: dict):
         if not ready(cfg):

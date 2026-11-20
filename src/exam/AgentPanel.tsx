@@ -126,6 +126,9 @@ export function AgentPanel({
     const ctl = new AbortController();
     abort.current = ctl;
     try {
+      // 做题页：先把手写笔记识别成文字带上（识别过的有缓存）
+      const ink = env?.ink ? await env.ink().catch(() => "") : "";
+      const live = ink ? { ...thread.ctx, ink } : thread.ctx;
       let list: ChatMsg[] = base;
       let answer = "";
       // 模型要用工具：在本机执行，把结果接回去再问，最多 4 轮
@@ -133,7 +136,7 @@ export function AgentPanel({
         const cur = list;
         const r = await streamChat(
           cur,
-          thread.ctx,
+          live,
           (all) => put([...cur, { role: "assistant", content: all }]),
           ctl.signal,
           true,

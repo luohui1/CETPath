@@ -8,7 +8,7 @@ import { KIND_NAMES, type Paper } from "./papers";
 import type { ToolCall } from "./agent";
 
 /** Agent 的工具在浏览器里执行：词典、生词本、错题本都在学习者本机。env 是做题页的上下文（AI 助教页没有试卷） */
-export type ToolEnv = { paper?: Paper; answers?: Record<string, string> };
+export type ToolEnv = { paper?: Paper; answers?: Record<string, string>; ink?: () => Promise<string> };
 type Result = { label: string; result: string };
 
 export async function runTool(
