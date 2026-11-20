@@ -293,7 +293,7 @@ def pretranslate():
     for a in json.load(open(os.path.join(ARTICLES_DIR, "index.json"))):
         aid = str(a.get("id", ""))
         p = os.path.join(TRANS_DIR, aid + ".json")
-        if not re.fullmatch(r"(voa|tc)-\d+", aid) or os.path.exists(p):
+        if not re.fullmatch(r"(voa|wiki)-\d+", aid) or os.path.exists(p):
             continue
         try:
             paras = [str(x["t"])[:4000] for x in json.load(open(os.path.join(ARTICLES_DIR, aid + ".json")))["paras"]]
@@ -600,7 +600,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/agent/trans":
             aid = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id", [""])[0]
             p = os.path.join(TRANS_DIR, aid + ".json")
-            if re.fullmatch(r"(voa|tc)-\d+", aid) and os.path.exists(p):
+            if re.fullmatch(r"(voa|wiki)-\d+", aid) and os.path.exists(p):
                 return self.send_json(200, json.load(open(p)))
             return self.send_json(404, {"error": "还没有译文"})
         if path in ("/admin", "/admin/"):
@@ -784,7 +784,7 @@ class Handler(BaseHTTPRequestHandler):
     def trans(self, cfg: dict, data: dict):
         """外刊逐句翻译：返回每段的 [[英文句, 中文], ...]，存起来下次直接给"""
         aid = str(data.get("id", ""))
-        if not re.fullmatch(r"(voa|tc)-\d+", aid):
+        if not re.fullmatch(r"(voa|wiki)-\d+", aid):
             return self.send_json(400, {"error": "参数不对"})
         # 原文从服务器上的文章取，不用请求里带的：译文是大家共用的，不能让人塞别的内容进缓存
         try:
