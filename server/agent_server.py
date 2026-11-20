@@ -104,12 +104,14 @@ def limited(bucket: dict[str, list[float]], ip: str, n: int, window: int) -> boo
 SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉大学英语四六级（CET-4/6）和考研英语（一）（二）命题规律的老师。学习者在用真题备考，问你看不懂的句子、词和题型。
 
 ## 讲解原则
-- 用中文讲，英文原文片段保留英文；准确、简洁、像老师当面讲，不寒暄、不说"好的""希望对你有帮助"。
+- 用中文讲，英文原文片段保留英文；像老师当面讲，不寒暄、不说"好的""希望对你有帮助"。
+- 回答要短、说人话：先给结论，能用三五句或几条要点说清就别多写；少用术语，非用不可时顺手用大白话解释一下。
+- 按这套卷属于的考试来讲：四六级的卷子只从四六级出发（题型、分值、常考点、四六级怎么出题），不要扯考研；考研的卷子同理。没有试卷时按学习者档案里的考试目标。
 - 一切围绕考试：讲清这个点在四六级/考研里怎么考、怎么在阅读/翻译/写作里用、常见陷阱。
 - 学习者问什么就直接答什么。问某道题怎么做、选什么，直接给出答案，再讲依据：原文定位句、同义替换、其他选项错在哪。不要只讲方法不给答案，也不要反问让他自己想。
 
 ## 解析一个句子
-按下面的结构输出，每部分用 ### 小标题：
+真正的长难句才用下面的完整结构（每部分用 ### 小标题，每部分一两句话）；简单的句子直接给译文和一两句要点：
 ### 一句话意思
 自然通顺的中文译文。
 ### 主干
@@ -200,7 +202,12 @@ def memory_block(memory: list) -> str:
 def context_block(ctx: dict) -> str:
     parts = []
     if ctx.get("paper"):
-        parts.append(f"试卷：{str(ctx['paper'])[:80]}")
+        title = str(ctx["paper"])[:80]
+        parts.append(f"试卷：{title}")
+        if "四级" in title or "六级" in title:
+            parts.append("这是大学英语四六级（CET）的卷子：只从四六级的角度讲，不要提考研。")
+        elif "考研" in title:
+            parts.append("这是考研英语的卷子：从考研的角度讲。")
     if ctx.get("sentence"):
         parts.append(f"正在看的句子：{str(ctx['sentence'])[:1200]}")
     if ctx.get("question") and not ctx.get("sentence"):
@@ -212,7 +219,10 @@ def context_block(ctx: dict) -> str:
     if ctx.get("marks"):
         parts.append("学习者在卷面上的标注（高亮、划线、便签）：\n" + str(ctx["marks"])[:3000])
     if ctx.get("ink"):
-        parts.append("学习者的手写笔记（已从笔迹识别成文字，可能有个别字认错）：\n" + str(ctx["ink"])[:3000])
+        parts.append(
+            "学习者的手写笔记（已从笔迹识别成文字，可能有个别字认错）。先读懂它们：他圈了哪些词、写了什么释义、可能卡在哪；"
+            "被问到笔记时归纳成几条要点，别逐条照念：\n" + str(ctx["ink"])[:3000]
+        )
     if ctx.get("paperText"):
         parts.append("这套卷的原文（按页，从卷面文字层取；扫描卷可能有个别识别错字，按上下文理解）。问到某题时直接从这里找题目、选项和文章：\n" + str(ctx["paperText"])[:30000])
     if ctx.get("word"):
