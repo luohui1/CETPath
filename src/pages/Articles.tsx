@@ -10,7 +10,7 @@ const LEVELS = ["全部", "四级", "六级", "考研"] as const;
 const SOURCES = [
   ["all", "全部来源"],
   ["voa", "VOA"],
-  ["tc", "The Conversation"],
+  ["wiki", "维基百科"],
 ] as const;
 const READ_KEY = "yz-articles-read";
 
@@ -29,7 +29,7 @@ export function ArticlesPage() {
     cn("h-8 rounded-full px-3 text-[13px] font-medium transition", on ? "bg-[var(--ink)] text-white" : "bg-[var(--paper-100)] text-[var(--ink-700)] hover:bg-[var(--fill-quiet)]");
   return (
     <div className="mx-auto max-w-[920px] px-5 py-6">
-      <PageHeader title="外刊阅读" desc={`每天更新 VOA Learning English 和 The Conversation 的新文章。点词查词，生词加进生词本${vocabN ? `（现在 ${vocabN} 个）` : ""}，右边 Agent 帮你读。`} />
+      <PageHeader title="外刊阅读" desc={`每天更新 VOA Learning English 和英文维基百科的文章，话题贴近考研阅读。点词查词，生词加进生词本${vocabN ? `（现在 ${vocabN} 个）` : ""}，右边 Agent 帮你读。`} />
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {LEVELS.map((l) => (
           <button key={l} type="button" className={chip(level === l)} onClick={() => setLevel(l)}>

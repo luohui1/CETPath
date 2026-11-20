@@ -1,10 +1,10 @@
-/** 外刊：每天由 GitHub Actions 抓 VOA Learning English 和 The Conversation，放在 /articles-data/ 下 */
+/** 外刊：每天由 GitHub Actions 抓 VOA Learning English 和英文维基百科，放在 /articles-data/ 下 */
 export const ARTICLES_BASE = "/articles-data/";
 
 export type ArticlePara = { k: "p" | "h" | "q" | "fine"; t: string };
 export interface ArticleMeta {
   id: string;
-  source: "voa" | "tc";
+  source: "voa" | "wiki";
   title: string;
   summary: string;
   url: string;
@@ -29,7 +29,7 @@ export interface Article extends ArticleMeta {
 export const sourceHref = (paperId: string, query = "") =>
   paperId.startsWith("article:") ? `/articles/${paperId.slice(8)}` : `/paper/${paperId}${query}`;
 
-export const SOURCE_NAMES: Record<ArticleMeta["source"], string> = { voa: "VOA Learning English", tc: "The Conversation" };
+export const SOURCE_NAMES: Record<ArticleMeta["source"], string> = { voa: "VOA Learning English", wiki: "英文维基百科" };
 
 async function json<T>(path: string): Promise<T> {
   const r = await fetch(ARTICLES_BASE + path);

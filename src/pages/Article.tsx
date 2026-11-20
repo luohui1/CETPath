@@ -179,7 +179,7 @@ export function ArticlePage() {
               {SOURCE_NAMES[a.source]} · {a.level}难度 · {a.words} 词 · 约 {a.minutes} 分钟
             </p>
             <h1 className="mt-2 font-serif text-[28px] leading-[1.25] font-semibold text-[var(--ink)]">{a.title}</h1>
-            {/* 署名和授权放在文首（The Conversation 的转载条件） */}
+            {/* 署名和授权放在文首（维基百科 CC BY-SA 的署名要求） */}
             <p className="mt-3 text-[13px] leading-[1.6] text-[var(--ink-500)]">
               {a.author} · {a.published.slice(0, 10)} ·{" "}
               <a href={a.url} target="_blank" rel="noreferrer" className="text-[var(--blue)] underline-offset-2 hover:underline">
