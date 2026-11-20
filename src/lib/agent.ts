@@ -11,6 +11,7 @@ export type ChatMsg = {
   content: string;
   calls?: ToolCall[];
   callId?: string;
+  at?: number; // 发出/答完的时间（时间轴）
   label?: string;
 };
 // 只带最近几轮、每条截短：长对话也不会超过后端的请求上限

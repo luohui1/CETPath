@@ -1791,7 +1791,7 @@ export function ExamRoom({
       sentence={agentThread}
       onClearSentence={() => setAgentThread(null)}
       onClose={() => setAgentOpen(false)}
-      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal) }}
+      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal), pages }}
     />
   );
   const dockEl = panel && dockView && (

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { ArrowUp, Sparkle, Stop, Wrench } from "@phosphor-icons/react";
+import {
+  ArrowUp,
+  CaretDown,
+  Sparkle,
+  Stop,
+  Wrench,
+} from "@phosphor-icons/react";
 import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
 import { AgentQuiz } from "./AgentQuiz";
 import { AgentActivate } from "@/components/AgentActivate";
@@ -57,6 +63,14 @@ const firstAsk = (ctx: AgentContext) =>
     ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。`
     : "这句我没看懂，帮我解析一下。");
 
+const when = (t: number) => {
+  const d = new Date(t);
+  const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toDateString() === new Date().toDateString()
+    ? hm
+    : `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+};
+
 /** inDock：做题页右侧面板里，多一个"去 AI 助教页"的链接 */
 export function AgentPanel({
   thread,
@@ -78,6 +92,9 @@ export function AgentPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noted, setNoted] = useState<string[]>([]);
+  // 回答折叠：较早的长回答默认收起，点了展开；这里记手动切换过的
+  const [fold, setFold] = useState<Record<number, boolean>>({});
+  const lastAnswer = msgs.map((m) => m.role).lastIndexOf("assistant");
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const asked = useRef<string | null>(null);
@@ -108,7 +125,7 @@ export function AgentPanel({
     const id = thread.id;
     const base = [
       ...(threads.get(id) ?? []),
-      { role: "user" as const, content: text.trim() },
+      { role: "user" as const, content: text.trim(), at: Date.now() },
     ];
     let ctx = thread.ctx; // 存进本机的上下文（识别出手写笔记后换成带笔记的）
     const put = (list: ChatMsg[], persist = false) => {
@@ -149,6 +166,7 @@ export function AgentPanel({
           {
             role: "assistant",
             content: r.text,
+            at: Date.now(),
             ...(r.calls.length ? { calls: r.calls } : {}),
           },
         ];
@@ -308,7 +326,15 @@ export function AgentPanel({
         )}
       </div>
 
-      <div className="flex-1 space-y-3 px-4 py-3" aria-live="polite">
+      <div
+        className={cn(
+          "flex-1 space-y-3 py-3 pr-4",
+          msgs.some((m) => m.role === "user")
+            ? "relative ml-4 border-l border-[var(--line-soft)] pl-4"
+            : "px-4",
+        )}
+        aria-live="polite"
+      >
         {inDock && msgs.length === 0 && !busy && (
           <div className="flex flex-col items-center gap-2 px-6 pt-16 text-center">
             <Sparkle className="size-7 text-[var(--blue)]" weight="duotone" />
@@ -318,25 +344,48 @@ export function AgentPanel({
             </p>
           </div>
         )}
-        {msgs.map((m, i) =>
-          m.role === "user" ? (
-            <div
-              key={i}
-              className="ml-auto w-fit max-w-[85%] rounded-[14px] rounded-br-[4px] bg-[var(--blue-tint)] px-3 py-2 text-[14px] leading-[1.6] whitespace-pre-wrap text-[var(--ink)]"
-            >
-              {m.content}
-            </div>
-          ) : m.role === "tool" ? (
-            <div
-              key={i}
-              className="flex items-center gap-1.5 text-[12px] text-[var(--ink-500)]"
-            >
-              <Wrench className="size-3.5" /> {m.label ?? "用了一个工具"}
-            </div>
-          ) : (
+        {msgs.map((m, i) => {
+          if (m.role === "user")
+            return (
+              <div key={i} className="relative pt-1">
+                {/* 时间轴：每次提问一个点和时间 */}
+                <span className="absolute top-[14px] -left-[15px] size-[9px] rounded-full border-2 border-white bg-[var(--blue)] shadow-[0_0_0_1px_var(--blue-line,#bcd3f5)]" />
+                {m.at && (
+                  <p className="mb-1 text-[11px] text-[var(--ink-500)] num">
+                    {when(m.at)}
+                  </p>
+                )}
+                <div className="ml-auto w-fit max-w-[85%] rounded-[14px] rounded-br-[4px] bg-[var(--blue-tint)] px-3 py-2 text-[14px] leading-[1.6] whitespace-pre-wrap text-[var(--ink)]">
+                  {m.content}
+                </div>
+              </div>
+            );
+          if (m.role === "tool")
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-1.5 text-[12px] text-[var(--ink-500)]"
+              >
+                <Wrench className="size-3.5" /> {m.label ?? "用了一个工具"}
+              </div>
+            );
+          const long = m.content.length > 360;
+          const streaming = busy && i === msgs.length - 1;
+          const folded = long && !streaming && (fold[i] ?? i < lastAnswer);
+          return (
             <div key={i}>
               {m.content ? (
-                <Markdown text={m.content} />
+                <div
+                  className={cn(
+                    "relative",
+                    folded && "max-h-[6.5rem] overflow-hidden",
+                  )}
+                >
+                  <Markdown text={m.content} />
+                  {folded && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--surface,white)] to-transparent" />
+                  )}
+                </div>
               ) : (
                 !m.calls?.length && (
                   <span className="inline-flex items-center gap-2 text-[var(--ink-500)]">
@@ -344,13 +393,26 @@ export function AgentPanel({
                   </span>
                 )
               )}
+              {long && !streaming && (
+                <button
+                  type="button"
+                  onClick={() => setFold({ ...fold, [i]: !folded })}
+                  className="mt-1 inline-flex items-center gap-1 text-[12px] text-[var(--blue)] hover:underline"
+                >
+                  <CaretDown
+                    className={cn("size-3", !folded && "rotate-180")}
+                    weight="bold"
+                  />
+                  {folded ? "展开回答" : "收起回答"}
+                </button>
+              )}
               {m.calls?.map((c) => {
                 const quiz = c.name === "show_quiz" ? quizOf(c) : null;
                 return quiz ? <AgentQuiz key={c.id} quiz={quiz} /> : null;
               })}
             </div>
-          ),
-        )}
+          );
+        })}
         {error && (
           <p className="rounded-[10px] bg-[var(--red-tint,#fdecec)] px-3 py-2 text-[14px] text-[var(--red)]">
             {error}

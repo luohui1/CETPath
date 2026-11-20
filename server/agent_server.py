@@ -136,7 +136,8 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 错题挑重点讲，不用每题都展开；学习者追问某一题时再细讲那题。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义。
+- 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
 - 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
 - 出同类练习：对话里还不清楚弱项时先调 get_weak_points，再用 show_quiz 出 3–5 道四六级/考研风格的单选题。题目、答案和解析都放在工具参数里，正文只用一句话说练什么，不要再把题目和答案写一遍。
@@ -169,10 +170,10 @@ def today() -> str:
     return f"{d.year} 年 {d.month} 月 {d.day} 日"
 
 
-INK = """这是一位学习者在英语试卷上手写的笔记（只截了笔迹，白底）。把手写内容转写成文字：
-- 写的是字（中文、英文、符号、箭头）就逐字转写，看不清的字用 □；
-- 只是圈、下划线、勾、叉、括号之类的记号，就简短说明是什么记号；
-- 只输出转写结果，一行，不要解释。"""
+INK = """这是学习者在英语试卷上的手写标注（只截了笔迹，白底）。直接说出标注内容，不要解释、不要分析：
+- 有被圈住或划线的印刷词时，格式是“印刷词：手写内容”，例如“take place of：代替”；
+- 只有手写字就只输出手写内容；只有圈或线、没有字，就输出“圈了 印刷词”或“划了 印刷词”；
+- 看不清的字用 □。只输出一行。"""
 
 
 def profile_block(data: dict) -> str:
@@ -260,6 +261,17 @@ TOOLS = [
         "改写学习者档案（长期记忆）。学习者让你“记住”什么、或说出考试目标/日期/偏好时用。传入改写后的完整档案，栏目同系统提示里的档案。",
         {"profile": {"type": "string", "description": "完整的新档案（Markdown，栏目：考试目标、语法弱项、词汇弱项、题型表现、讲解偏好、最近在练）"}},
         ["profile"],
+    ),
+    _fn(
+        "annotate_paper",
+        "在学习者的卷面上做标注（会显示 AI 角标）：高亮、划线、标长难句，可以在旁边写一句释义。text 用卷面上的原文（原词原句，可以只给开头几个词）。",
+        {
+            "text": {"type": "string", "description": "要标的原文，照抄卷面；只给要标的那几个词（标短语就只给短语，标长难句才给整句）"},
+            "style": {"type": "string", "enum": ["highlight", "underline", "long_sentence"], "description": "highlight 高亮重点词句；underline 划线；long_sentence 标长难句"},
+            "note": {"type": "string", "description": "写在旁边的释义或要点，简短，可选"},
+            "page": {"type": "integer", "description": "第几页，可选"},
+        },
+        ["text", "style"],
     ),
     _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
     _fn(
@@ -496,8 +508,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(png, str) or not png.startswith("data:image/png;base64,") or len(png) > 240_000:
             return self.send_json(400, {"error": "图片不对"})
         text = INK
+        if isinstance(data.get("covered"), str) and data["covered"].strip():
+            text += "\n被这块笔迹圈住或划到的印刷词（图里没有印刷字）：" + data["covered"][:200]
         if isinstance(data.get("near"), str) and data["near"].strip():
-            text += "\n参考：这块笔迹写在这些印刷文字旁边（图里没有印刷字，图里看到的全是手写，都要转写；这些文字只帮你认字）：" + data["near"][:300]
+            text += "\n附近的印刷文字（只帮你认字，不要输出）：" + data["near"][:300]
         msgs = [{"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": png}}]}]
         vision = cfg.get("vision_model") or next((m for m in models(cfg) if "gemini" in m.lower()), None)
         try:

@@ -107,6 +107,7 @@ export interface MarkRow {
   text?: string; // 高亮、下划线：选中的原文
   at?: [number, number]; // 便签位置
   note?: string; // 便签内容，或高亮上的批注
+  ai?: boolean; // Agent 加的（右上角带 AI 角标）
   createdAt: number;
   updatedAt: number;
 }

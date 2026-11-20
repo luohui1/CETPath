@@ -4,11 +4,17 @@ import { addToVocab } from "./learning";
 import { masteryId, scoredQuestions } from "./mistakes";
 import { getProfile, saveProfile } from "./profile";
 import { touchMemory } from "./agent";
-import { KIND_NAMES, type Paper } from "./papers";
+import { KIND_NAMES, type Paper, type PdfWordsPage } from "./papers";
+import { newMark, wordRange } from "./marks";
 import type { ToolCall } from "./agent";
 
 /** Agent 的工具在浏览器里执行：词典、生词本、错题本都在学习者本机。env 是做题页的上下文（AI 助教页没有试卷） */
-export type ToolEnv = { paper?: Paper; answers?: Record<string, string>; ink?: (signal?: AbortSignal) => Promise<string> };
+export type ToolEnv = {
+  paper?: Paper;
+  answers?: Record<string, string>;
+  ink?: (signal?: AbortSignal) => Promise<string>;
+  pages?: PdfWordsPage[] | null;
+};
 type Result = { label: string; result: string };
 
 export async function runTool(
@@ -132,9 +138,78 @@ ${(await getProfile()) || "（还没有）"}
 错题本里还没掌握的题（按题型）：\n${kinds.join("\n") || "（错题本是空的）"}`,
         };
       }
+      case "annotate_paper": {
+        if (!env.paper || !env.pages)
+          return {
+            label: "标注：这里没有试卷",
+            result: "当前不在做题页，没法标注",
+          };
+        const text = String(a.text ?? "").trim();
+        const style =
+          a.style === "underline" || a.style === "long_sentence"
+            ? a.style
+            : "highlight";
+        const hit = findText(env.pages, text, Number(a.page) || undefined);
+        if (!hit)
+          return {
+            label: `标注：卷面上没找到“${text.slice(0, 30)}”`,
+            result: `卷面上没找到这段原文：${text.slice(0, 80)}。要用卷面上的原词原句（可以只给开头几个词）`,
+          };
+        const { rects, text: got } = wordRange(
+          env.pages[hit.page - 1].w,
+          hit.a,
+          hit.b,
+        );
+        const kind = style === "highlight" ? "highlight" : "underline";
+        const color =
+          style === "highlight"
+            ? "yellow"
+            : style === "long_sentence"
+              ? "blue"
+              : "red";
+        const note =
+          typeof a.note === "string" && a.note.trim()
+            ? a.note.trim().slice(0, 200)
+            : "";
+        const last = rects[rects.length - 1];
+        const W = env.pages[hit.page - 1].width;
+        const marks = [
+          newMark(env.paper.id, hit.page, {
+            kind,
+            color,
+            rects,
+            text: got,
+            ai: true,
+            ...(note ? { note } : {}),
+          }),
+        ];
+        // 释义写成旁边的便签，卷面上看得见
+        if (note)
+          marks.push(
+            newMark(env.paper.id, hit.page, {
+              kind: "note",
+              color: "note",
+              at: [Math.min(W - 12, last[2] + 8), last[1] + 2],
+              note: (style === "long_sentence" ? "长难句：" : "") + note,
+              ai: true,
+            }),
+          );
+        await db.marks.bulkPut(marks);
+        const what =
+          style === "highlight"
+            ? "高亮"
+            : style === "long_sentence"
+              ? "标了长难句"
+              : "划线";
+        return {
+          label: `第 ${hit.page} 页${what} · ${got.slice(0, 40)}${note ? `（${note.slice(0, 20)}）` : ""}`,
+          result: `已在第 ${hit.page} 页${what}：${got}${note ? `，旁边写了：${note}` : ""}`,
+        };
+      }
       case "update_profile": {
         const text = typeof a.profile === "string" ? a.profile.trim() : "";
-        if (!text) return { label: "档案：内容是空的", result: "profile 为空，没改" };
+        if (!text)
+          return { label: "档案：内容是空的", result: "profile 为空，没改" };
         touchMemory(); // 聊完后台的整理是按旧档案算的，作废
         await saveProfile(text);
         return { label: "更新了学习者档案", result: "档案已更新" };
@@ -190,4 +265,38 @@ export function quizOf(
   } catch {
     return null;
   }
+}
+
+/** 在卷面文字层里找一段原文（按词比，忽略大小写和标点）；找不到整段就用前几个词定位、按词数往后取 */
+function findText(
+  pages: PdfWordsPage[],
+  text: string,
+  page?: number,
+): { page: number; a: number; b: number } | null {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = text.split(/\s+/).map(norm).filter(Boolean);
+  if (!want.length) return null;
+  const order =
+    page && pages[page - 1]
+      ? [page - 1, ...pages.map((_, i) => i).filter((i) => i !== page - 1)]
+      : pages.map((_, i) => i);
+  for (const n of [
+    want.length,
+    Math.min(want.length, 5),
+    Math.min(want.length, 3),
+  ])
+    for (const pi of order) {
+      const w = pages[pi].w.map((x) => norm(x[0]));
+      for (let i = 0; i + n <= w.length; i++) {
+        let ok = true;
+        for (let k = 0; k < n && ok; k++) ok = w[i + k] === want[k];
+        if (ok)
+          return {
+            page: pi + 1,
+            a: i,
+            b: Math.min(w.length - 1, i + want.length - 1),
+          };
+      }
+    }
+  return null;
 }

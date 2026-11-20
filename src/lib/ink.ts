@@ -133,7 +133,17 @@ export async function inkNotes(
           const r = await fetch("/api/agent/ink", {
             method: "POST",
             headers: agentHeaders(true),
-            body: JSON.stringify({ png: render(j.marks, j.box), near: words }),
+            body: JSON.stringify({
+              png: render(j.marks, j.box),
+              near: words,
+              covered: data
+                ? data.w
+                    .filter((w) => near([w[1], w[2], w[3], w[4]], j.box, 0))
+                    .map((w) => w[0])
+                    .join(" ")
+                    .slice(0, 200)
+                : "",
+            }),
             signal,
           });
           if (r.ok)
