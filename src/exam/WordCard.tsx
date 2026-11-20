@@ -216,7 +216,8 @@ export function WordCard({
   }, [ctx]);
 
   // 选短语：选了两个词以上就查——先离线短语表（要正好是这一段），再有道
-  const clean = (t: string) => t.replace(/[^A-Za-z'’-]/g, "");
+  // 换到更短的句子时 pick 还没清（effect 在渲染后），序号可能越界
+  const clean = (t: string | undefined) => (t ?? "").replace(/[^A-Za-z'’-]/g, "");
   const pickText = pick && ctx && pick.length > 1 ? pick.map((k) => clean(ctx.tokens[k])).filter(Boolean).join(" ") : "";
   // 显示用：中间隔开的地方写成 …（take … into account）
   const pickShow = pick && ctx && pick.length > 1 ? pick.map((k, i) => (i && k > pick[i - 1] + 1 ? "… " : "") + clean(ctx.tokens[k])).join(" ") : "";
