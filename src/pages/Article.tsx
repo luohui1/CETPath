@@ -153,7 +153,7 @@ export function ArticlePage() {
   return (
     <WordTextProvider onWord={onWord} marks>
       <div className="flex h-dvh bg-[var(--paper-100)]">
-        <main ref={mainRef} onScroll={() => setSel(null)} className="min-w-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} data-ink-scroll onScroll={() => setSel(null)} className="min-w-0 flex-1 overflow-y-auto">
           <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b border-[var(--line-soft)] bg-white/90 px-3 backdrop-blur">
             <Link to="/articles" className="gr-tool" aria-label="回外刊列表">
               <ArrowLeft className="size-[18px]" />

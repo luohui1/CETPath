@@ -442,7 +442,7 @@ export const InkLayer = memo(function InkLayer({
     else if (e.pointerType === "touch" && stylus.seen) {
       // 手写笔在写时碰到的是手掌；没在写就是手指拖动卷面
       if (stylus.down) return;
-      const stage = el.closest<HTMLElement>(".gr-wb-stage");
+      const stage = el.closest<HTMLElement>(".gr-wb-stage, [data-ink-scroll]");
       if (stage) {
         pan.current = {
           id: e.pointerId,
