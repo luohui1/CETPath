@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { LogoMark } from "@/components/Logo";
 import { signIn } from "@/lib/auth";
+import { WelcomeSections } from "./WelcomeSections";
 import { cn } from "@/lib/utils";
 
 
@@ -79,7 +80,7 @@ export function WelcomePage() {
     }
   };
   const guest = () => localStorage.setItem("yz-guest", "1");
-  const input = "h-12 w-full rounded-[8px] border border-[var(--line)] bg-white px-3 text-[15px] outline-none transition-colors focus:border-[var(--ink-700)]";
+  const input = "h-[54px] w-full rounded-[10px] border border-[var(--line)] bg-white px-4 text-[16px] outline-none transition-colors focus:border-[var(--ink-700)]";
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[var(--paper,#f6f4ee)] text-[var(--ink)]">
@@ -105,19 +106,19 @@ export function WelcomePage() {
           四六级、考研真卷原样打开，在卷子上写写画画；做完和 Agent 复盘，它看得到你错在哪、每题用了多久。还有每天更新的外刊。
         </p>
 
-        <div className="mt-12 max-w-[380px]">
-          <div className="flex gap-6 text-[15px] font-semibold">
+        <div className="mt-12 max-w-[460px]">
+          <div className="flex gap-7 font-serif text-[22px] font-semibold">
             {(["login", "register"] as const).map((m) => (
               <button key={m} type="button" onClick={() => (setMode(m), setErr(null))} className={cn("pb-1 transition-colors", mode === m ? "border-b-2 border-[var(--ink)]" : "border-b-2 border-transparent text-[var(--ink-500)] hover:text-[var(--ink-700)]")}>
                 {m === "login" ? "登录" : "注册"}
               </button>
             ))}
           </div>
-          <form onSubmit={submit} className="mt-5 space-y-3">
+          <form onSubmit={submit} className="mt-6 space-y-3.5">
             <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="username" required placeholder={reg ? "用户名（2–20 个字）" : "用户名"} className={input} />
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={reg ? "new-password" : "current-password"} required minLength={6} placeholder={reg ? "密码（至少 6 位，别用其他网站的）" : "密码"} className={input} />
             {err && <p className="text-[13px] text-[#d0342c]">{err}</p>}
-            <button type="submit" disabled={busy} className="h-12 w-full rounded-[8px] bg-[var(--ink)] text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50">
+            <button type="submit" disabled={busy} className="h-[54px] w-full rounded-[10px] bg-[var(--ink)] text-[16px] font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-50">
               {busy ? "请稍候…" : reg ? "注册，开始做题" : "登录"}
             </button>
           </form>
@@ -131,6 +132,7 @@ export function WelcomePage() {
           <MockPaper small />
         </div>
       </div>
+      <WelcomeSections />
     </div>
   );
 }
