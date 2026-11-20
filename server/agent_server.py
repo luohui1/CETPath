@@ -456,7 +456,20 @@ class Handler(BaseHTTPRequestHandler):
     def activated(self, cfg: dict) -> bool:
         """服务器没设激活码就都算激活；设了就要请求头里带对"""
         code = cfg.get("access_code") or ""
-        return not code or hmac.compare_digest((self.headers.get("X-Agent-Code") or "").strip().encode(), code.encode())
+        if not code:
+            return True
+        got = (self.headers.get("X-Agent-Code") or "").strip()
+        if not got:
+            return False
+        # 任何接口带错的激活码都算一次输错，和 /api/agent/activate 共用限流，免得拿 status 无限试
+        now = time.time()
+        with _lock:
+            if len([t for t in _bad_codes.get(self.ip(), []) if now - t < 900]) >= 10:
+                return False
+        if hmac.compare_digest(got.encode(), code.encode()):
+            return True
+        limited(_bad_codes, self.ip(), 10, 900)
+        return False
 
     def chat(self, cfg: dict, data: dict):
         if not ready(cfg):
