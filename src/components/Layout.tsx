@@ -1,3 +1,4 @@
+import { AuthGate } from "./AuthGate";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { SidebarSimple } from "@phosphor-icons/react";
@@ -188,6 +189,7 @@ export function Layout() {
       </aside>
 
       <main key={pathname} className="page-in mx-auto w-full max-w-[1120px] px-5 pt-8 pb-16 md:px-10 md:pt-10">
+        <AuthGate />
         <Outlet />
       </main>
     </div>

@@ -25,6 +25,7 @@ const page = (load: () => Promise<ComponentType>) => ({ lazy: async () => ({ Com
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
 
 const router = createBrowserRouter([
+  { path: "/welcome", ...page(() => import("./pages/Welcome").then((m) => m.WelcomePage)) },
   // 做题页是沉浸式考场，不显示应用侧边栏；/paper/:id/retry?q=… 是重做错题
   { path: "/articles/:id", ...page(() => import("./pages/Article").then((m) => m.ArticlePage)) },
   { path: "/paper/:id/:section?", ...page(reader), hydrateFallbackElement: <div className="min-h-dvh bg-[var(--paper-100)]" /> },

@@ -8,6 +8,9 @@ import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
 import { downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
 import { AgentModel } from "@/components/AgentModel";
+import { Link } from "react-router";
+import { signOut, useMe } from "@/lib/auth";
+import { syncNow, syncState } from "@/lib/sync";
 import { Button, Card, PageHeader, Segmented, Switch } from "@/components/ui";
 
 function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
@@ -31,6 +34,33 @@ function Group({ title, id, children }: { title: string; id?: string; children: 
       </h2>
       <Card className="divide-y divide-[var(--line-soft)]">{children}</Card>
     </section>
+  );
+}
+
+function Account() {
+  const me = useMe();
+  const [st, setSt] = useState(syncState());
+  useEffect(() => {
+    const on = () => setSt(syncState());
+    addEventListener("yz-sync", on);
+    return () => removeEventListener("yz-sync", on);
+  }, []);
+  const label = st.status === "syncing" ? "正在同步…" : st.status === "error" ? `同步出错：${st.error}` : st.at ? `已同步 · ${new Date(st.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "等待同步";
+  return (
+    <Group title="账号">
+      {me ? (
+        <Row title={me.name} desc={`${label}。生词、错题、做题记录、笔记、Agent 档案和对话会在登录了这个账号的设备间同步`}>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => void syncNow()} loading={st.status === "syncing"}>立即同步</Button>
+            <Button size="sm" onClick={() => void signOut()}>退出登录</Button>
+          </div>
+        </Row>
+      ) : (
+        <Row title="没有登录" desc="数据只存在这台设备上。登录后会在多台设备间同步，本机已有的数据会合并进账号">
+          <Link to="/welcome" className="inline-flex h-8 items-center rounded-[10px] bg-[var(--blue)] px-3 text-[13px] font-medium text-white">登录 / 注册</Link>
+        </Row>
+      )}
+    </Group>
   );
 }
 
@@ -67,6 +97,7 @@ export function SettingsPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader title="设置" />
+      <Account />
 
       <Group title="做题">
         <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
