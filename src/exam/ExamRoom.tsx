@@ -8,7 +8,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { Sparkle,
+import { ListBullets, Sparkle,
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -34,7 +34,7 @@ import { Sparkle,
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { retryPath } from "@/lib/attempts";
-import { allQuestions, findAudioLine, KIND_NAMES, type ExplainFields, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
+import { allQuestions, findAudioLine, kindName, KIND_NAMES, type ExplainFields, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
 import { suggestMap } from "@/lib/report";
 import { colorValue, COLORS, colorTool, markBounds, PEN_SIZES, useMarkHistory, wordAt, type ColorTool, type MarkRow, type Tool } from "@/lib/marks";
 import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
@@ -2013,6 +2013,35 @@ export function ExamRoom({
             </Tip>
           )}
           {/* 本卷笔记、生词在"更多"里和停靠区的标签里 */}
+          {/* 题型导航：一点跳到作文、听力、仔细阅读…（平板上顶栏没有部分切换，这里总在） */}
+          {!scope && !retry && partAnchors.length > 1 && (
+            <G.Popover
+              label="题型导航"
+              width={200}
+              trigger={
+                <button type="button" className="gr-tool" aria-label="题型导航" title="题型导航">
+                  <ListBullets className="size-[19px]" />
+                  {!narrow && <span className="gr-tool-text whitespace-nowrap">题型</span>}
+                </button>
+              }
+            >
+              {(close: () => void) => (
+                <div className="py-0.5">
+                  {partAnchors.map((a) =>
+                    moreItem(
+                      (() => {
+                        const sec = paper.sections.find((x) => x.id === a.id);
+                        return kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : "");
+                      })(),
+                      () => {
+                      close();
+                      scrollToY(topOf(a.page, a.y) - 120);
+                    }),
+                  )}
+                </div>
+              )}
+            </G.Popover>
+          )}
           {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, `答题卡 ${practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, "")}`)}
           <Tip label="Agent：分屏和 AI 对话，它看得到你的作答">
             <button
