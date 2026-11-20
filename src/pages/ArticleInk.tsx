@@ -1,167 +1,99 @@
-import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
-import { getStroke } from "perfect-freehand";
-import { ArrowCounterClockwise, Check, Eraser } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ArrowUUpLeft, ArrowUUpRight, Check, Cursor, Eraser, Highlighter, Lasso, NoteBlank, Pen, TextUnderline, type Icon } from "@phosphor-icons/react";
+import { InkLayer, type InkState } from "@/exam/InkLayer";
+import { db } from "@/lib/db";
+import { COLORS, colorTool, PEN_SIZES, useMarkHistory, type ColorTool, type Tool } from "@/lib/marks";
+import type { PdfWord, PdfWordsPage } from "@/lib/papers";
 import { cn } from "@/lib/utils";
 
 /*
- * 外刊上的手写：一层 SVG 盖在正文上。每一笔挂在离它最近的那个词上（坐标是相对这个词的偏移），
- * 所以切换译文两栏、窗口变宽变窄、文字重新换行时，圈和划线跟着词走。存在本机 localStorage。
+ * 外刊上的手写：直接用做题页那套笔记层（InkLayer）和工具，笔记也存在同一张表里（paperId 是 article:<id>，只有第 1 页）。
+ * 正文那一栏宽度固定（680px），所以把它当成一张"卷面"：词的坐标从页面上量出来，单位就是 px。
  */
-type Stroke = { p: number; o?: number; c: string; pts: [number, number, number][] }; // o：挂在第 p 段字符位置 o 的词上，pts 是相对它左上角的像素偏移
-type Tool = string; // 颜色，或 "erase"
-const COLORS = ["#2b6de5", "#d64545", "#23272f"];
-const inkKey = (id: string) => `yz-article-ink:${id}`;
+const TOOLS: { id: Tool; label: string; short?: string; Icon: Icon }[] = [
+  { id: "select", label: "选择：查词", short: "选择", Icon: Cursor },
+  { id: "pen", label: "手写笔", short: "笔", Icon: Pen },
+  { id: "highlight", label: "高亮", short: "高亮", Icon: Highlighter },
+  { id: "underline", label: "下划线", short: "划线", Icon: TextUnderline },
+  { id: "note", label: "便签", short: "便签", Icon: NoteBlank },
+  { id: "lasso", label: "套索", Icon: Lasso },
+  { id: "eraser", label: "橡皮擦", Icon: Eraser },
+];
 
-function svgPath(pts: number[][]) {
-  const o = getStroke(pts, { size: 3.4, thinning: 0.55, smoothing: 0.5, streamline: 0.45, simulatePressure: pts.every((p) => p[2] === 0.5) });
-  if (!o.length) return "";
-  const d = o.reduce<(string | number)[]>((acc, [x0, y0], i, arr) => {
-    const [x1, y1] = arr[(i + 1) % arr.length];
-    acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
-    return acc;
-  }, ["M", ...o[0], "Q"]);
-  return d.join(" ") + " Z";
+function measure(box: HTMLElement): PdfWordsPage {
+  const r = box.getBoundingClientRect();
+  const w: PdfWord[] = [];
+  const s: string[] = [];
+  box.querySelectorAll<HTMLElement>("[data-p]").forEach((para) => {
+    const si = s.length;
+    s.push(para.querySelector(".w")?.parentElement?.textContent ?? "");
+    para.querySelectorAll<HTMLElement>(".w").forEach((el) => {
+      const e = el.getBoundingClientRect();
+      w.push([el.textContent ?? "", e.left - r.left, e.top - r.top, e.right - r.left, e.bottom - r.top, si]);
+    });
+  });
+  return { width: box.offsetWidth, height: box.offsetHeight, w, s };
 }
 
 export function ArticleInk({ id, box, on, onClose }: { id: string; box: RefObject<HTMLDivElement | null>; on: boolean; onClose: () => void }) {
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [live, setLive] = useState<{ c: string; pts: number[][] } | null>(null);
-  const [tool, setTool] = useState<Tool>(COLORS[0]);
-  const [, setTick] = useState(0);
-  const drawing = useRef(false);
+  const paperId = `article:${id}`;
+  const [tool, setTool] = useState<Tool>("pen");
+  const [colors, setColors] = useState<Record<ColorTool, string>>({ pen: COLORS.pen[0].id, highlight: COLORS.highlight[0].id });
+  const [openNote, setOpenNote] = useState<string | null>(null);
+  const [data, setData] = useState<PdfWordsPage | null>(null);
+  const history = useMarkHistory();
+  const marks = useLiveQuery(() => db.marks.where("[paperId+page]").equals([paperId, 1]).toArray(), [paperId]) ?? [];
 
-  useEffect(() => setStrokes(JSON.parse(localStorage.getItem(inkKey(id)) || "[]")), [id]);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setTick((t) => t + 1));
+    const ro = new ResizeObserver(() => setData(measure(el)));
     ro.observe(el);
     return () => ro.disconnect();
   }, [box]);
-  const save = (s: Stroke[]) => {
-    setStrokes(s);
-    localStorage.setItem(inkKey(id), JSON.stringify(s));
-  };
+  useEffect(() => {
+    if (on) setTool((t) => (t === "select" ? "pen" : t));
+  }, [on]);
 
-  /** 每段相对正文容器的位置 */
-  const paraRect = (p: number) => {
-    const root = box.current;
-    const el = root?.querySelector<HTMLElement>(`[data-p="${p}"]`);
-    if (!root || !el) return null;
-    const r = root.getBoundingClientRect();
-    const e = el.getBoundingClientRect();
-    return { x: e.left - r.left, y: e.top - r.top, w: e.width || 1, h: e.height || 1 };
-  };
-  const wordAt = (p: number, o: number) => {
-    const root = box.current;
-    const el = root?.querySelector<HTMLElement>(`[data-p="${p}"] .w[data-o="${o}"]`);
-    if (!root || !el) return null;
-    const r = root.getBoundingClientRect();
-    const e = el.getBoundingClientRect();
-    return { x: e.left - r.left, y: e.top - r.top };
-  };
-  const abs = (s: Stroke) => {
-    if (s.o !== undefined) {
-      const w = wordAt(s.p, s.o);
-      return w ? s.pts.map(([dx, dy, pr]) => [w.x + dx, w.y + dy, pr]) : [];
-    }
-    const r = paraRect(s.p);
-    return r ? s.pts.map(([fx, fy, pr]) => [r.x + fx * r.w, r.y + fy * r.h, pr]) : [];
-  };
-  const local = (e: PointerEvent) => {
-    const r = box.current!.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top, e.pointerType === "pen" ? e.pressure : 0.5];
-  };
-  const erase = (x: number, y: number) => {
-    const keep = strokes.filter((s) => !abs(s).some(([px, py]) => Math.hypot(px - x, py - y) < 12));
-    if (keep.length !== strokes.length) save(keep);
-  };
-
-  const down = (e: PointerEvent<SVGSVGElement>) => {
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    drawing.current = true;
-    const pt = local(e);
-    if (tool === "erase") return erase(pt[0], pt[1]);
-    setLive({ c: tool, pts: [pt] });
-  };
-  const move = (e: PointerEvent<SVGSVGElement>) => {
-    if (!drawing.current) return;
-    const pt = local(e);
-    if (tool === "erase") return erase(pt[0], pt[1]);
-    setLive((l) => l && { ...l, pts: [...l.pts, pt] });
-  };
-  const up = () => {
-    drawing.current = false;
-    if (!live || live.pts.length < 2) return setLive(null);
-    // 落在哪一段：起笔点所在（或最近）的那段
-    const root = box.current!;
-    const n = root.querySelectorAll("[data-p]").length;
-    let best = 0;
-    let bestD = Infinity;
-    const [x0, y0] = live.pts[0];
-    for (let p = 0; p < n; p++) {
-      const r = paraRect(p);
-      if (!r) continue;
-      const d = y0 < r.y ? r.y - y0 : y0 > r.y + r.h ? y0 - r.y - r.h : 0;
-      if (d < bestD) [best, bestD] = [p, d];
-      if (d === 0) break;
-    }
-    // 挂到这段里离笔迹中心最近的词上
-    const cx = live.pts.reduce((a, q) => a + q[0], 0) / live.pts.length;
-    const cy = live.pts.reduce((a, q) => a + q[1], 0) / live.pts.length;
-    const rr = root.getBoundingClientRect();
-    let o = -1;
-    let ox = 0;
-    let oy = 0;
-    let od = Infinity;
-    for (const w of root.querySelectorAll<HTMLElement>(`[data-p="${best}"] .w`)) {
-      const e = w.getBoundingClientRect();
-      const d = Math.hypot(e.left - rr.left + e.width / 2 - cx, e.top - rr.top + e.height / 2 - cy);
-      if (d < od) [o, ox, oy, od] = [Number(w.dataset.o), e.left - rr.left, e.top - rr.top, d];
-    }
-    const r = paraRect(best)!;
-    const stroke: Stroke =
-      o >= 0
-        ? { p: best, o, c: live.c, pts: live.pts.map(([x, y, pr]) => [x - ox, y - oy, pr] as [number, number, number]) }
-        : { p: best, c: live.c, pts: live.pts.map(([x, y, pr]) => [(x - r.x) / r.w, (y - r.y) / r.h, pr] as [number, number, number]) };
-    save([...strokes, stroke]);
-    setLive(null);
-    void x0;
-  };
+  const lookupAt = useCallback((cx: number, cy: number) => {
+    (document.elementFromPoint(cx, cy)?.closest(".w") as HTMLElement | null)?.click();
+  }, []);
+  const active: Tool = on ? tool : "select";
+  const ct = colorTool(active);
+  const { add, remove, update, replace } = history;
+  const ink = useMemo<InkState>(
+    () => ({ paperId, tool: active, color: ct ? colors[ct] : "", penSize: PEN_SIZES[1].id, history: { add, remove, update, replace }, openNote, onOpenNote: setOpenNote, flash: null, wordFlash: null, lookupAt }),
+    [paperId, active, ct, colors, add, remove, update, replace, openNote, lookupAt],
+  );
 
   return (
     <>
-      <svg
-        className="absolute inset-0 z-[5] size-full overflow-visible"
-        style={{ pointerEvents: on ? "auto" : "none", touchAction: on ? "none" : "auto", cursor: on ? (tool === "erase" ? "cell" : "crosshair") : undefined }}
-        onPointerDown={on ? down : undefined}
-        onPointerMove={on ? move : undefined}
-        onPointerUp={on ? up : undefined}
-        onPointerCancel={on ? up : undefined}
-      >
-        {strokes.map((s, i) => (
-          <path key={i} d={svgPath(abs(s))} fill={s.c} opacity={0.9} />
-        ))}
-        {live && <path d={svgPath(live.pts)} fill={live.c} opacity={0.9} />}
-      </svg>
+      {data && <InkLayer page={1} data={data} scale={1} marks={marks} ink={ink} />}
       {on && (
-        <div className="animate-pop fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[var(--ink)]/95 p-1.5 text-white shadow-[0_10px_30px_rgba(20,30,50,0.25)] backdrop-blur">
-          {COLORS.map((c) => (
-            <button key={c} type="button" onClick={() => setTool(c)} className={cn("flex size-8 items-center justify-center rounded-full transition-colors", tool === c ? "bg-white/20" : "hover:bg-white/10")} aria-label="笔">
-              <span className="size-4 rounded-full ring-2 ring-white/70" style={{ background: c }} />
+        <div className="animate-pop fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-0.5 rounded-[14px] bg-white/95 p-1.5 font-sans shadow-[var(--elev-2),0_0_0_1px_var(--line-soft)] backdrop-blur">
+          {TOOLS.map((t) => (
+            <button key={t.id} type="button" title={t.label} aria-label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)} className={cn("gr-tool", tool === t.id && "gr-tool-on")}>
+              <t.Icon className="size-[19px]" weight={tool === t.id ? "fill" : "duotone"} />
+              {t.short && <span className="gr-tool-text whitespace-nowrap">{t.short}</span>}
             </button>
           ))}
-          <span className="mx-1 h-5 w-px bg-white/20" />
-          <button type="button" onClick={() => setTool("erase")} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[13px]", tool === "erase" ? "bg-white/20" : "hover:bg-white/10")}>
-            <Eraser className="size-4" />
-            橡皮
+          {ct && (
+            <>
+              <span className="mx-1 h-5 w-px bg-[var(--line)]" />
+              {COLORS[ct].map((c) => (
+                <button key={c.id} type="button" aria-label={c.label} onClick={() => setColors((x) => ({ ...x, [ct]: c.id }))} className={cn("mx-0.5 size-6 rounded-full transition", colors[ct] === c.id ? "ring-2 ring-[var(--blue)] ring-offset-2" : "hover:scale-110")} style={{ background: c.value }} />
+              ))}
+            </>
+          )}
+          <span className="mx-1 h-5 w-px bg-[var(--line)]" />
+          <button type="button" title="撤销" aria-label="撤销" disabled={!history.canUndo} onClick={() => void history.undo()} className="gr-tool">
+            <ArrowUUpLeft className="size-[19px]" />
           </button>
-          <button type="button" disabled={!strokes.length} onClick={() => save(strokes.slice(0, -1))} className="flex h-8 items-center gap-1 rounded-full px-2.5 text-[13px] hover:bg-white/10 disabled:opacity-40">
-            <ArrowCounterClockwise className="size-4" />
-            撤销
+          <button type="button" title="重做" aria-label="重做" disabled={!history.canRedo} onClick={() => void history.redo()} className="gr-tool">
+            <ArrowUUpRight className="size-[19px]" />
           </button>
-          <button type="button" onClick={onClose} className="flex h-8 items-center gap-1 rounded-full bg-white px-3 text-[13px] font-medium text-[var(--ink)]">
+          <button type="button" onClick={onClose} className="ml-1 flex h-8 items-center gap-1 rounded-[10px] bg-[var(--blue)] px-3 text-[13px] font-medium text-white">
             <Check className="size-4" />
             完成
           </button>

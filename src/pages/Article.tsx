@@ -208,7 +208,7 @@ export function ArticlePage() {
                 );
                 const side = rows.length > 0 && showTr;
                 return (
-                  <div key={i} data-p={i} className={cn(side && "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:gap-x-12")}>
+                  <div key={i} data-p={i} className={cn(side && "lg:grid lg:grid-cols-[680px_minmax(0,1fr)] lg:gap-x-12")}>
                     {body}
                     {(side || notes.length > 0) && (
                       <div className="font-sans">
