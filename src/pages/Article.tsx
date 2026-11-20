@@ -7,6 +7,7 @@ import { WordCard } from "@/exam/WordCard";
 import { AgentSplit } from "@/exam/AgentSplit";
 import type { AgentThread } from "@/exam/AgentPanel";
 import { agentHeaders, useAgentEnabled } from "@/lib/agent";
+import { AiTransTag } from "@/exam/cardParts";
 import { sentenceKey } from "@/lib/trans";
 import { ARTICLES_BASE, articleText, loadArticle, SOURCE_NAMES, type Article } from "@/lib/articles";
 import { EmptyState, Spinner } from "@/components/ui";
@@ -17,6 +18,15 @@ type Mark = { id: number; p: number; a: number; b: number; kind: "hl" | "ul"; no
 type Sel = { p: number; a: number; b: number; text: string; x: number; y: number };
 const marksKey = (id: string) => `yz-article-marks:${id}`;
 const MARK_CLS = { hl: "am-hl", ul: "am-ul" } as const;
+
+/** 展开收起带一点回弹（阻尼） */
+function Fold({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <div className="fold" data-open={open} aria-hidden={!open}>
+      <div>{children}</div>
+    </div>
+  );
+}
 
 /** 选中的字（同一段里）→ 段号和字符范围 */
 function readSelection(): Sel | null {
@@ -184,7 +194,7 @@ export function ArticlePage() {
               {a.paras.map((p, i) => {
                 const ranges = marks.filter((m) => m.p === i).map((m) => ({ a: m.a, b: m.b, cls: MARK_CLS[m.kind] }));
                 const notes = marks.filter((m) => m.p === i && m.note);
-                const zh = showTr && tr?.[i]?.map((x) => x[1]).join("");
+                const rows = tr?.[i] ?? [];
                 const body = p.k === "h" ? (
                   <h2 className="pt-2 text-[20px] font-semibold">
                     <WordText text={p.t} ranges={ranges} />
@@ -201,15 +211,53 @@ export function ArticlePage() {
                 return (
                   <div key={i} data-p={i}>
                     {body}
-                    {zh && <p className="mt-1.5 font-sans text-[14.5px] leading-[1.7] text-[var(--ink-500)]">{zh}</p>}
+                    {rows.length > 0 && (
+                      <Fold open={showTr}>
+                        <div className="mt-3 rounded-[14px] bg-[var(--paper-50)] px-4 py-3.5 font-sans shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
+                          <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-[var(--ink-500)]">
+                            逐句译文
+                            <span className="ml-auto">
+                              <AiTransTag />
+                            </span>
+                          </div>
+                          <ol className="space-y-2.5">
+                            {rows.map(([en, zh], k) => (
+                              <li key={k} className="flex gap-2.5">
+                                <span className="mt-[3px] flex size-5 flex-none items-center justify-center rounded-full bg-[var(--blue-tint)] text-[11px] font-semibold text-[var(--blue)] tabular-nums">{k + 1}</span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[15px] leading-[1.7] text-[var(--ink)]">{zh}</p>
+                                  {aiOn && en.split(/\s+/).length >= 25 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!thread) return;
+                                        setAsk({ id: `asel:${a.id}:L${i}-${k}`, ctx: { ...thread.ctx, sentence: en, question: "用结构图拆解这句长难句：主干是什么，从句和修饰各起什么作用，再给一句通顺的译文。" } });
+                                        setAgent(true);
+                                      }}
+                                      className="mt-1.5 inline-flex h-7 items-center gap-1 rounded-full bg-[var(--blue-tint)] px-2.5 text-[12px] font-medium text-[var(--blue)] transition-transform duration-300 [transition-timing-function:cubic-bezier(.3,1.6,.5,1)] hover:-translate-y-px active:scale-95"
+                                    >
+                                      <Sparkle className="size-3.5" weight="fill" />
+                                      AI 长难句解析
+                                    </button>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      </Fold>
+                    )}
                     {notes.map((m) => (
-                      <p key={m.id} className="mt-1.5 flex gap-2 rounded-[8px] bg-[var(--paper-100)] px-2.5 py-1.5 font-sans text-[13px] leading-[1.55] text-[var(--ink-700)]">
-                        <span className="flex-none text-[var(--ink-500)]">「{p.t.slice(m.a, m.b)}」</span>
-                        <span className="min-w-0 flex-1">{m.note}</span>
-                        <button type="button" className="flex-none text-[var(--ink-500)] hover:text-[var(--ink)]" onClick={() => saveMarks(marks.filter((x) => x.id !== m.id))} aria-label="删除批注">
+                      <div key={m.id} className="animate-pop mt-2.5 flex gap-2.5 rounded-[14px] bg-[#fff8dc] px-3.5 py-2.5 font-sans shadow-[inset_0_0_0_1px_rgba(201,160,40,0.28),0_1px_2px_rgba(120,90,0,0.06)]">
+                        <NotePencil className="mt-[3px] size-4 flex-none text-[#b08a1e]" weight="duotone" />
+                        <div className="min-w-0 flex-1">
+                          <div className="serif text-[13.5px] leading-[1.5] text-[var(--ink-500)]">{p.t.slice(m.a, m.b)}</div>
+                          <div className="text-[14.5px] leading-[1.6] text-[var(--ink)]">{m.note}</div>
+                        </div>
+                        <button type="button" className="flex size-6 flex-none items-center justify-center rounded-full text-[var(--ink-500)] transition-colors hover:bg-black/5 hover:text-[var(--ink)]" onClick={() => saveMarks(marks.filter((x) => x.id !== m.id))} aria-label="删除批注">
                           ×
                         </button>
-                      </p>
+                      </div>
                     ))}
                   </div>
                 );
@@ -251,7 +299,7 @@ export function ArticlePage() {
         !hit &&
         createPortal(
           <div
-            className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-[10px] bg-[var(--ink)] p-1 text-white shadow-lg"
+            className="animate-pop fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-[12px] bg-[var(--ink)]/95 p-1 text-white shadow-[0_10px_30px_rgba(20,30,50,0.25)] backdrop-blur"
             style={{ left: sel.x, top: sel.y - 8 }}
             onMouseDown={(e) => e.preventDefault()}
           >
