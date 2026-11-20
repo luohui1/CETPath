@@ -58,6 +58,8 @@ import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
 import { ThumbRail } from "./ThumbRail";
 import { AgentSplit } from "./AgentSplit";
+import { PaperLinkCtx, type PaperLink } from "./paperLink";
+import { findText } from "@/lib/agentTools";
 import { FindBar, findInPages, pageTexts, type FindHit } from "./FindBar";
 import { ExportDialog } from "./ExportDialog";
 import { endPinch, gesture, startPinch } from "./gesture";
@@ -429,6 +431,8 @@ export function ExamRoom({
   const [writeSeen, setWriteSeen] = useState(false); // 点开过作文、翻译：停靠区多一个"作答"
   const [listenSlot, setListenSlot] = useState<HTMLDivElement | null>(null); // 停靠区"原文"标签的格子，听力条把原文画进去
   const [openQ, setOpenQ] = useState<string | null>(null);
+  const [agentFlash, setAgentFlash] = useState<{ page: number; range: [number, number] } | null>(null); // Agent 里点了引用的原文：卷面那一句闪一下
+  const agentFlashT = useRef(0);
   const [hit, setHit] = useState<WordClick | null>(null);
   // 长按一句（鼠标右键）：这句的译文放在底部条，卷面上这句淡黄底
   const [sent, setSent] = useState<{ page: number; sid: number; sentence: string; n: number } | null>(null);
@@ -1773,7 +1777,40 @@ export function ExamRoom({
         onHeight={embedded ? undefined : setBarH}
       />
     );
+  const paperLink: PaperLink = {
+    locate: (text) => {
+      const h = pages ? findText(pages, text) : null;
+      if (!h || !pages) return false;
+      scrollToY(topOf(h.page, pages[h.page - 1].w[h.a][2]) - 160);
+      setAgentFlash({ page: h.page, range: [h.a, h.b] });
+      clearTimeout(agentFlashT.current);
+      agentFlashT.current = window.setTimeout(() => setAgentFlash(null), 2600);
+      return true;
+    },
+    question: (n) => {
+      const q = allQuestions(paper).find((x) => x.number === n);
+      if (!q) return false;
+      lowerDrawer();
+      onJump(q);
+      return true;
+    },
+  };
+  // 学习者此刻在卷面上看哪，每次提问时交给 Agent
+  const where = () => {
+    const s = scrollStore.get();
+    const qs = allQuestions(paper).filter((q) => (q.page ?? q.blank?.page) === s.page);
+    const sec = paper.sections.find((x) => x.id === s.part);
+    const open = openQ ? allQuestions(paper).find((q) => q.id === openQ.split("@")[0]) : null;
+    return (
+      `第 ${s.page} 页` +
+      (sec ? `（${kindName(sec.kind, paper.exam)}）` : "") +
+      (qs.length ? `，这一页是第 ${qs[0].number}–${qs[qs.length - 1].number} 题` : "") +
+      (open ? `；刚点开第 ${open.number} 题` : "") +
+      "。学习者说“这题”“这篇”“这段”时先按这个理解。"
+    );
+  };
   const agentEl = agentOpen && (
+    <PaperLinkCtx.Provider value={paperLink}>
     <AgentSplit
       side={sideDock}
       width={agentWidth}
@@ -1787,8 +1824,9 @@ export function ExamRoom({
       sentence={agentThread}
       onClearSentence={() => setAgentThread(null)}
       onClose={() => setAgentOpen(false)}
-      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal), pages }}
+      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal), pages, where }}
     />
+    </PaperLinkCtx.Provider>
   );
   const dockEl = panel && dockView && (
     <Dock
@@ -2210,7 +2248,7 @@ export function ExamRoom({
                       limits={limits}
                       playingSeg={playing.on ? playing.seg : null}
                       hits={hitsByPage.get(firstPage + k)}
-                      hitCur={curHit?.page === firstPage + k ? curHit.range : null}
+                      hitCur={agentFlash?.page === firstPage + k ? agentFlash.range : curHit?.page === firstPage + k ? curHit.range : null}
                       longs={syntaxAt.byPage.get(firstPage + k)}
                       activeWord={hit?.page === firstPage + k ? hit.index : null}
                       activeWords={hit?.page === firstPage + k ? phraseWords : null}

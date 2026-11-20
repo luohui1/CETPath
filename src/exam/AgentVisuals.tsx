@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ToolCall } from "@/lib/agent";
+import { Quote } from "./paperLink";
 
 /** Agent 回答里嵌的可视化：长难句结构图、解题步骤、词汇卡片（都来自工具调用的参数） */
 /** 模型给的参数不一定是数组：不是就当空 */
@@ -50,6 +51,11 @@ function SentenceMap({
     <div className="mt-2 rounded-[12px] p-3 ring-1 ring-[var(--line)]">
       <p className="mb-2 text-[12px] font-medium text-[var(--ink-500)]">
         句子结构 · 点色块看作用
+        {str(data.sentence) && (
+          <Quote text={str(data.sentence)!} className="ml-2 text-[var(--blue)]">
+            在卷面上看
+          </Quote>
+        )}
       </p>
       <div className="flex flex-wrap items-end gap-x-1 gap-y-2 font-serif text-[15px] leading-[1.5]">
         {parts.map((p, i) => {
@@ -132,7 +138,7 @@ function Steps({
               {s.detail && <p className="text-[var(--ink-700)]">{s.detail}</p>}
               {s.quote && (
                 <p className="mt-1 border-l-[3px] border-[var(--blue-line,#bcd3f5)] pl-2 font-serif text-[14px] text-[var(--ink-700)]">
-                  {s.quote}
+                  <Quote text={s.quote}>{s.quote}</Quote>
                 </p>
               )}
             </div>
@@ -274,7 +280,9 @@ function Cards({ data }: { data: { cards?: Card[] } }) {
               )}
               {c.example && (
                 <p className="border-l-[3px] border-[var(--blue-line,#bcd3f5)] pl-2.5 font-serif text-[14px] text-[var(--ink-700)]">
-                  <Mark text={c.example} word={c.front!.split(/\s|…/)[0]} />
+                  <Quote text={c.example!}>
+                    <Mark text={c.example} word={c.front!.split(/\s|…/)[0]} />
+                  </Quote>
                 </p>
               )}
             </div>
@@ -330,7 +338,7 @@ function AnswerMap({
               ① 原文定位句
             </p>
             <p className="rounded-[8px] bg-[#f6f9ff] px-2.5 py-2 font-serif text-[14px] leading-[1.6] text-[var(--ink)]">
-              {str(data.quote)}
+              <Quote text={str(data.quote)!}>{str(data.quote)}</Quote>
             </p>
           </div>
         )}

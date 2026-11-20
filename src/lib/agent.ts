@@ -54,6 +54,7 @@ export type AgentContext = {
   reviewReady?: boolean;
   paperText?: string;
   marks?: string;
+  view?: string; // 学习者此刻在卷面上看哪
 };
 
 // 激活码：服务器设了激活码时，没激活的设备用不了 Agent（省模型额度）。输一次存在本机，每次请求带上

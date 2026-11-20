@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { QLink, Quote } from "@/exam/paperLink";
 
 /*
  * AI 回答的轻量 Markdown：### 小标题、- / 1. 列表、> 引用（例句）、**重点**、`英文片段`、「英文片段」。
@@ -6,7 +7,7 @@ import type { ReactNode } from "react";
  */
 function inline(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*[^*\n]+\*\*|`[^`\n]+`|「[^」\n]+」)/g;
+  const re = /(\*\*[^*\n]+\*\*|`[^`\n]+`|「[^」\n]+」|第\s*\d{1,3}\s*题)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -14,7 +15,13 @@ function inline(text: string, key: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     const t = m[0];
     const k = `${key}-${i++}`;
-    if (t.startsWith("**"))
+    if (t.startsWith("第"))
+      out.push(
+        <QLink key={k} n={Number(t.replace(/\D/g, ""))}>
+          {t}
+        </QLink>,
+      );
+    else if (t.startsWith("**"))
       out.push(
         <strong key={k} className="font-semibold text-[var(--ink)] [background:linear-gradient(transparent_62%,color-mix(in_oklab,var(--yellow,#f5c542)_45%,transparent)_62%)]">
           {t.slice(2, -2)}
@@ -22,15 +29,15 @@ function inline(text: string, key: string): ReactNode[] {
       );
     else if (t.startsWith("`"))
       out.push(
-        <code key={k} className="rounded-[5px] bg-[var(--blue-tint)] px-1 py-px font-serif text-[0.95em] text-[var(--blue)]">
+        <Quote key={k} text={t.slice(1, -1)} className="rounded-[5px] bg-[var(--blue-tint)] px-1 py-px font-serif text-[0.95em] text-[var(--blue)]">
           {t.slice(1, -1)}
-        </code>,
+        </Quote>,
       );
     else
       out.push(
-        <span key={k} className="font-serif text-[var(--blue)]">
+        <Quote key={k} text={t.slice(1, -1)} className="font-serif text-[var(--blue)]">
           「{t.slice(1, -1)}」
-        </span>,
+        </Quote>,
       );
     last = m.index + t.length;
   }

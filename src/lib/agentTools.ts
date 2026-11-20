@@ -26,6 +26,7 @@ export type ToolEnv = {
   answers?: Record<string, string>;
   ink?: (signal?: AbortSignal) => Promise<string>;
   pages?: PdfWordsPage[] | null;
+  where?: () => string; // 学习者此刻在卷面上看哪：第几页、哪部分、点开的哪题
 };
 type Result = { label: string; result: string };
 
@@ -395,7 +396,7 @@ export function quizOf(
 }
 
 /** 在卷面文字层里找一段原文（按词比，忽略大小写和标点）；找不到整段就用前几个词定位、按词数往后取 */
-function findText(
+export function findText(
   pages: PdfWordsPage[],
   text: string,
   page?: number,

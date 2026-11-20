@@ -140,6 +140,7 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 ## 工具
 你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
 - 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards；学习者看不懂某题答案、问“为什么选这个”时用 show_answer_map。用了这些，正文就只写一两句要点，别把内容再写一遍。
+- 引用原文时用「」包住卷面原词原句（照抄，别改写），提到题目写成“第 N 题”：学习者点一下就会跳到卷面那里。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
 - 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
@@ -218,6 +219,8 @@ def context_block(ctx: dict) -> str:
         parts.append("学习者正在做这套卷，还没交卷。下面是作答进度；他问到具体题目时照常直接解答：\n" + str(ctx["review"])[:2000])
     elif ctx.get("review"):
         parts.append("这次是做完一套题后的复盘。作答数据（错题、没答和超时的题逐条列出）：\n" + str(ctx["review"])[:9000])
+    if ctx.get("view"):
+        parts.append("学习者此刻在卷面上的位置：" + str(ctx["view"])[:300])
     if ctx.get("marks"):
         parts.append("学习者在卷面上的标注（高亮、划线、便签）：\n" + str(ctx["marks"])[:3000])
     if ctx.get("ink"):
