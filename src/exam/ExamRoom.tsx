@@ -8,7 +8,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { ListBullets, Sparkle,
+import { Sparkle,
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -1745,11 +1745,7 @@ export function ExamRoom({
         <Button size="sm" onClick={() => setConfirm("redo")}>
           <ArrowCounterClockwise className="size-4" /> 重做
         </Button>
-      ) : (
-        <Button size="sm" variant="primary" onClick={() => setConfirm("submit")}>
-          {practice ? "结束练习" : "交卷"}
-        </Button>
-      )}
+      ) : null /* 交卷在答题卡里 */}
     </>
   );
   // 并成一行时卷名只留一行小字
@@ -2013,35 +2009,6 @@ export function ExamRoom({
             </Tip>
           )}
           {/* 本卷笔记、生词在"更多"里和停靠区的标签里 */}
-          {/* 题型导航：一点跳到作文、听力、仔细阅读…（平板上顶栏没有部分切换，这里总在） */}
-          {!scope && !retry && partAnchors.length > 1 && (
-            <G.Popover
-              label="题型导航"
-              width={200}
-              trigger={
-                <button type="button" className="gr-tool" aria-label="题型导航" title="题型导航">
-                  <ListBullets className="size-[19px]" />
-                  {!narrow && <span className="gr-tool-text whitespace-nowrap">题型</span>}
-                </button>
-              }
-            >
-              {(close: () => void) => (
-                <div className="py-0.5">
-                  {partAnchors.map((a) =>
-                    moreItem(
-                      (() => {
-                        const sec = paper.sections.find((x) => x.id === a.id);
-                        return kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : "");
-                      })(),
-                      () => {
-                      close();
-                      scrollToY(topOf(a.page, a.y) - 120);
-                    }),
-                  )}
-                </div>
-              )}
-            </G.Popover>
-          )}
           {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, `答题卡 ${practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, "")}`)}
           <Tip label="Agent：分屏和 AI 对话，它看得到你的作答">
             <button
@@ -2192,6 +2159,14 @@ export function ExamRoom({
                 floating={floating}
                 inset={compact ? 56 : 0}
                 onJump={jumpPage}
+                parts={
+                  !scope && !retry && partAnchors.length > 1
+                    ? partAnchors.map((a) => {
+                        const sec = paper.sections.find((x) => x.id === a.id);
+                        return { label: kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : ""), onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
+                      })
+                    : undefined
+                }
               />
             )}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
