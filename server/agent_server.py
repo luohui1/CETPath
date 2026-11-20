@@ -280,9 +280,10 @@ def translate_paras(cfg: dict, paras: list[str], p: str):
     if any(t.strip() and not r for t, r in zip(paras, res)):
         return None
     os.makedirs(TRANS_DIR, exist_ok=True)
-    with open(p + ".tmp", "w") as f:
+    tmp = f"{p}.{os.getpid()}.{threading.get_ident()}.tmp"  # 定时预翻和网页请求可能同时翻同一篇，各写各的临时文件
+    with open(tmp, "w") as f:
         json.dump(res, f, ensure_ascii=False)
-    os.replace(p + ".tmp", p)
+    os.replace(tmp, p)
     return res
 
 
