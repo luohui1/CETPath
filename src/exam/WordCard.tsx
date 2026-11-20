@@ -174,8 +174,8 @@ export function WordCard({
   const [more, setMore] = useState(false);
   const [showTrans, setShowTrans] = useState(false);
   const [phrases, setPhrases] = useState<PhraseHit[]>([]);
-  // 选短语：这句词序列里选中的起止（含）；null 是没在选
-  const [pick, setPick] = useState<[number, number] | null>(null);
+  // 选短语：这句词序列里选中的词（升序，可以不挨着：take … into account）；null 是没在选
+  const [pick, setPick] = useState<number[] | null>(null);
   const [picked, setPicked] = useState<{ phrase: string; trans: string; from: string } | null | undefined>(undefined);
   useEffect(() => {
     setMore(false);
@@ -216,9 +216,12 @@ export function WordCard({
   }, [ctx]);
 
   // 选短语：选了两个词以上就查——先离线短语表（要正好是这一段），再有道
-  const pickText = pick && ctx && pick[1] > pick[0] ? ctx.tokens.slice(pick[0], pick[1] + 1).join(" ").replace(/[^A-Za-z'’ -]/g, "").trim() : "";
+  const clean = (t: string) => t.replace(/[^A-Za-z'’-]/g, "");
+  const pickText = pick && ctx && pick.length > 1 ? pick.map((k) => clean(ctx.tokens[k])).filter(Boolean).join(" ") : "";
+  // 显示用：中间隔开的地方写成 …（take … into account）
+  const pickShow = pick && ctx && pick.length > 1 ? pick.map((k, i) => (i && k > pick[i - 1] + 1 ? "… " : "") + clean(ctx.tokens[k])).join(" ") : "";
   useEffect(() => {
-    if (pick) phraseCb.current?.(Array.from({ length: pick[1] - pick[0] + 1 }, (_, i) => pick[0] + i));
+    if (pick?.length) phraseCb.current?.(pick);
     else phraseCb.current?.(phrases[0] ? phrases[0].pos : null);
   }, [pick, phrases]);
   useEffect(() => {
@@ -226,7 +229,7 @@ export function WordCard({
     setPicked(undefined);
     if (!pickText || !ctx || !pick) return;
     (async () => {
-      const local = (await findPhrases(ctx.tokens, pick[0], 12)).find((f) => f.from === pick[0] && f.to === pick[1] && f.pos.length === pick[1] - pick[0] + 1);
+      const local = (await findPhrases(ctx.tokens, pick[0], 12)).find((f) => f.pos.length === pick.length && f.pos.every((p, i) => p === pick[i]));
       if (local) return { phrase: local.phrase, trans: local.trans, from: "词典" };
       const r = await lookupOnline(pickText);
       return r?.entry.t ? { phrase: r.entry.w, trans: r.entry.t.replace(/\n/g, "；"), from: "有道" } : null;
@@ -239,16 +242,8 @@ export function WordCard({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickText]);
-  const tapToken = (k: number) =>
-    setPick((p) => {
-      if (!p) return [k, k];
-      const [a, b] = p;
-      if (k < a) return [k, b];
-      if (k > b) return [a, k];
-      if (k === a && a < b) return [a + 1, b];
-      if (k === b && a < b) return [a, b - 1];
-      return p;
-    });
+  // 点一个词加进来，再点一次去掉；可以跳着选
+  const tapToken = (k: number) => setPick((p) => (!p ? [k] : p.includes(k) ? p.filter((x) => x !== k) : [...p, k].sort((a, b) => a - b)));
 
   // 离线查不到、在线查到的：生词本存在线的释义
   const onlineMain = (!result || !!result.parts) && !!online?.entry.t;
@@ -547,7 +542,7 @@ export function WordCard({
             {win && (
               <button
                 type="button"
-                onClick={() => setPick((p) => (p ? null : [ctx!.at, ctx!.at]))}
+                onClick={() => setPick((p) => (p ? null : [ctx!.at]))}
                 aria-pressed={!!pick}
                 className={cn(
                   "inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition active:scale-[0.98]",
@@ -569,12 +564,12 @@ export function WordCard({
           {/* 选短语：这句的词摆成一排（点的词前后各 8 个），点词连成一段；选中两个词以上就查 */}
           {pick && win && (
             <div className="mt-3 rounded-[10px] px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-              <p className="mb-2 text-[13px] text-[var(--ink-500)]">点前后的词，连成要查的短语（再点两头的词可以缩回去）</p>
+              <p className="mb-2 text-[13px] text-[var(--ink-500)]">点词组成要查的短语，可以跳着选（比如 take … into account），再点一次取消</p>
               <div className="flex flex-wrap gap-1">
                 {win[0] > 0 && <span className="self-end px-0.5 text-[var(--ink-500)]">…</span>}
                 {tokens.slice(win[0], win[1] + 1).map((t, i) => {
                   const k = win[0] + i;
-                  const on = k >= pick[0] && k <= pick[1];
+                  const on = pick.includes(k);
                   return (
                     <button
                       key={k}
@@ -590,17 +585,17 @@ export function WordCard({
               </div>
               <div className="mt-2.5">
                 {!pickText ? (
-                  <p className="text-[14px] text-[var(--ink-500)]">再点一个相邻的词</p>
+                  <p className="text-[14px] text-[var(--ink-500)]">再点一个词</p>
                 ) : picked === undefined ? (
                   <p className="flex items-center gap-2 text-[14px] text-[var(--ink-500)]">
-                    <Spinner /> 查 {pickText}…
+                    <Spinner /> 查 {pickShow}…
                   </p>
                 ) : picked ? (
                   <div className="rounded-[8px] bg-[var(--blue-tint)] px-2.5 py-2">
                     <PhraseRow phrase={picked.phrase} trans={picked.trans} from={picked.from} sentence={hit.sentence} source={source} />
                   </div>
                 ) : (
-                  <p className="text-[14px] text-[var(--ink-500)]">“{pickText}” 不是词典里的短语：可以再连几个词，或者看整句译文</p>
+                  <p className="text-[14px] text-[var(--ink-500)]">“{pickShow}” 不是词典里的短语：可以再连几个词，或者看整句译文</p>
                 )}
               </div>
             </div>
