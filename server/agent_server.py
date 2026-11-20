@@ -683,6 +683,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(push, list) or len(push) > 2000:
             return self.send_json(400, {"error": "参数不对"})
         with sdb() as c:
+            c.execute("BEGIN IMMEDIATE")  # 先拿写锁再读序号，两台设备同时同步也不会拿到同一个号
             seq = c.execute("SELECT seq FROM users WHERE id=?", (uid,)).fetchone()[0]
             mine = set()
             for it in push:
