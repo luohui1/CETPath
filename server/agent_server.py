@@ -19,6 +19,7 @@ import json
 import re
 import os
 import secrets
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -31,7 +32,27 @@ CONFIG = os.environ.get("YZ_AGENT_CONFIG", "/srv/yingyu/config/agent.json")
 ARTICLES_DIR = os.environ.get("YZ_ARTICLES_DIR", "/srv/yingyu/articles-data")
 TRANS_DIR = os.path.join(os.path.dirname(CONFIG), "trans")  # 外刊译文缓存：一篇翻一次，大家共用
 _trans_busy: set[str] = set()
-MAX_BODY = 256 * 1024
+DB_PATH = os.path.join(os.path.dirname(CONFIG), "yingyu.db")  # 账号和同步数据
+SESSION_DAYS = 180
+_auth_hits: dict[str, list[float]] = {}
+_reg_hits: dict[str, list[float]] = {}
+NAME_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fa5]{2,20}")
+SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "kv"}
+
+
+def sdb() -> sqlite3.Connection:
+    c = sqlite3.connect(DB_PATH, timeout=10)
+    c.execute("PRAGMA journal_mode=WAL")
+    c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, pw TEXT, created REAL, seq INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, uid INTEGER, exp REAL);
+        CREATE TABLE IF NOT EXISTS rows (uid INTEGER, tbl TEXT, k TEXT, data TEXT, t REAL, seq INTEGER, PRIMARY KEY (uid, tbl, k));
+        CREATE INDEX IF NOT EXISTS rows_seq ON rows (uid, seq);
+        """
+    )
+    return c
+MAX_BODY = 8 * 1024 * 1024  # 同步一次可能带不少对话
 MAX_TURNS = 24
 MAX_MEMORY = 60
 SESSION_SEC = 7 * 86400
@@ -497,6 +518,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         cfg = load()
+        if path == "/api/auth/me":
+            u = self.user()
+            return self.send_json(200, {"name": u[1]}) if u else self.send_json(401, {"error": "没登录"})
         if path == "/api/agent/trans":
             aid = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id", [""])[0]
             p = os.path.join(TRANS_DIR, aid + ".json")
@@ -577,6 +601,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"ok": True, "reply": reply, "ms": int((time.time() - t0) * 1000)})
             except Exception as e:  # noqa: BLE001
                 return self.send_json(502, {"error": upstream_error(e)})
+        if path in ("/api/auth/register", "/api/auth/login"):
+            return self.auth(cfg, data, path.endswith("register"))
+        if path == "/api/auth/logout":
+            tok = self.cookie("yz_sess")
+            if tok:
+                with sdb() as c:
+                    c.execute("DELETE FROM sessions WHERE token=?", (tok,))
+            return self.send_json(200, {"ok": True}, {"Set-Cookie": "yz_sess=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"})
+        if path == "/api/sync":
+            return self.sync(data)
         if path == "/api/agent/activate":
             if limited(_bad_codes, self.ip(), 10, 900):
                 return self.send_json(429, {"error": "输错太多次，15 分钟后再试"})
@@ -597,6 +631,78 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/agent/remember":
             return self.remember(cfg, data)
         self.send_json(404, {"error": "not found"})
+
+    def user(self):
+        """当前登录的用户 (id, name)，没登录是 None"""
+        tok = self.cookie("yz_sess")
+        if not tok:
+            return None
+        with sdb() as c:
+            return c.execute("SELECT users.id, users.name FROM sessions JOIN users ON users.id = sessions.uid WHERE token=? AND exp>?", (tok, time.time())).fetchone()
+
+    def auth(self, cfg: dict, data: dict, register: bool):
+        name = str(data.get("name", "")).strip()
+        pw = str(data.get("password", ""))
+        ip = self.ip()
+        if limited(_auth_hits, ip, 20, 900):
+            return self.send_json(429, {"error": "试得太频繁了，过 15 分钟再试"})
+        if register:
+            if cfg.get("allow_register") is False:
+                return self.send_json(403, {"error": "暂不开放注册"})
+            if not NAME_RE.fullmatch(name):
+                return self.send_json(400, {"error": "用户名 2-20 个字，只能用中英文、数字和下划线"})
+            if len(pw) < 6 or len(pw) > 128:
+                return self.send_json(400, {"error": "密码至少 6 位"})
+            if limited(_reg_hits, ip, 5, 3600):
+                return self.send_json(429, {"error": "注册太频繁了，过一会儿再试"})
+            try:
+                with sdb() as c:
+                    uid = c.execute("INSERT INTO users (name, pw, created) VALUES (?,?,?)", (name, hash_pw(pw), time.time())).lastrowid
+            except sqlite3.IntegrityError:
+                return self.send_json(409, {"error": "这个用户名已经有人用了"})
+        else:
+            with sdb() as c:
+                row = c.execute("SELECT id, pw, name FROM users WHERE name=?", (name,)).fetchone()
+            if not row or not check_pw(pw, row[1]):
+                return self.send_json(403, {"error": "用户名或密码不对"})
+            uid, name = row[0], row[2]
+        tok = secrets.token_urlsafe(32)
+        with sdb() as c:
+            c.execute("DELETE FROM sessions WHERE exp<?", (time.time(),))
+            c.execute("INSERT INTO sessions VALUES (?,?,?)", (tok, uid, time.time() + SESSION_DAYS * 86400))
+        return self.send_json(200, {"name": name}, {"Set-Cookie": f"yz_sess={tok}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"})
+
+    def sync(self, data: dict):
+        """按条同步：push 是本机改过的行（row 为 null 表示删了），t 是改的时间，后改的为准；返回 since 之后别的设备改过的行"""
+        u = self.user()
+        if not u:
+            return self.send_json(401, {"error": "没登录"})
+        uid = u[0]
+        push = data.get("push") or []
+        since = int(data.get("since") or 0)
+        if not isinstance(push, list) or len(push) > 2000:
+            return self.send_json(400, {"error": "参数不对"})
+        with sdb() as c:
+            seq = c.execute("SELECT seq FROM users WHERE id=?", (uid,)).fetchone()[0]
+            mine = set()
+            for it in push:
+                tbl, k, t = str(it.get("tbl", "")), str(it.get("k", ""))[:500], float(it.get("t") or 0)
+                if tbl not in SYNC_TABLES or not k:
+                    continue
+                old = c.execute("SELECT t FROM rows WHERE uid=? AND tbl=? AND k=?", (uid, tbl, k)).fetchone()
+                if old and old[0] > t:
+                    continue
+                seq += 1
+                raw = json.dumps(it.get("row"), ensure_ascii=False)
+                if len(raw) > 2_000_000:
+                    continue
+                c.execute("INSERT OR REPLACE INTO rows VALUES (?,?,?,?,?,?)", (uid, tbl, k, raw, t, seq))
+                mine.add(seq)
+            c.execute("UPDATE users SET seq=? WHERE id=?", (seq, uid))
+            got = c.execute("SELECT tbl, k, data, t, seq FROM rows WHERE uid=? AND seq>? ORDER BY seq LIMIT 3000", (uid, since)).fetchall()
+        pull = [{"tbl": r[0], "k": r[1], "row": json.loads(r[2]), "t": r[3]} for r in got if r[4] not in mine]
+        last = got[-1][4] if got else since
+        return self.send_json(200, {"pull": pull, "seq": max(last, since) if len(got) == 3000 else seq, "more": len(got) == 3000})
 
     def trans(self, cfg: dict, data: dict):
         """外刊逐句翻译：返回每段的 [[英文句, 中文], ...]，存起来下次直接给"""
