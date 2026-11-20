@@ -156,13 +156,15 @@ export async function syncNow() {
         stopSync();
         return;
       }
-      const x = (await r.json()) as { pull: { tbl: string; k: string; row: unknown }[]; seq: number; more: boolean; error?: string };
+      const x = (await r.json()) as { pull: { tbl: string; k: string; row: unknown; t: number }[]; seq: number; more: boolean; error?: string };
       if (!r.ok) throw new Error(x.error || "同步失败");
       // 传上去的从待上传里删掉（传的过程中又改了的留着）
       const now = readOut();
       for (const id of ids) if (now[id] === out[id]) delete now[id];
       localStorage.setItem(OUT, JSON.stringify(now));
-      for (const it of x.pull) await applyRow(it.tbl, it.k, it.row);
+      const pend = readOut();
+      // 本机还有没传上去、而且更新的改动：留着本机的，下次传上去
+      for (const it of x.pull) if (!(pend[`${it.tbl}\u0001${it.k}`] > it.t)) await applyRow(it.tbl, it.k, it.row);
       localStorage.setItem(SEQ, String(x.seq));
       more = x.more;
       first = false;
