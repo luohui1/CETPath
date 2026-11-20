@@ -36,7 +36,8 @@ function measure(box: HTMLElement): PdfWordsPage {
   return { width: box.offsetWidth, height: box.offsetHeight, w, s };
 }
 
-export function ArticleInk({ id, box, on, onClose }: { id: string; box: RefObject<HTMLDivElement | null>; on: boolean; onClose: () => void }) {
+/** hidden：开着译文时译文会把后面的段落往下挤，笔记坐标对不上，先不显示 */
+export function ArticleInk({ id, box, on, hidden, onClose }: { id: string; box: RefObject<HTMLDivElement | null>; on: boolean; hidden?: boolean; onClose: () => void }) {
   const paperId = `article:${id}`;
   const [tool, setTool] = useState<Tool>("pen");
   const [colors, setColors] = useState<Record<ColorTool, string>>({ pen: COLORS.pen[0].id, highlight: COLORS.highlight[0].id });
@@ -69,8 +70,8 @@ export function ArticleInk({ id, box, on, onClose }: { id: string; box: RefObjec
 
   return (
     <>
-      {data && <InkLayer page={1} data={data} scale={1} marks={marks} ink={ink} />}
-      {on && (
+      {data && !hidden && <InkLayer page={1} data={data} scale={1} marks={marks} ink={ink} />}
+      {on && !hidden && (
         <div className="animate-pop fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-0.5 rounded-[14px] bg-white/95 p-1.5 font-sans shadow-[var(--elev-2),0_0_0_1px_var(--line-soft)] backdrop-blur">
           {TOOLS.map((t) => (
             <button key={t.id} type="button" title={t.label} aria-label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)} className={cn("gr-tool", tool === t.id && "gr-tool-on")}>

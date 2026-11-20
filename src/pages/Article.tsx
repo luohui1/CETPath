@@ -159,7 +159,7 @@ export function ArticlePage() {
               <ArrowLeft className="size-[18px]" />
             </Link>
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{a.title}</p>
-            <button type="button" onClick={() => setPen(!pen)} className={cn("gr-tool", pen && "is-on")} aria-label="手写" title="在文章上手写">
+            <button type="button" disabled={showTr && !!tr} onClick={() => setPen(!pen)} className={cn("gr-tool", pen && "is-on")} aria-label="手写" title={showTr && tr ? "收起译文后才能手写" : "在文章上手写"}>
               <PencilSimple className="size-[18px]" />
               <span className="gr-tool-text">手写</span>
             </button>
@@ -187,7 +187,7 @@ export function ArticlePage() {
             </p>
             {a.audio && <audio controls preload="none" src={ARTICLES_BASE + a.audio} className="mt-4 w-full" />}
             <div ref={boxRef} className="relative mt-6 space-y-4 font-serif text-[18px] leading-[1.75] text-[var(--ink)]">
-              <ArticleInk id={id} box={boxRef} on={pen} onClose={() => setPen(false)} />
+              <ArticleInk id={id} box={boxRef} on={pen} hidden={showTr && !!tr} onClose={() => setPen(false)} />
               {trBusy && trBusy !== "…" && <p className="font-sans text-[13px] text-[var(--red,#c43)]">{trBusy}</p>}
               {a.paras.map((p, i) => {
                 const ranges = marks.filter((m) => m.p === i).map((m) => ({ a: m.a, b: m.b, cls: MARK_CLS[m.kind] }));
