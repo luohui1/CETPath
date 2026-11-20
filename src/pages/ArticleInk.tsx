@@ -72,11 +72,11 @@ export function ArticleInk({ id, box, on, hidden, onClose }: { id: string; box: 
     <>
       {data && !hidden && <InkLayer page={1} data={data} scale={1} marks={marks} ink={ink} />}
       {on && !hidden && (
-        <div className="animate-pop fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-0.5 rounded-[14px] bg-white/95 p-1.5 font-sans shadow-[var(--elev-2),0_0_0_1px_var(--line-soft)] backdrop-blur">
+        <div className="animate-pop scrollbar-none fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-16px)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-[14px] bg-white/95 p-1.5 font-sans shadow-[var(--elev-2),0_0_0_1px_var(--line-soft)] backdrop-blur">
           {TOOLS.map((t) => (
             <button key={t.id} type="button" title={t.label} aria-label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)} className={cn("gr-tool", tool === t.id && "gr-tool-on")}>
               <t.Icon className="size-[19px]" weight={tool === t.id ? "fill" : "duotone"} />
-              {t.short && <span className="gr-tool-text whitespace-nowrap">{t.short}</span>}
+              {t.short && <span className="gr-tool-text hidden whitespace-nowrap sm:inline">{t.short}</span>}
             </button>
           ))}
           {ct && (
