@@ -278,13 +278,14 @@ def main():
         if political(a) or taken.get(a["level"], 0) >= args.per_level:
             if a.get("audio"):  # 这个等级今天已经够了，下好的音频也删掉
                 (out / a["audio"]).unlink(missing_ok=True)
-            return
+            return False
         taken[a["level"]] = taken.get(a["level"], 0) + 1
         a["fetched"] = now
         (out / f"{a['id']}.json").write_text(json.dumps(a, ensure_ascii=False, separators=(",", ":")))
         index[a["id"]] = {k: v for k, v in a.items() if k not in ("paras", "glossary", "keywords")}
         new += 1
         print("  +", a["id"], a["level"], a["words"], "词", a["title"][:60], flush=True)
+        return True
 
     if args.only != "wiki":
         for feed in voa_feeds():
@@ -309,8 +310,8 @@ def main():
         for cat in sorted(WIKI_CATS, key=lambda c: zlib.crc32(f"{day}{c}".encode()))[: args.per_feed * 2]:
             try:
                 for a, paras in wiki_items(cat, index, day):
-                    save(finish(a, paras))
-                    break
+                    if save(finish(a, paras)):
+                        break
             except Exception as e:  # noqa: BLE001
                 print("维基百科取不到：", cat, e, file=sys.stderr)
 
