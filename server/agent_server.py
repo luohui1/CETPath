@@ -261,6 +261,47 @@ def cet_kind(last: str, ctx: dict) -> str | None:
             return "listening" if n <= 25 else "banked" if n <= 35 else "matching" if n <= 45 else "careful" if n <= 55 else None
     return None
 
+
+def translate_paras(cfg: dict, paras: list[str], p: str):
+    """逐句翻一篇外刊并存进缓存 p；格式不对返回 None"""
+    prompt = (
+        "把下面每段英文按句子切开，逐句翻成自然、准确的简体中文（给四六级考生看）。"
+        "只输出 JSON：一个数组，每段一个元素，元素是 [[英文原句, 中文], ...]；英文原句照抄、不改一个字。"
+        f"一共 {len(paras)} 段，数组长度必须是 {len(paras)}。\n\n"
+        + "\n\n".join(f"[{i + 1}] {t}" for i, t in enumerate(paras))
+    )
+    with upstream(cfg, [{"role": "user", "content": prompt}], False, 16000, 0.2) as r:
+        out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
+    out = re.sub(r"^```(?:json)?\s*|\s*```$", "", out)
+    res = json.loads(out)
+    if not isinstance(res, list) or len(res) != len(paras):
+        return None
+    res = [[[str(x[0]), str(x[1])] for x in para if isinstance(x, list) and len(x) >= 2] if isinstance(para, list) else [] for para in res]
+    if any(t.strip() and not r for t, r in zip(paras, res)):
+        return None
+    os.makedirs(TRANS_DIR, exist_ok=True)
+    with open(p + ".tmp", "w") as f:
+        json.dump(res, f, ensure_ascii=False)
+    os.replace(p + ".tmp", p)
+    return res
+
+
+def pretranslate():
+    """服务器定时跑：外刊列表里还没有译文的文章提前翻好，读者打开就直接有"""
+    cfg = load()
+    for a in json.load(open(os.path.join(ARTICLES_DIR, "index.json"))):
+        aid = str(a.get("id", ""))
+        p = os.path.join(TRANS_DIR, aid + ".json")
+        if not re.fullmatch(r"(voa|tc)-\d+", aid) or os.path.exists(p):
+            continue
+        try:
+            paras = [str(x["t"])[:4000] for x in json.load(open(os.path.join(ARTICLES_DIR, aid + ".json")))["paras"]]
+            if not paras or len(paras) > 200 or sum(map(len, paras)) > 40000:
+                continue
+            print(aid, "ok" if translate_paras(cfg, paras, p) is not None else "格式不对", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(aid, "失败", e, flush=True)
+
 def context_block(ctx: dict) -> str:
     parts = []
     if ctx.get("article"):
@@ -763,25 +804,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(409, {"error": "正在翻译，稍等再试"})
             _trans_busy.add(aid)
         try:
-            prompt = (
-                "把下面每段英文按句子切开，逐句翻成自然、准确的简体中文（给四六级考生看）。"
-                "只输出 JSON：一个数组，每段一个元素，元素是 [[英文原句, 中文], ...]；英文原句照抄、不改一个字。"
-                f"一共 {len(paras)} 段，数组长度必须是 {len(paras)}。\n\n"
-                + "\n\n".join(f"[{i + 1}] {t}" for i, t in enumerate(paras))
-            )
-            with upstream(cfg, [{"role": "user", "content": prompt}], False, 16000, 0.2) as r:
-                out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
-            out = re.sub(r"^```(?:json)?\s*|\s*```$", "", out)
-            res = json.loads(out)
-            if not isinstance(res, list) or len(res) != len(paras):
+            res = translate_paras(cfg, paras, p)
+            if res is None:
                 return self.send_json(502, {"error": "译文格式不对，再试一次"})
-            res = [[[str(x[0]), str(x[1])] for x in para if isinstance(x, list) and len(x) >= 2] if isinstance(para, list) else [] for para in res]
-            if any(t.strip() and not r for t, r in zip(paras, res)):
-                return self.send_json(502, {"error": "译文格式不对，再试一次"})
-            os.makedirs(TRANS_DIR, exist_ok=True)
-            with open(p + ".tmp", "w") as f:
-                json.dump(res, f, ensure_ascii=False)
-            os.replace(p + ".tmp", p)
             return self.send_json(200, res)
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e) if isinstance(e, urllib.error.URLError) else "翻译失败，再试一次"})
@@ -992,4 +1017,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["pretranslate"]:
+        pretranslate()
+    else:
+        main()
