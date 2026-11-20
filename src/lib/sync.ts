@@ -74,6 +74,10 @@ async function applyRow(tbl: string, k: string, row: unknown) {
   if (tbl === "kv") {
     if (row === null) localStorage.removeItem(k);
     else localStorage.setItem(k, String(row));
+    const seen: Record<string, string> = JSON.parse(localStorage.getItem(KV_SEEN) || "{}");
+    if (row === null) delete seen[k];
+    else seen[k] = String(row);
+    localStorage.setItem(KV_SEEN, JSON.stringify(seen));
     return;
   }
   if (!(TABLES as readonly string[]).includes(tbl)) return;
@@ -143,6 +147,8 @@ export async function syncNow() {
     const kv = kvSnapshot();
     const out = readOut();
     for (const k of new Set([...Object.keys(seen), ...Object.keys(kv)])) if (seen[k] !== kv[k]) out[`kv\u0001${k}`] = Date.now();
+    localStorage.setItem(OUT, JSON.stringify(out));
+    localStorage.setItem(KV_SEEN, JSON.stringify(kv));
     let more = true;
     let first = true;
     while (more) {
@@ -171,7 +177,6 @@ export async function syncNow() {
       more = x.more;
       first = false;
     }
-    localStorage.setItem(KV_SEEN, JSON.stringify(kvSnapshot()));
     setState({ status: "idle", at: Date.now() });
     if (Object.keys(readOut()).length) schedule(1000);
   } catch (e) {
