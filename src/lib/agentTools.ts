@@ -273,7 +273,7 @@ function findText(
   text: string,
   page?: number,
 ): { page: number; a: number; b: number } | null {
-  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
   const want = text.split(/\s+/).map(norm).filter(Boolean);
   if (!want.length) return null;
   const order =
