@@ -68,7 +68,7 @@ async function currentRow(tbl: Tbl | "kv", k: string): Promise<unknown> {
     return rest;
   }
   if (tbl === "memory") return (await db.memory.where("kind").equals("profile").first()) ?? null;
-  return (await db.table(tbl).get(k)) ?? (await db.table(tbl).get(Number(k))) ?? null;
+  return (await db.table(tbl).get(k)) ?? (/^\d+$/.test(k) ? await db.table(tbl).get(Number(k)) : undefined) ?? null;
 }
 
 async function applyRow(tbl: string, k: string, row: unknown) {
