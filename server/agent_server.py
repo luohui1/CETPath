@@ -139,7 +139,7 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 
 ## 工具
 你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
-- 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards。用了这些，正文就只写一两句要点，别把内容再写一遍。
+- 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards；学习者看不懂某题答案、问“为什么选这个”时用 show_answer_map。用了这些，正文就只写一两句要点，别把内容再写一遍。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
 - 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
@@ -330,8 +330,38 @@ TOOLS = [
     _fn(
         "show_cards",
         "在对话里放一组可翻面的词汇卡（正面词/短语和音标，背面释义和卷面原句）。讲到几个要记的词或短语时用。",
-        {"cards": {"type": "array", "items": {"type": "object", "properties": {"front": {"type": "string"}, "phonetic": {"type": "string"}, "back": {"type": "string"}, "example": {"type": "string", "description": "卷面原句"}}, "required": ["front", "back"]}}},
+        {
+            "cards": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "front": {"type": "string"},
+                        "phonetic": {"type": "string"},
+                        "pos": {"type": "string", "description": "词性，如 v. / n. / phr."},
+                        "back": {"type": "string", "description": "常考释义"},
+                        "here": {"type": "string", "description": "在这套卷原句里的意思"},
+                        "collocations": {"type": "array", "items": {"type": "string"}, "description": "常见搭配 2-3 个"},
+                        "synonyms": {"type": "array", "items": {"type": "string"}, "description": "四六级常见同义替换 2-3 个"},
+                        "example": {"type": "string", "description": "卷面原句"},
+                    },
+                    "required": ["front", "back"],
+                },
+            }
+        },
         ["cards"],
+    ),
+    _fn(
+        "show_answer_map",
+        "在对话里画一张答案解析图：原文定位句、原文和正确选项的同义替换对照、每个选项对错和理由。学习者看不懂某题答案时用。",
+        {
+            "question": {"type": "string", "description": "题号和题干简述"},
+            "answer": {"type": "string", "description": "如“选 B”"},
+            "quote": {"type": "string", "description": "原文定位句，照抄"},
+            "pairs": {"type": "array", "items": {"type": "object", "properties": {"source": {"type": "string", "description": "原文里的说法"}, "option": {"type": "string", "description": "选项里的说法"}}}},
+            "options": {"type": "array", "items": {"type": "object", "properties": {"letter": {"type": "string"}, "text": {"type": "string"}, "right": {"type": "boolean"}, "why": {"type": "string", "description": "对在哪或错在哪，一句话"}}}},
+        },
+        ["quote", "options"],
     ),
     _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
     _fn(

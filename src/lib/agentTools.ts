@@ -318,6 +318,11 @@ ${(await getProfile()) || "（还没有）"}
           label: "画了句子结构图",
           result: "结构图已显示给学习者，正文不用再逐块重复，只补一两句要点",
         };
+      case "show_answer_map":
+        return {
+          label: "画了答案解析图",
+          result: "答案解析图已显示给学习者，正文只用一两句话点出关键",
+        };
       case "show_steps":
         return {
           label: "列了解题步骤",
