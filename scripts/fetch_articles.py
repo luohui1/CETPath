@@ -30,7 +30,9 @@ POLITICS = re.compile(
     r"president\w*|prime minister|government\w*|minister\w*|sanction\w*|tariff\w*|wars?|military|troops|missiles?|nuclear weapons?|protest\w*|"
     r"regime|communis\w*|Trump|Biden|Harris|Xi|Putin|Zelensky\w*|Netanyahu|Modi|Kremlin|White House|NATO|Taiwan\w*|Tibet\w*|Xinjiang|Hong Kong|"
     r"Ukrain\w*|Russia\w*|Israel\w*|Gaza|Hamas|Palestin\w*|Iran\w*|North Korea\w*|Beijing|CCP|Communist Party|refugee\w*|immigra\w*|asylum|"
-    r"terror\w*|genocide|human rights|geopoliti\w*|diplomat\w*)\b",
+    r"terror\w*|genocide|human rights|geopoliti\w*|diplomat\w*|China|Chinese|CPC|United Nations|UN|COP\d+|summits?|lobby\w*|spy|spies|espionage|"
+    r"apartheid|coloni\w*|activis\w*|ideolog\w*|feminis\w*|gender\w*|abuse\w*|groom\w*|scandal\w*|police|court|lawsuit\w*|sovereign\w*|"
+    r"Europe\w*|EU|Brexit|Africa\w*|Middle East|Cuba\w*|Venezuela\w*|Myanmar|Yemen|Syria\w*|Afghan\w*|Japan\w*|Korea\w*|India\w*|Pakistan\w*)\b",
     re.I,
 )
 
