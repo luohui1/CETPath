@@ -211,8 +211,11 @@ def main():
     index = {a["id"]: a for a in (json.loads(idx_path.read_text()) if idx_path.exists() else [])}
     new = 0
 
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     def save(a):
         nonlocal new
+        a["fetched"] = now
         (out / f"{a['id']}.json").write_text(json.dumps(a, ensure_ascii=False, separators=(",", ":")))
         index[a["id"]] = {k: v for k, v in a.items() if k not in ("paras", "glossary", "keywords")}
         new += 1
@@ -247,10 +250,11 @@ def main():
             except Exception as e:  # noqa: BLE001
                 print("The Conversation 取不到：", e, file=sys.stderr)
 
-    # 太旧的删掉（列表、全文、音频）
+    # 抓来超过 keep-days 天的删掉（列表、全文、音频）。按抓取时间算：VOA 的栏目里常有几年前的旧文
     cutoff = datetime.now(timezone.utc) - timedelta(days=args.keep_days)
     for aid, a in list(index.items()):
-        if datetime.fromisoformat(a["published"].replace("Z", "+00:00")) < cutoff:
+        a.setdefault("fetched", now)
+        if datetime.fromisoformat(a["fetched"]) < cutoff:
             del index[aid]
             for p in (out / f"{aid}.json", out / "audio" / f"{aid}.mp3"):
                 p.unlink(missing_ok=True)
