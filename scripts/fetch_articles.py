@@ -204,6 +204,7 @@ def main():
     ap.add_argument("--per-feed", type=int, default=8)
     ap.add_argument("--keep-days", type=int, default=60)
     ap.add_argument("--only", choices=["voa", "tc"])
+    ap.add_argument("--per-level", type=int, default=5, help="每个等级（四级/六级/考研）每次最多新增几篇")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -213,8 +214,13 @@ def main():
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+    taken: dict[str, int] = {}
+
     def save(a):
         nonlocal new
+        if taken.get(a["level"], 0) >= args.per_level:
+            return
+        taken[a["level"]] = taken.get(a["level"], 0) + 1
         a["fetched"] = now
         (out / f"{a['id']}.json").write_text(json.dumps(a, ensure_ascii=False, separators=(",", ":")))
         index[a["id"]] = {k: v for k, v in a.items() if k not in ("paras", "glossary", "keywords")}
