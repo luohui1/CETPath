@@ -109,6 +109,13 @@ export async function runTool(
           const due = (
             await db.cards.where("due").belowOrEqual(now).toArray()
           ).filter((c) => c.origin === "vocab");
+          // 删掉的词卡片可能还留着（学过的不删卡片），只算还在生词本里的
+          const inBook = new Set(
+            await db.vocab
+              .bulkGet(due.map((c) => c.word))
+              .then((rows) => rows.filter(Boolean).map((r) => r!.word)),
+          );
+          due.splice(0, due.length, ...due.filter((c) => inBook.has(c.word)));
           words = due.map((c) => c.word);
           title = `今天该复习的生词 ${words.length} 个`;
         } else {
