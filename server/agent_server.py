@@ -691,7 +691,7 @@ class Handler(BaseHTTPRequestHandler):
                 if tbl not in SYNC_TABLES or not k:
                     continue
                 old = c.execute("SELECT t FROM rows WHERE uid=? AND tbl=? AND k=?", (uid, tbl, k)).fetchone()
-                if old and old[0] > t:
+                if old and (old[0] > t or t <= 1):  # t<=1 是首次登录导入的本机旧数据，服务器上已有的不覆盖
                     continue
                 seq += 1
                 raw = json.dumps(it.get("row"), ensure_ascii=False)
