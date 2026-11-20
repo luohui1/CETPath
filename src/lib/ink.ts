@@ -93,6 +93,7 @@ const loadCache = (): Record<string, string> => {
 export async function inkNotes(
   marks: MarkRow[],
   pages: PdfWordsPage[] | null,
+  signal?: AbortSignal,
 ): Promise<string> {
   const pens = marks.filter(
     (m) => m.kind === "pen" && (m.points?.length ?? 0) > 1,
@@ -117,7 +118,7 @@ export async function inkNotes(
       });
   const todo = jobs.filter((j) => !(j.key in cache)).slice(0, 24);
   // 一块一个请求（每张图几十 KB），最多 4 个同时
-  for (let i = 0; i < todo.length; i += 4)
+  for (let i = 0; i < todo.length && !signal?.aborted; i += 4)
     await Promise.all(
       todo.slice(i, i + 4).map(async (j) => {
         const data = pages?.[j.page - 1];
@@ -133,6 +134,7 @@ export async function inkNotes(
             method: "POST",
             headers: agentHeaders(true),
             body: JSON.stringify({ png: render(j.marks, j.box), near: words }),
+            signal,
           });
           if (r.ok)
             cache[j.key] = (
