@@ -634,7 +634,9 @@ class Handler(BaseHTTPRequestHandler):
             res = json.loads(out)
             if not isinstance(res, list) or len(res) != len(paras):
                 return self.send_json(502, {"error": "译文格式不对，再试一次"})
-            res = [[[str(x[0]), str(x[1])] for x in para if isinstance(x, list) and len(x) >= 2] for para in res]
+            res = [[[str(x[0]), str(x[1])] for x in para if isinstance(x, list) and len(x) >= 2] if isinstance(para, list) else [] for para in res]
+            if any(t.strip() and not r for t, r in zip(paras, res)):
+                return self.send_json(502, {"error": "译文格式不对，再试一次"})
             os.makedirs(TRANS_DIR, exist_ok=True)
             with open(p + ".tmp", "w") as f:
                 json.dump(res, f, ensure_ascii=False)
