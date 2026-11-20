@@ -80,10 +80,12 @@ button:disabled {
 .w:hover {
   background: var(--blue-tint);
 }
-.w.am-hl {
+.w.am-hl,
+.am-hl-gap {
   background: rgba(255, 222, 89, 0.55);
 }
-.w.am-ul {
+.w.am-ul,
+.am-ul-gap {
   text-decoration: underline 2px var(--blue);
   text-underline-offset: 4px;
 }

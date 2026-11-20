@@ -81,8 +81,11 @@ export function ArticlePage() {
       setTrBusy(e instanceof Error ? e.message : "翻译失败，再试一次");
     }
   };
+  const notingRef = useRef(false);
+  notingRef.current = noting !== null;
   useEffect(() => {
-    const up = () => window.setTimeout(() => setSel(readSelection()), 0);
+    // 写批注时输入框拿走了焦点，选区会没：这时不收工具条
+    const up = () => window.setTimeout(() => !notingRef.current && setSel(readSelection()), 0);
     document.addEventListener("selectionchange", up);
     return () => document.removeEventListener("selectionchange", up);
   }, []);

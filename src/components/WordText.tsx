@@ -158,10 +158,15 @@ export const WordText = memo(function WordText({
 
   const parts: ReactNode[] = [];
   let last = 0;
+  // 词之间的空格、数字也要跟着标（高亮连成一片）
+  const gap = (t: string, at: number) => {
+    const cls = ranges?.filter((r) => at >= r.a && at + t.length <= r.b).map((r) => r.cls);
+    return cls?.length ? <span key={`g${at}`} className={cn(cls.map((c) => `${c}-gap`))}>{t}</span> : t;
+  };
   const pushWords = (chunk: string, base: number) => {
     let i = 0;
     for (const m of chunk.matchAll(WORD_RE)) {
-      if (m.index! > i) parts.push(chunk.slice(i, m.index));
+      if (m.index! > i) parts.push(gap(chunk.slice(i, m.index), base + i));
       const w = m[0];
       const lower = w.toLowerCase().replace(/’/g, "'");
       const marked = marks && (vocab.has(lower) || vocab.has(lemma[lower] ?? ""));
