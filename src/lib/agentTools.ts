@@ -313,6 +313,29 @@ ${(await getProfile()) || "（还没有）"}
         await saveProfile(text);
         return { label: "更新了学习者档案", result: "档案已更新" };
       }
+      case "show_sentence_map":
+        return {
+          label: "画了句子结构图",
+          result: "结构图已显示给学习者，正文不用再逐块重复，只补一两句要点",
+        };
+      case "show_steps":
+        return {
+          label: "列了解题步骤",
+          result:
+            "解题步骤已显示给学习者（可以一步步展开），正文只用一句话总结",
+        };
+      case "show_cards": {
+        let n = 0;
+        try {
+          n = (JSON.parse(raw) as { cards?: unknown[] }).cards?.length ?? 0;
+        } catch {
+          /* 参数坏了按 0 张 */
+        }
+        return {
+          label: `做了 ${n} 张词汇卡`,
+          result: "卡片已显示给学习者，正文不用重复",
+        };
+      }
       case "show_quiz": {
         const n = quizOf({ id: "", name, args: raw })?.questions.length ?? 0;
         return n

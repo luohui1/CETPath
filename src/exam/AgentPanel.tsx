@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
 import { AgentQuiz } from "./AgentQuiz";
+import { AgentVisual, VISUAL_TOOLS } from "./AgentVisuals";
 import { AgentActivate } from "@/components/AgentActivate";
 import { db } from "@/lib/db";
 import {
@@ -408,7 +409,10 @@ export function AgentPanel({
               )}
               {m.calls?.map((c) => {
                 const quiz = c.name === "show_quiz" ? quizOf(c) : null;
-                return quiz ? <AgentQuiz key={c.id} quiz={quiz} /> : null;
+                if (quiz) return <AgentQuiz key={c.id} quiz={quiz} />;
+                return VISUAL_TOOLS.has(c.name) ? (
+                  <AgentVisual key={c.id} call={c} />
+                ) : null;
               })}
             </div>
           );

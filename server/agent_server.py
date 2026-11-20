@@ -138,7 +138,8 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 错题挑重点讲，不用每题都展开；学习者追问某一题时再细讲那题。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
+- 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards。用了这些，正文就只写一两句要点，别把内容再写一遍。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
 - 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
@@ -292,6 +293,46 @@ TOOLS = [
     ),
     _fn("remove_from_vocab", "把一个词从学习者的生词本删掉。学习者说不要这个词了时用。", {"word": {"type": "string"}}, ["word"]),
     _fn("mark_known", "把生词本里的一个词标成已掌握（两个月后再复习）。学习者说这个词会了时用。", {"word": {"type": "string"}}, ["word"]),
+    _fn(
+        "show_sentence_map",
+        "在对话里画一张可点的长难句结构图：把句子按成分切成连续的块，主干、从句、修饰用不同颜色，点一块看作用。解析长难句时优先用它。",
+        {
+            "sentence": {"type": "string"},
+            "translation": {"type": "string", "description": "整句译文"},
+            "parts": {
+                "type": "array",
+                "description": "按原句顺序切块，拼起来就是原句",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "role": {"type": "string", "enum": ["subject", "predicate", "object", "clause", "modifier", "other"]},
+                        "level": {"type": "integer", "description": "嵌套层级：主干 0，从句/修饰 1，从句里的从句 2"},
+                        "label": {"type": "string", "description": "这一块是什么，如“定语从句，修饰 study”"},
+                        "note": {"type": "string", "description": "这一块的中文意思或要点"},
+                    },
+                    "required": ["text", "role"],
+                },
+            },
+        },
+        ["parts"],
+    ),
+    _fn(
+        "show_steps",
+        "在对话里列一个能一步步展开的解题步骤（如 定位 → 对照 → 排除）。讲某道题怎么做时用。",
+        {
+            "question": {"type": "string", "description": "题号或题干简述"},
+            "steps": {"type": "array", "items": {"type": "object", "properties": {"title": {"type": "string"}, "detail": {"type": "string"}, "quote": {"type": "string", "description": "这一步引用的原文，可选"}}, "required": ["title"]}},
+            "answer": {"type": "string", "description": "最后的答案，如“选 B”"},
+        },
+        ["steps"],
+    ),
+    _fn(
+        "show_cards",
+        "在对话里放一组可翻面的词汇卡（正面词/短语和音标，背面释义和卷面原句）。讲到几个要记的词或短语时用。",
+        {"cards": {"type": "array", "items": {"type": "object", "properties": {"front": {"type": "string"}, "phonetic": {"type": "string"}, "back": {"type": "string"}, "example": {"type": "string", "description": "卷面原句"}}, "required": ["front", "back"]}}},
+        ["cards"],
+    ),
     _fn("get_weak_points", "读取学习者的薄弱点：长期记忆里的弱项，以及错题本里各题型还没掌握的题数。出练习、定计划前先调用。", {}, []),
     _fn(
         "show_quiz",
