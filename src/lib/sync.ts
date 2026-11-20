@@ -55,7 +55,6 @@ function hook() {
       }
     });
   }
-  addEventListener("storage", () => {});
 }
 
 async function currentRow(tbl: Tbl | "kv", k: string): Promise<unknown> {
@@ -209,3 +208,6 @@ export function stopSync() {
   clearTimeout(timer);
   setState({ status: "off" });
 }
+
+// 没登录、离线时的改动也记下来，登录或联网后一起传
+hook();
