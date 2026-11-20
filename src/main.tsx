@@ -13,6 +13,7 @@ import { primeAppData } from "./lib/insights";
 import { db, memoryDb } from "./lib/db";
 import type { ComponentType } from "react";
 import { Layout } from "./components/Layout";
+import { loadMe } from "./lib/auth";
 import { HomePage } from "./pages/Home";
 import { NotFoundPage } from "./pages/NotFound";
 
@@ -23,6 +24,8 @@ import { NotFoundPage } from "./pages/NotFound";
  */
 const page = (load: () => Promise<ComponentType>) => ({ lazy: async () => ({ Component: await load() }) });
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
+
+void loadMe(); // 从哪个页面打开都先查登录、开始同步
 
 const router = createBrowserRouter([
   { path: "/welcome", ...page(() => import("./pages/Welcome").then((m) => m.WelcomePage)) },
