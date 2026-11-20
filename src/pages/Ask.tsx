@@ -101,7 +101,7 @@ export function AskPage() {
                   }}
                   rows={3}
                   placeholder="粘贴一句看不懂的英文，或者直接提问"
-                  className="block w-full resize-none bg-transparent px-3 pt-2 text-[16px] leading-[1.6] outline-none placeholder:text-[var(--ink-500)]"
+                  className="block w-full resize-none bg-transparent px-3 pt-2 outline-none focus-visible:outline-none text-[16px] leading-[1.6] outline-none placeholder:text-[var(--ink-500)]"
                   aria-label="要问的内容"
                 />
                 <div className="flex items-center justify-between px-2 pb-1">
