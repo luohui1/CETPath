@@ -40,7 +40,7 @@ def merge(pid, batch):
         letters = {o.get("key") for o in q.get("options") or []}
         kind, brief, signal = (str(v.get(k) or "").strip() for k in ("kind", "brief", "signal"))
         traps = v.get("traps") or {}
-        bad = []
+        bad = [f"缺 {k}" for k, val in (("kind", kind), ("brief", brief), ("signal", signal)) if not val]
         if kind and not (kind in KINDS or kind.endswith(("词", "式", "数")) or len(kind) <= 8):
             bad.append(f"kind「{kind}」")
         if brief and (len(brief) > LIM["brief"] or (ans and ans not in brief[:6])):
@@ -51,9 +51,11 @@ def merge(pid, batch):
             bad.append("traps 键必须是错误选项字母、值必须在陷阱表里")
         if bad:
             errs.append(f"{qid}: " + "；".join(bad)); continue
-        for k, val in (("kind", kind), ("brief", brief), ("signal", signal)):
-            if val: f[k] = val
-        if traps: f["traps"] = traps
+        f.update(kind=kind, brief=brief, signal=signal)
+        if traps:
+            f["traps"] = traps
+        else:
+            f.pop("traps", None)  # 改正时写 {} 就是去掉原来的陷阱标签
         ok += 1
     with open(ex_path, "w", encoding="utf-8") as fp:
         json.dump(ex, fp, ensure_ascii=False, indent=1)
@@ -66,7 +68,7 @@ def status():
     for p in sorted(glob.glob(f"{ROOT}/explain/cet[46]-*.json")):
         pid = os.path.basename(p)[:-5]
         qs = [v for v in (load(p).get("questions") or {}).values() if v.get("fields", {}).get("answer")]
-        left = sum(1 for v in qs if not v["fields"].get("kind"))
+        left = sum(1 for v in qs if not all(v["fields"].get(k) for k in ("kind", "brief", "signal")))
         todo += left
         print(f"{pid}\t{len(qs) - left}/{len(qs)}")
     print("还差", todo, "题")
