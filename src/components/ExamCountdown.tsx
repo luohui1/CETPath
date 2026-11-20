@@ -27,6 +27,7 @@ function useNow(ms: number) {
 
 /** 真题页、专项页上次选的考试 → 倒计时的默认考试名 */
 const PRESET_OF: Record<string, string> = { kaoyan1: EXAM_PRESETS[0], kaoyan2: EXAM_PRESETS[1], cet4: EXAM_PRESETS[2], cet6: EXAM_PRESETS[3] };
+const EXAM_OF: Record<string, string> = Object.fromEntries(Object.entries(PRESET_OF).map(([k, v]) => [v, k]));
 export const examPreset = (exam?: string | null) => (exam && PRESET_OF[exam]) || undefined;
 
 /** 首页的考试倒计时：一行小条。没设日期时就地设（考试名默认是上次选的考试），设好后是"距某考试还有 N 天"+ 阶段 + 一句建议 */
@@ -57,7 +58,11 @@ export function ExamCountdown({ startedAt, weak, defaultName, className }: { sta
         <span className="text-[14px] font-medium">{target ? "修改考试" : "设个考试日期，开始倒计时"}</span>
         <div className="flex flex-wrap gap-1.5">
           {EXAM_PRESETS.map((p) => (
-            <button key={p} type="button" onClick={() => setName(p)} className={cn("pill", name === p && "pill-on")} aria-pressed={name === p}>
+            <button key={p} type="button" onClick={() => {
+                setName(p);
+                // 首页下面的"继续做题"、推荐卷子跟着换成这门考试
+                void setSetting("lastExam", EXAM_OF[p]);
+              }} className={cn("pill", name === p && "pill-on")} aria-pressed={name === p}>
               {p}
             </button>
           ))}

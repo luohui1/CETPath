@@ -213,7 +213,7 @@ export function HomePage() {
   const kinds = useKindStats(index, items);
   const mistakes = usePendingMistakes() ?? 0;
 
-  const current = items?.find((it) => !it.attempt.submittedAt);
+  const current = items?.find((it) => !it.attempt.submittedAt && (!settings.lastExam || it.paper.exam === settings.lastExam));
   const next = useMemo(() => {
     const done = new Set((items ?? []).filter((it) => !it.section).map((it) => it.paper.id));
     const p = [...(index ?? [])].filter((x) => !settings.lastExam || x.exam === settings.lastExam).sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));
