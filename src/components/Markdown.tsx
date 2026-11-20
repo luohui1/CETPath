@@ -24,7 +24,7 @@ function inline(text: string, key: string): ReactNode[] {
     else if (t.startsWith("**"))
       out.push(
         <strong key={k} className="font-semibold text-[var(--ink)] [background:linear-gradient(transparent_62%,color-mix(in_oklab,var(--yellow,#f5c542)_45%,transparent)_62%)]">
-          {t.slice(2, -2)}
+          {inline(t.slice(2, -2), k)}
         </strong>,
       );
     else if (t.startsWith("`"))
