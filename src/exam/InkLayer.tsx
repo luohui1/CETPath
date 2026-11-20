@@ -439,8 +439,8 @@ export const InkLayer = memo(function InkLayer({
       return;
     }
     if (e.pointerType === "pen") stylus.seen = stylus.down = true;
-    else if (e.pointerType === "touch" && stylus.seen) {
-      // 手写笔在写时碰到的是手掌；没在写就是手指拖动卷面
+    else if (e.pointerType === "touch") {
+      // 只有笔能写字：手指一律是拖动卷面；笔正在写时碰到的是手掌，不理
       if (stylus.down) return;
       const stage = el.closest<HTMLElement>(".gr-wb-stage, [data-ink-scroll]");
       if (stage) {
