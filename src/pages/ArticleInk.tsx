@@ -133,7 +133,7 @@ export function ArticleInk({ id, box, on, onClose }: { id: string; box: RefObjec
   return (
     <>
       <svg
-        className="absolute inset-0 z-10 size-full overflow-visible"
+        className="absolute inset-0 z-[5] size-full overflow-visible"
         style={{ pointerEvents: on ? "auto" : "none", touchAction: on ? "none" : "auto", cursor: on ? (tool === "erase" ? "cell" : "crosshair") : undefined }}
         onPointerDown={on ? down : undefined}
         onPointerMove={on ? move : undefined}
