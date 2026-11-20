@@ -3,13 +3,14 @@ import { Link } from "react-router";
 import { ArrowUp, Sparkle, Stop, Wrench } from "@phosphor-icons/react";
 import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
 import { AgentQuiz } from "./AgentQuiz";
+import { AgentActivate } from "@/components/AgentActivate";
 import { db } from "@/lib/db";
 import {
   pickedModel,
   remember,
   setPickedModel,
   streamChat,
-  useAgentEnabled,
+  useAgentState,
   useAgentModels,
   type AgentContext,
   type ChatMsg,
@@ -68,7 +69,8 @@ export function AgentPanel({
   noAutoAsk?: boolean;
   env?: ToolEnv;
 }) {
-  const enabled = useAgentEnabled();
+  const state = useAgentState();
+  const enabled = state === null ? null : state === "on";
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
     thread ? (threads.get(thread.id) ?? []) : [],
   );
@@ -204,6 +206,7 @@ export function AgentPanel({
         <Spinner />
       </div>
     );
+  if (state === "locked") return <AgentActivate />;
   if (!enabled)
     return (
       <div className="px-4 py-10">
@@ -305,7 +308,9 @@ export function AgentPanel({
           <div className="flex flex-col items-center gap-2 px-6 pt-16 text-center">
             <Sparkle className="size-7 text-[var(--blue)]" weight="duotone" />
             <p className="text-[15px] font-semibold">问这套卷的任何问题</p>
-            <p className="text-[13px] leading-[20px] text-[var(--ink-500)]">哪题怎么做、哪句看不懂、怎么分配时间都行；也能让它把词加进生词本、出几道同类题。</p>
+            <p className="text-[13px] leading-[20px] text-[var(--ink-500)]">
+              哪题怎么做、哪句看不懂、怎么分配时间都行；也能让它把词加进生词本、出几道同类题。
+            </p>
           </div>
         )}
         {msgs.map((m, i) =>

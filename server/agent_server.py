@@ -35,6 +35,7 @@ SESSION_SEC = 7 * 86400
 RATE = (40, 600)  # 每个 IP 每 10 分钟最多 40 次提问
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
+_bad_codes: dict[str, list[float]] = {}  # 激活码输错的次数
 _fails: dict[str, list[float]] = {}
 
 
@@ -374,14 +375,16 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
         elif path == "/api/agent/status":
-            self.send_json(200, {"enabled": ready(cfg)})
+            self.send_json(200, {"enabled": ready(cfg), "locked": bool(cfg.get("access_code")), "activated": self.activated(cfg)})
+        elif path == "/api/agent/models" and not self.activated(cfg):
+            self.send_json(403, {"error": "这台设备还没激活 Agent"})
         elif path == "/api/agent/models":
             self.send_json(200, {"models": models(cfg) if ready(cfg) else [], "default": cfg.get("model", "") if ready(cfg) else ""})
         elif path == "/api/admin/config":
             if not self.admin(cfg):
                 return self.send_json(401, {"error": "请先登录"})
             key = cfg.get("api_key", "")
-            self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
+            self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "access_code": cfg.get("access_code", ""), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -411,6 +414,8 @@ class Handler(BaseHTTPRequestHandler):
             for k in ("base_url", "model"):
                 if isinstance(data.get(k), str):
                     cfg[k] = data[k].strip()
+            if isinstance(data.get("access_code"), str):
+                cfg["access_code"] = data["access_code"].strip()[:64]
             if isinstance(data.get("models"), list):
                 cfg["models"] = [str(m).strip() for m in data["models"] if str(m).strip()][:20]
             if isinstance(data.get("api_key"), str) and data["api_key"].strip():
@@ -431,11 +436,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"ok": True, "reply": reply, "ms": int((time.time() - t0) * 1000)})
             except Exception as e:  # noqa: BLE001
                 return self.send_json(502, {"error": upstream_error(e)})
+        if path == "/api/agent/activate":
+            if limited(_bad_codes, self.ip(), 10, 900):
+                return self.send_json(429, {"error": "输错太多次，15 分钟后再试"})
+            code = cfg.get("access_code") or ""
+            if not code or hmac.compare_digest(str(data.get("code") or "").strip().encode(), code.encode()):
+                with _lock:
+                    _bad_codes.pop(self.ip(), None)
+                return self.send_json(200, {"ok": True})
+            return self.send_json(403, {"error": "激活码不对"})
+        if path.startswith("/api/agent/") and not self.activated(cfg):
+            return self.send_json(403, {"error": "这台设备还没激活 Agent，请输入激活码"})
         if path == "/api/agent/chat":
             return self.chat(cfg, data)
         if path == "/api/agent/remember":
             return self.remember(cfg, data)
         self.send_json(404, {"error": "not found"})
+
+    def activated(self, cfg: dict) -> bool:
+        """服务器没设激活码就都算激活；设了就要请求头里带对"""
+        code = cfg.get("access_code") or ""
+        return not code or hmac.compare_digest((self.headers.get("X-Agent-Code") or "").strip().encode(), code.encode())
 
     def chat(self, cfg: dict, data: dict):
         if not ready(cfg):

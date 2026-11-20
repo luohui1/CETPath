@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { resetAgentStatus } from "@/lib/agent";
 import { Button } from "@/components/ui";
 
-type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; models?: string[]; error?: string; reply?: string; ms?: number };
+type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; models?: string[]; access_code?: string; error?: string; reply?: string; ms?: number };
 
 async function api(path: string, body?: unknown, method?: string): Promise<[number, Cfg]> {
   try {
@@ -25,7 +25,7 @@ const field = "h-10 w-full rounded-[9px] bg-white px-3 text-[14px] shadow-[var(-
 export function AgentModel() {
   const [state, setState] = useState<"loading" | "login" | "form" | "off">("loading");
   const [pw, setPw] = useState("");
-  const [f, setF] = useState({ base_url: "", model: "", api_key: "", temperature: "", models: "" });
+  const [f, setF] = useState({ base_url: "", model: "", api_key: "", temperature: "", models: "", access_code: "" });
   const [keyInfo, setKeyInfo] = useState<{ set: boolean; tail: string }>({ set: false, tail: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,7 @@ export function AgentModel() {
     const [s, d] = await api("/api/admin/config");
     if (s === 401) return setState("login");
     if (s !== 200) return setState("off");
-    setF({ base_url: d.base_url ?? "", model: d.model ?? "", api_key: "", temperature: d.temperature == null ? "" : String(d.temperature), models: (d.models ?? []).join(", ") });
+    setF({ base_url: d.base_url ?? "", model: d.model ?? "", api_key: "", temperature: d.temperature == null ? "" : String(d.temperature), models: (d.models ?? []).join(", "), access_code: d.access_code ?? "" });
     setKeyInfo({ set: !!d.api_key_set, tail: d.api_key_tail ?? "" });
     setState("form");
   };
@@ -59,7 +59,7 @@ export function AgentModel() {
   const save = () =>
     run(async () => {
       const t = f.temperature.trim();
-      const [s, d] = await api("/api/admin/config", { base_url: f.base_url, model: f.model, api_key: f.api_key, temperature: t ? Number(t) : null, models: f.models.split(/[,，\s]+/).filter(Boolean) }, "PUT");
+      const [s, d] = await api("/api/admin/config", { base_url: f.base_url, model: f.model, api_key: f.api_key, temperature: t ? Number(t) : null, models: f.models.split(/[,，\s]+/).filter(Boolean), access_code: f.access_code.trim() }, "PUT");
       if (s === 401) return setState("login");
       if (s !== 200) return setMsg({ ok: false, text: d.error ?? "保存失败" });
       resetAgentStatus();
@@ -114,6 +114,21 @@ export function AgentModel() {
         <span className="text-[13px] font-medium">API Key</span>
         <input type="password" autoComplete="off" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} placeholder={keyInfo.set ? `已保存（…${keyInfo.tail}），不改就留空` : "sk-..."} className={field} />
       </label>
+      <div className="space-y-1.5">
+        <span className="block text-[13px] font-medium">激活码（设了以后，别的设备要输入它才能用 Agent；留空就谁都能用）</span>
+        <div className="flex gap-2">
+          <input value={f.access_code} onChange={(e) => setF({ ...f, access_code: e.target.value })} placeholder="不设激活码" autoComplete="off" aria-label="激活码" className={field} />
+          <Button
+            onClick={() => {
+              const a = "abcdefghjkmnpqrstuvwxyz23456789";
+              const r = crypto.getRandomValues(new Uint32Array(10));
+              setF({ ...f, access_code: Array.from(r, (x) => a[x % a.length]).join("") });
+            }}
+          >
+            随机生成
+          </Button>
+        </div>
+      </div>
       <label className="block space-y-1.5">
         <span className="text-[13px] font-medium">温度（可不填）</span>
         <input inputMode="decimal" value={f.temperature} onChange={(e) => setF({ ...f, temperature: e.target.value })} placeholder="0.3" className={`${field} max-w-[120px]`} />

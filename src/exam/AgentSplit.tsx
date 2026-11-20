@@ -18,6 +18,8 @@ import { db, type ChatRow } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { AgentPanel, forgetThread, type AgentThread } from "./AgentPanel";
 import type { ToolEnv } from "@/lib/agentTools";
+import { useAgentState } from "@/lib/agent";
+import { AgentActivate } from "@/components/AgentActivate";
 
 const when = (t: number) => {
   const d = new Date(t);
@@ -61,6 +63,7 @@ export function AgentSplit({
   env?: ToolEnv;
 }) {
   const self = useRef<HTMLElement>(null);
+  const state = useAgentState();
   const [sid, setSid] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const title = paperThread.ctx.paper;
@@ -254,7 +257,9 @@ export function AgentSplit({
           onClick={() => setListOpen(false)}
         />
       )}
-      {enabled ? (
+      {state === "locked" ? (
+        <AgentActivate />
+      ) : enabled ? (
         <AgentPanel
           env={env}
           key={thread.id}

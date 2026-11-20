@@ -54,34 +54,83 @@ export type AgentContext = {
   marks?: string;
 };
 
-let status: Promise<boolean> | null = null;
-/** 设置页改了模型后重新问一次是否开通 */
+// 激活码：服务器设了激活码时，没激活的设备用不了 Agent（省模型额度）。输一次存在本机，每次请求带上
+const CODE_KEY = "yz-agent-code";
+const agentHeaders = (json = false): Record<string, string> => {
+  const code = localStorage.getItem(CODE_KEY);
+  return {
+    ...(json ? { "Content-Type": "application/json" } : {}),
+    ...(code ? { "X-Agent-Code": code } : {}),
+  };
+};
+
+/** on：能用；off：服务器没配模型或连不上；locked：要输激活码 */
+export type AgentState = "on" | "off" | "locked";
+let status: Promise<AgentState> | null = null;
+/** 设置页改了模型、激活成功、请求被拒时重新问一次 */
 export const resetAgentStatus = () => {
   status = null;
   modelsP = null;
+  dispatchEvent(new Event("yz-agent-status"));
 };
-export function agentEnabled(): Promise<boolean> {
-  status ??= fetch("/api/agent/status")
-    .then((r) => (r.ok ? r.json() : { enabled: false }))
-    .then((d: { enabled?: boolean }) => !!d.enabled)
-    .catch(() => false)
-    .then((on) => {
-      if (!on) setTimeout(() => (status = null), 60_000); // 没开通或离线：过一会儿再问
-      return on;
+export function agentState(): Promise<AgentState> {
+  status ??= fetch("/api/agent/status", { headers: agentHeaders() })
+    .then((r) => (r.ok ? r.json() : {}))
+    .then(
+      (d: {
+        enabled?: boolean;
+        locked?: boolean;
+        activated?: boolean;
+      }): AgentState =>
+        !d.enabled ? "off" : d.locked && !d.activated ? "locked" : "on",
+    )
+    .catch((): AgentState => "off")
+    .then((s) => {
+      if (s === "off") setTimeout(() => (status = null), 60_000); // 没开通或离线：过一会儿再问
+      return s;
     });
   return status;
 }
+export const agentEnabled = () => agentState().then((s) => s === "on");
 
-export function useAgentEnabled(): boolean | null {
-  const [on, setOn] = useState<boolean | null>(null);
+export function useAgentState(): AgentState | null {
+  const [s, setS] = useState<AgentState | null>(null);
   useEffect(() => {
     let live = true;
-    void agentEnabled().then((v) => live && setOn(v));
+    const load = () => void agentState().then((v) => live && setS(v));
+    load();
+    addEventListener("yz-agent-status", load);
     return () => {
       live = false;
+      removeEventListener("yz-agent-status", load);
     };
   }, []);
-  return on;
+  return s;
+}
+
+export function useAgentEnabled(): boolean | null {
+  const s = useAgentState();
+  return s === null ? null : s === "on";
+}
+
+/** 激活这台设备；成功返回 null，否则返回错误提示 */
+export async function activateAgent(code: string): Promise<string | null> {
+  const c = code.trim();
+  try {
+    const r = await fetch("/api/agent/activate", {
+      method: "POST",
+      headers: agentHeaders(true),
+      body: JSON.stringify({ code: c }),
+    });
+    if (r.ok) {
+      localStorage.setItem(CODE_KEY, c);
+      resetAgentStatus();
+      return null;
+    }
+    return ((await r.json()) as { error?: string }).error ?? "激活码不对";
+  } catch {
+    return "连不上服务器";
+  }
 }
 
 const profileForPrompt = async () => ({
@@ -90,6 +139,7 @@ const profileForPrompt = async () => ({
 });
 
 async function failure(r: Response) {
+  if (r.status === 403) resetAgentStatus();
   try {
     const d = (await r.json()) as { error?: string };
     return new Error(d.error || `出错了（${r.status}）`);
@@ -112,7 +162,7 @@ export async function streamChat(
 ): Promise<{ text: string; calls: ToolCall[] }> {
   const r = await fetch("/api/agent/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: agentHeaders(true),
     body: JSON.stringify({
       messages: trimTurns(messages),
       context,
@@ -162,13 +212,14 @@ export async function remember(messages: ChatMsg[]): Promise<boolean> {
   const profile = await getProfile();
   const r = await fetch("/api/agent/remember", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: agentHeaders(true),
     body: JSON.stringify({ messages: trimTurns(messages), profile }),
   });
   if (!r.ok) return false;
   const d = (await r.json()) as { profile?: string | null };
   // 整理期间学习者自己改过档案（或 Agent 用工具改过）：这次结果是按旧档案算的，丢掉
-  if (!d.profile || d.profile.trim() === profile.trim() || editedAt >= started) return false;
+  if (!d.profile || d.profile.trim() === profile.trim() || editedAt >= started)
+    return false;
   // 另一段对话先存了新档案：这次也是按旧档案算的，丢掉，免得把它刚记下的覆盖掉
   if ((await getProfile()).trim() !== profile.trim()) return false;
   await saveProfile(d.profile);
@@ -292,7 +343,7 @@ let modelsP: Promise<Models> | null = null;
 export function useAgentModels(): Models | null {
   const [m, setM] = useState<Models | null>(null);
   useEffect(() => {
-    modelsP ??= fetch("/api/agent/models")
+    modelsP ??= fetch("/api/agent/models", { headers: agentHeaders() })
       .then((r) => (r.ok ? r.json() : { models: [], default: "" }))
       .catch(() => ({ models: [], default: "" }));
     let live = true;
