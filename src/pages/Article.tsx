@@ -41,9 +41,9 @@ export function ArticlePage() {
       a && {
         id: `article:${a.id}`,
         ctx: {
-          paper: `外刊：${a.title}`,
+          paper: a.title,
           sentence: "",
-          review: `这是一篇外刊（${SOURCE_NAMES[a.source]}，约${a.level}难度，${a.words} 词），不是考试卷，没有作答记录。按四六级阅读的角度讲：长难句、同义替换、话题词汇；出题就按四六级阅读题型出。`,
+          article: `${SOURCE_NAMES[a.source]}，约${a.level}难度，${a.words} 词，${a.published.slice(0, 10)}，作者：${a.author}`,
           paperText: `${a.title}\n${articleText(a)}`,
         },
       },

@@ -204,6 +204,19 @@ def memory_block(memory: list) -> str:
 
 def context_block(ctx: dict) -> str:
     parts = []
+    if ctx.get("article"):
+        parts.append(
+            f"学习者在读一篇外刊：{str(ctx.get('paper', ''))[:200]}（{str(ctx['article'])[:300]}）。"
+            "这不是考试卷，没有作答记录，别提复盘和错题。按四六级阅读的角度讲：长难句、同义替换、话题词汇；"
+            "让出题就按四六级阅读题型（仔细阅读单选、段落匹配、选词填空）用 show_quiz 出。"
+        )
+        if ctx.get("paperText"):
+            parts.append("文章原文（标题在第一行）：\n" + str(ctx["paperText"])[:30000])
+        if ctx.get("sentence"):
+            parts.append(f"正在看的句子：{str(ctx['sentence'])[:1200]}")
+        if ctx.get("word"):
+            parts.append(f"他点的词：{str(ctx['word'])[:60]}")
+        return "\n".join(parts)
     if ctx.get("paper"):
         title = str(ctx["paper"])[:80]
         parts.append(f"试卷：{title}")

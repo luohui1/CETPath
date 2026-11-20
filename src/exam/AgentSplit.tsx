@@ -265,7 +265,7 @@ export function AgentSplit({
           key={thread.id}
           thread={thread}
           inDock
-          noAutoAsk={thread.id.startsWith("paper:")}
+          noAutoAsk={thread.id.startsWith("paper:") || thread.id.startsWith("article:")}
         />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">

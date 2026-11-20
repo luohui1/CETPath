@@ -44,6 +44,8 @@ const trimTurns = (m: ChatMsg[]) =>
     );
 // question：AI 助教页直接提的问题（不针对某一句，sentence 为空）
 export type AgentContext = {
+  /** 外刊阅读：这篇文章的来源、难度等 */
+  article?: string;
   ink?: string; // 手写笔记识别出的文字
   paper?: string;
   sentence: string;

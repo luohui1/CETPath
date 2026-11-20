@@ -49,6 +49,8 @@ const QUICK_R = [
   "哪类题最拖时间？",
   "给我一周的练习计划",
 ];
+// 外刊阅读
+const QUICK_A = ["用三句话总结这篇", "挑两个长难句讲讲", "按四六级阅读给我出 5 道题", "这篇值得记的词和短语"];
 // 还没交卷时
 const QUICK_P = [
   "我现在做得怎么样？",
@@ -443,7 +445,9 @@ export function AgentPanel({
             msgs.length > 0 && "hidden",
           )}
         >
-          {(thread.ctx.review
+          {(thread.ctx.article
+            ? QUICK_A
+            : thread.ctx.review
             ? thread.ctx.reviewReady === false
               ? QUICK_P
               : QUICK_R
