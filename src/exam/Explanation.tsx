@@ -234,20 +234,31 @@ function restAfterBrief(text: string, brief: string) {
  * 结构化解析的全部细节。有官方解析时官方原文是正文（小标题照原文），AI 整理的只补官方没有的：
  * 其他选项为什么不对、题干和原文对照、生词；没有官方解析时才用 AI 写的语法 / 语义 / 思路。写作翻译是要点和亮点
  */
+/** 解题步骤的小标题：圆圈序号 + 名字 */
+function Step({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="num grid size-[18px] place-items-center rounded-full bg-[var(--ink)] text-[11px] font-semibold text-white">{n}</span>
+      {children}
+    </span>
+  );
+}
+
 function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields; brief: string; official?: string }) {
   const options = Object.entries(f.options ?? {}).filter(([k]) => k !== q.answer);
   const reasoning = !f.grammar && !f.meaning && f.reasoning ? restAfterBrief(f.reasoning, brief) : "";
   // 有整理好的思路时，官方原文收进最后一个折叠里，不再整段摊在最前面
   const foldOfficial = !!official && (!!reasoning || options.length > 0);
   const aiParts = options.length > 0 || !!f.mapping?.length || !!f.vocab?.length;
+  let n = 0;
   return (
     <>
       {official && !foldOfficial && <OfficialText text={official} />}
-      {!official && f.grammar && <CardSection label="语法">{f.grammar}</CardSection>}
-      {!official && f.meaning && <CardSection label="语义">{f.meaning}</CardSection>}
-      {reasoning && <CardSection label="思路">{reasoning}</CardSection>}
+      {!official && f.grammar && <CardSection label={<Step n={++n}>语法</Step>}>{f.grammar}</CardSection>}
+      {!official && f.meaning && <CardSection label={<Step n={++n}>语义</Step>}>{f.meaning}</CardSection>}
+      {reasoning && <CardSection label={<Step n={++n}>思路</Step>}>{reasoning}</CardSection>}
       {options.length > 0 && (
-        <CardSection label="其他选项为什么不对">
+        <CardSection label={<Step n={++n}>排除错项</Step>}>
           <ul className="space-y-1.5">
             {options.map(([k, v]) => (
               <li key={k} className="flex gap-2.5">
@@ -262,7 +273,7 @@ function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields
         </CardSection>
       )}
       {!!f.mapping?.length && (
-        <CardSection label="题干和原文对照">
+        <CardSection label={<Step n={++n}>题干和原文对照</Step>}>
           <table className="w-full text-[14px] leading-[1.5]">
             <thead>
               <tr className="text-left text-[13px] text-[var(--ink-500)]">
@@ -445,7 +456,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
       {showLoc && (
         <QuoteBlock
           className="mt-3"
-          caption={loc!.where ? `原文 · ${loc!.where}` : "原文"}
+          caption={loc!.where ? `定位 · ${loc!.where}` : "定位"}
           actions={
             <>
               {canFlash && (
