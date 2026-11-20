@@ -22,7 +22,7 @@ const MARK_CLS = { hl: "am-hl", ul: "am-ul" } as const;
 /** 展开收起带一点回弹（阻尼） */
 function Fold({ open, children }: { open: boolean; children: React.ReactNode }) {
   return (
-    <div className="fold" data-open={open} aria-hidden={!open}>
+    <div className="fold" data-open={open} aria-hidden={!open} inert={!open}>
       <div>{children}</div>
     </div>
   );
