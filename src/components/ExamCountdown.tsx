@@ -42,7 +42,9 @@ export function ExamCountdown({ startedAt, weak, defaultName, className }: { sta
   useEffect(() => {
     setName(settings.examName || fallback);
     setDate(settings.examDate ?? "");
-  }, [settings.examName, settings.examDate, fallback]);
+    // 只跟着存下的考试走：点考试按钮会改 lastExam（fallback 跟着变），不能把刚点的选择和没保存的日期冲掉
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.examName, settings.examDate]);
 
   const target = settings.examDate ? new Date(`${settings.examDate}T08:30:00`).getTime() : null;
 
