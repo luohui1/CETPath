@@ -39,6 +39,7 @@ RATE = (40, 600)  # 每个 IP 每 10 分钟最多 40 次提问
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
 _bad_codes: dict[str, list[float]] = {}
+_trans_hits: dict[str, list[float]] = {}  # 外刊翻译（一篇一次）
 _ink_hits: dict[str, list[float]] = {}  # 手写识别（一块笔迹一次）  # 激活码输错的次数
 _fails: dict[str, list[float]] = {}
 
@@ -614,6 +615,8 @@ class Handler(BaseHTTPRequestHandler):
         p = os.path.join(TRANS_DIR, aid + ".json")
         if os.path.exists(p):
             return self.send_json(200, json.load(open(p)))
+        if limited(_trans_hits, self.ip(), 20, 3600):
+            return self.send_json(429, {"error": "翻译太频繁，过一会儿再试"})
         with _lock:
             if aid in _trans_busy:
                 return self.send_json(409, {"error": "正在翻译，稍等再试"})
