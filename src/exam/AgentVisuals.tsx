@@ -309,7 +309,7 @@ function AnswerMap({
       why: str(o?.why),
     }))
     .filter((o) => o.letter || o.text);
-  const [on, setOn] = useState<string | null>(null);
+  const [on, setOn] = useState<number | null>(null);
   if (!str(data.quote) && !opts.length) return null;
   return (
     <div className="mt-2 overflow-hidden rounded-[14px] ring-1 ring-[var(--line)]">
@@ -363,13 +363,11 @@ function AnswerMap({
               ③ 逐个选项 · 点开看理由
             </p>
             <div className="space-y-1">
-              {opts.map((o) => (
+              {opts.map((o, k) => (
                 <button
-                  key={o.letter ?? o.text}
+                  key={k}
                   type="button"
-                  onClick={() =>
-                    setOn(on === o.letter ? null : (o.letter ?? null))
-                  }
+                  onClick={() => setOn(on === k ? null : k)}
                   className={cn(
                     "block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[13px] leading-[1.5] ring-1",
                     o.right
@@ -386,7 +384,7 @@ function AnswerMap({
                     {o.right ? "✓" : "✗"} {o.letter}
                   </span>
                   <span className="font-serif">{o.text}</span>
-                  {on === o.letter && o.why && (
+                  {on === k && o.why && (
                     <span className="mt-1 block text-[12px] text-[var(--ink-700)]">
                       {o.why}
                     </span>
