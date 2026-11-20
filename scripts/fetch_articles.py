@@ -24,6 +24,23 @@ VOA_FEEDS = [  # Learning English 的几个文章栏目（rssfeeds 页上）
     "https://learningenglish.voanews.com/api/z-viqql-vomx-tpero_qq",
 ]
 TC_FEEDS = {"global": "https://theconversation.com/global/articles.atom"}
+# 有政治倾向的稿子不收：标题或话题里出现一次就跳过，正文前几段出现三次以上也跳过
+POLITICS = re.compile(
+    r"\b(politic\w*|election\w*|elector\w*|voters?|voting|ballot\w*|campaign\w*|parliament\w*|congress\w*|senat\w*|democra\w*|republican\w*|"
+    r"president\w*|prime minister|government\w*|minister\w*|sanction\w*|tariff\w*|wars?|military|troops|missiles?|nuclear weapons?|protest\w*|"
+    r"regime|communis\w*|Trump|Biden|Harris|Xi|Putin|Zelensky\w*|Netanyahu|Modi|Kremlin|White House|NATO|Taiwan\w*|Tibet\w*|Xinjiang|Hong Kong|"
+    r"Ukrain\w*|Russia\w*|Israel\w*|Gaza|Hamas|Palestin\w*|Iran\w*|North Korea\w*|Beijing|CCP|Communist Party|refugee\w*|immigra\w*|asylum|"
+    r"terror\w*|genocide|human rights|geopoliti\w*|diplomat\w*)\b",
+    re.I,
+)
+
+
+def political(a):
+    head = " ".join([a.get("title", ""), " ".join(a.get("topics") or []), a.get("summary", "")])
+    body = " ".join(p["t"] for p in (a.get("paras") or [])[:4])
+    return bool(POLITICS.search(head)) or len(POLITICS.findall(body)) >= 3
+
+
 WIRE = re.compile(r"\bAssociated Press\b|\(AP\)|\bAP Photo\b|\bReuters\b|\bAFP\b|\bAgence France-Presse\b")
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -204,6 +221,7 @@ def main():
     ap.add_argument("--per-feed", type=int, default=8)
     ap.add_argument("--keep-days", type=int, default=60)
     ap.add_argument("--only", choices=["voa", "tc"])
+    ap.add_argument("--purge-politics", action="store_true", help="只清掉已收录里有政治倾向的文章")
     ap.add_argument("--per-level", type=int, default=5, help="每个等级（四级/六级/考研）每次最多新增几篇")
     args = ap.parse_args()
     out = Path(args.out)
@@ -211,6 +229,20 @@ def main():
     idx_path = out / "index.json"
     index = {a["id"]: a for a in (json.loads(idx_path.read_text()) if idx_path.exists() else [])}
     new = 0
+    if args.purge_politics:
+        for aid in list(index):
+            try:
+                full = json.loads((out / f"{aid}.json").read_text())
+            except (OSError, ValueError):
+                continue
+            if political(full):
+                print("  - 删掉", aid, full.get("title", "")[:60])
+                for f in (out / f"{aid}.json", out / "audio" / f"{aid}.mp3"):
+                    f.unlink(missing_ok=True)
+                del index[aid]
+        idx_path.write_text(json.dumps(sorted(index.values(), key=lambda a: a["published"], reverse=True), ensure_ascii=False, separators=(",", ":")))
+        print("剩", len(index), "篇")
+        return
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -218,7 +250,7 @@ def main():
 
     def save(a):
         nonlocal new
-        if taken.get(a["level"], 0) >= args.per_level:
+        if political(a) or taken.get(a["level"], 0) >= args.per_level:
             if a.get("audio"):  # 这个等级今天已经够了，下好的音频也删掉
                 (out / a["audio"]).unlink(missing_ok=True)
             return
