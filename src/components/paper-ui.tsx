@@ -172,6 +172,12 @@ export function Punch({ className }: { className?: string }) {
 }
 
 /** 滚动时看现在读到哪一年（顶边过了 140px 的最后一个） */
+/** 年份索引点一下：页内平滑滚过去，不改地址栏（改 #hash 会触发路由跳转，平板上会弹回顶部） */
+export function jumpToYear(e: { preventDefault(): void }, year: number) {
+  e.preventDefault();
+  document.getElementById(`y${year}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export function useCurrentYear(years: number[]) {
   const [cur, setCur] = useState<number | undefined>(years[0]);
   const key = years.join(",");

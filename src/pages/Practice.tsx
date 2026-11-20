@@ -9,7 +9,7 @@ import { setSetting, useSettings } from "@/lib/settings";
 import { cn, timeAgo } from "@/lib/utils";
 import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { KIND_PIXELS, PixelIcon } from "@/components/PixelIcon";
-import { Bubbles, PaperThumb, StickyTab, useCurrentYear } from "@/components/paper-ui";
+import { Bubbles, PaperThumb, StickyTab, jumpToYear, useCurrentYear } from "@/components/paper-ui";
 
 const SUBJECTIVE = new Set<SectionKind>(["translation", "writing"]);
 type Status = "all" | "new" | "doing" | "done";
@@ -252,6 +252,7 @@ export function PracticePage() {
                   <a
                     key={year}
                     href={`#y${year}`}
+                onClick={(e) => jumpToYear(e, year)}
                     aria-current={curYear === year ? "true" : undefined}
                     className={cn(
                       "num relative flex h-10 items-center justify-center rounded-[8px] text-[13px] transition-colors",
