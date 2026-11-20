@@ -7,7 +7,6 @@ import { WordCard } from "@/exam/WordCard";
 import { AgentSplit } from "@/exam/AgentSplit";
 import type { AgentThread } from "@/exam/AgentPanel";
 import { agentHeaders, useAgentEnabled } from "@/lib/agent";
-import { AiTransTag } from "@/exam/cardParts";
 import { sentenceKey } from "@/lib/trans";
 import { ARTICLES_BASE, articleText, loadArticle, SOURCE_NAMES, type Article } from "@/lib/articles";
 import { EmptyState, Spinner } from "@/components/ui";
@@ -18,15 +17,6 @@ type Mark = { id: number; p: number; a: number; b: number; kind: "hl" | "ul"; no
 type Sel = { p: number; a: number; b: number; text: string; x: number; y: number };
 const marksKey = (id: string) => `yz-article-marks:${id}`;
 const MARK_CLS = { hl: "am-hl", ul: "am-ul" } as const;
-
-/** 展开收起带一点回弹（阻尼） */
-function Fold({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return (
-    <div className="fold" data-open={open} aria-hidden={!open} inert={!open}>
-      <div>{children}</div>
-    </div>
-  );
-}
 
 /** 选中的字（同一段里）→ 段号和字符范围 */
 function readSelection(): Sel | null {
@@ -175,7 +165,7 @@ export function ArticlePage() {
               <span className="gr-tool-text">Agent</span>
             </button>
           </header>
-          <article className="mx-auto max-w-[720px] px-5 pt-8 pb-24">
+          <article className={cn("mx-auto px-5 pt-8 pb-24 transition-[max-width] duration-500 [transition-timing-function:cubic-bezier(.3,1.1,.45,1)]", showTr && tr ? "max-w-[720px] lg:max-w-[1180px]" : "max-w-[720px]")}>
             <p className="text-[12px] font-medium text-[var(--blue)]">
               {SOURCE_NAMES[a.source]} · {a.level}难度 · {a.words} 词 · 约 {a.minutes} 分钟
             </p>
@@ -208,57 +198,25 @@ export function ArticlePage() {
                 ) : (
                   <WordText as="p" text={p.t} ranges={ranges} />
                 );
+                const side = rows.length > 0 && showTr;
                 return (
-                  <div key={i} data-p={i}>
+                  <div key={i} data-p={i} className={cn(side && "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:gap-x-12")}>
                     {body}
-                    {rows.length > 0 && (
-                      <Fold open={showTr}>
-                        <div className="mt-3 rounded-[14px] bg-[var(--paper-50)] px-4 py-3.5 font-sans shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
-                          <div className="mb-2.5 flex items-center gap-2 text-[12.5px] font-semibold text-[var(--ink-500)]">
-                            逐句译文
-                            <span className="ml-auto">
-                              <AiTransTag />
-                            </span>
-                          </div>
-                          <ol className="space-y-2.5">
-                            {rows.map(([en, zh], k) => (
-                              <li key={k} className="flex gap-2.5">
-                                <span className="mt-[3px] flex size-5 flex-none items-center justify-center rounded-full bg-[var(--blue-tint)] text-[11px] font-semibold text-[var(--blue)] tabular-nums">{k + 1}</span>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[15px] leading-[1.7] text-[var(--ink)]">{zh}</p>
-                                  {aiOn && en.split(/\s+/).length >= 25 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (!thread) return;
-                                        setAsk({ id: `asel:${a.id}:L${i}-${k}`, ctx: { ...thread.ctx, sentence: en, question: "用结构图拆解这句长难句：主干是什么，从句和修饰各起什么作用，再给一句通顺的译文。" } });
-                                        setAgent(true);
-                                      }}
-                                      className="mt-1.5 inline-flex h-7 items-center gap-1 rounded-full bg-[var(--blue-tint)] px-2.5 text-[12px] font-medium text-[var(--blue)] transition-transform duration-300 [transition-timing-function:cubic-bezier(.3,1.6,.5,1)] hover:-translate-y-px active:scale-95"
-                                    >
-                                      <Sparkle className="size-3.5" weight="fill" />
-                                      AI 长难句解析
-                                    </button>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ol>
-                        </div>
-                      </Fold>
-                    )}
-                    {notes.map((m) => (
-                      <div key={m.id} className="animate-pop mt-2.5 flex gap-2.5 rounded-[14px] bg-[#fff8dc] px-3.5 py-2.5 font-sans shadow-[inset_0_0_0_1px_rgba(201,160,40,0.28),0_1px_2px_rgba(120,90,0,0.06)]">
-                        <NotePencil className="mt-[3px] size-4 flex-none text-[#b08a1e]" weight="duotone" />
-                        <div className="min-w-0 flex-1">
-                          <div className="serif text-[13.5px] leading-[1.5] text-[var(--ink-500)]">{p.t.slice(m.a, m.b)}</div>
-                          <div className="text-[14.5px] leading-[1.6] text-[var(--ink)]">{m.note}</div>
-                        </div>
-                        <button type="button" className="flex size-6 flex-none items-center justify-center rounded-full text-[var(--ink-500)] transition-colors hover:bg-black/5 hover:text-[var(--ink)]" onClick={() => saveMarks(marks.filter((x) => x.id !== m.id))} aria-label="删除批注">
-                          ×
-                        </button>
+                    {(side || notes.length > 0) && (
+                      <div className="font-sans">
+                        {side && <p className="animate-pop mt-1.5 text-[15px] leading-[1.8] text-[var(--ink-500)] lg:mt-1">{rows.map((x) => x[1]).join("")}</p>}
+                        {notes.map((m) => (
+                          <p key={m.id} className="group animate-pop mt-2 border-l-2 border-[#e0b43c] pl-3 text-[14px] leading-[1.65] text-[var(--ink-700)]">
+                            <span className="text-[var(--ink-500)] italic">{p.t.slice(m.a, m.b)}</span>
+                            <span className="mx-1.5 text-[var(--ink-300,#bbb)]">·</span>
+                            {m.note}
+                            <button type="button" className="ml-1.5 text-[var(--ink-500)] opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100" onClick={() => saveMarks(marks.filter((x) => x.id !== m.id))} aria-label="删除批注">
+                              ×
+                            </button>
+                          </p>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 );
               })}
@@ -322,6 +280,9 @@ export function ArticlePage() {
                   ["划线", TextUnderline, () => addMark("ul")],
                   ["批注", NotePencil, () => setNoting("")],
                   ...(overlapped.length ? [["清除", Eraser, () => (saveMarks(marks.filter((m) => !overlapped.includes(m))), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
+                  ...(aiOn && sel && sel.text.split(/\s+/).length >= 8 && thread
+                    ? [["长难句解析", Sparkle, () => (setAsk({ id: `asel:${a!.id}:L${sel.p}-${sel.a}-${sel.b}`, ctx: { ...thread.ctx, sentence: sel.text, question: "用结构图拆解这句长难句：主干是什么，从句和修饰各起什么作用，再给一句通顺的译文。" } }), setAgent(true), setSel(null))] as [string, typeof Highlighter, () => void]]
+                    : []),
                   ...(aiOn ? [["问 Agent", Sparkle, () => (thread && setAsk({ id: `asel:${thread.id.slice(8)}:${sel?.p}-${sel?.a}-${sel?.b}`, ctx: { ...thread.ctx, sentence: sel?.text ?? "" } }), setAgent(true), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
                   ] as [string, typeof Highlighter, () => void][]
                 ).map(([label, Icon, fn]) => (
