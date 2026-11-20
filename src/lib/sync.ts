@@ -23,9 +23,13 @@ function keyOf(tbl: Tbl, row: Row): string | null {
 
 const readOut = (): Record<string, number> => JSON.parse(localStorage.getItem(OUT) || "{}");
 function markDirty(id: string) {
-  const out = readOut();
-  out[id] = Date.now();
-  localStorage.setItem(OUT, JSON.stringify(out));
+  try {
+    const out = readOut();
+    out[id] = Date.now();
+    localStorage.setItem(OUT, JSON.stringify(out));
+  } catch {
+    // localStorage 满了也不能拦住学习数据的保存，这条只是暂时不同步
+  }
   schedule(2000);
 }
 
