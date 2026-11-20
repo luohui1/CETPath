@@ -100,7 +100,7 @@ export function WordContext({ word, sources }: { word: string; sources: VocabSou
                   <span>
                     {title(m.paperId)} · 第 {m.page} 页
                   </span>
-                  <GoLink to={`/paper/${m.paperId}?mark=${m.id}`} />
+                  <GoLink to={sourceHref(m.paperId, `?mark=${m.id}`)} />
                 </div>
               </li>
             ))}
