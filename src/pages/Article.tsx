@@ -50,6 +50,7 @@ export function ArticlePage() {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [sel, setSel] = useState<Sel | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
+  const [ask, setAsk] = useState<AgentThread | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   useEffect(() => {
     setTr(null);
@@ -240,8 +241,8 @@ export function ArticlePage() {
             }}
             enabled={!!aiOn}
             paperThread={thread}
-            sentence={null}
-            onClearSentence={() => {}}
+            sentence={ask}
+            onClearSentence={() => setAsk(null)}
             onClose={() => setAgent(false)}
           />
         )}
@@ -273,7 +274,7 @@ export function ArticlePage() {
                   ["划线", TextUnderline, () => addMark("ul")],
                   ["批注", NotePencil, () => setNoting("")],
                   ...(overlapped.length ? [["清除", Eraser, () => (saveMarks(marks.filter((m) => !overlapped.includes(m))), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
-                  ...(aiOn ? [["问 Agent", Sparkle, () => (setAgent(true), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
+                  ...(aiOn ? [["问 Agent", Sparkle, () => (thread && setAsk({ id: `${thread.id}:s:${sel?.p}-${sel?.a}-${sel?.b}`, ctx: { ...thread.ctx, sentence: sel?.text ?? "" } }), setAgent(true), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
                   ] as [string, typeof Highlighter, () => void][]
                 ).map(([label, Icon, fn]) => (
                   <button key={label} type="button" onClick={fn} className="flex h-8 items-center gap-1 rounded-[7px] px-2 text-[13px] hover:bg-white/15">
