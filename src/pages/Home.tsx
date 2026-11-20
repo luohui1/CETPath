@@ -87,7 +87,7 @@ function ContinueCard({ item, next, weakest, className }: { item?: AttemptItem; 
   const total = item ? itemTotal(item) : 0;
   return (
     <div className={cn("card flex gap-6 p-6", className)}>
-      {id && <PaperThumb id={id} width={88} fan className="mt-1" />}
+      {id && <PaperThumb id={id} width={88} fan className="mt-1 max-[380px]:hidden" />}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="t-label">{item ? (item.section ? "继续专项训练" : "继续真题训练") : "推荐下一套"}</div>
         <h2 className="mt-1 text-[20px] leading-7 font-semibold">{(item ? itemTitle(item) : next?.title) ?? "所有真题都做过了"}</h2>
