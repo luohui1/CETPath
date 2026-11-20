@@ -28,6 +28,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONFIG = os.environ.get("YZ_AGENT_CONFIG", "/srv/yingyu/config/agent.json")
+ARTICLES_DIR = os.environ.get("YZ_ARTICLES_DIR", "/srv/yingyu/articles-data")
 TRANS_DIR = os.path.join(os.path.dirname(CONFIG), "trans")  # 外刊译文缓存：一篇翻一次，大家共用
 _trans_busy: set[str] = set()
 MAX_BODY = 256 * 1024
@@ -599,10 +600,15 @@ class Handler(BaseHTTPRequestHandler):
     def trans(self, cfg: dict, data: dict):
         """外刊逐句翻译：返回每段的 [[英文句, 中文], ...]，存起来下次直接给"""
         aid = str(data.get("id", ""))
-        paras = data.get("paras")
-        if not re.fullmatch(r"(voa|tc)-\d+", aid) or not isinstance(paras, list) or not paras or len(paras) > 200:
+        if not re.fullmatch(r"(voa|tc)-\d+", aid):
             return self.send_json(400, {"error": "参数不对"})
-        paras = [str(p)[:4000] for p in paras]
+        # 原文从服务器上的文章取，不用请求里带的：译文是大家共用的，不能让人塞别的内容进缓存
+        try:
+            paras = [str(p["t"])[:4000] for p in json.load(open(os.path.join(ARTICLES_DIR, aid + ".json")))["paras"]]
+        except (OSError, ValueError, KeyError, TypeError):
+            return self.send_json(404, {"error": "没有这篇文章"})
+        if not paras or len(paras) > 200:
+            return self.send_json(400, {"error": "文章太长"})
         if sum(map(len, paras)) > 40000:
             return self.send_json(400, {"error": "文章太长"})
         p = os.path.join(TRANS_DIR, aid + ".json")
