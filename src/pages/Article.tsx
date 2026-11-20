@@ -1,18 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Sparkle } from "@phosphor-icons/react";
+import { ArrowLeft, Eraser, Highlighter, NotePencil, Sparkle, TextUnderline, Translate } from "@phosphor-icons/react";
 import { WordText, WordTextProvider, type WordClick } from "@/components/WordText";
 import { WordCard } from "@/exam/WordCard";
 import { AgentSplit } from "@/exam/AgentSplit";
 import type { AgentThread } from "@/exam/AgentPanel";
-import { useAgentEnabled } from "@/lib/agent";
+import { agentHeaders, useAgentEnabled } from "@/lib/agent";
+import { sentenceKey } from "@/lib/trans";
 import { ARTICLES_BASE, articleText, loadArticle, SOURCE_NAMES, type Article } from "@/lib/articles";
 import { EmptyState, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
-const NO_TRANS = () => ({ text: null, ready: true });
 const READ_KEY = "yz-articles-read";
+type Mark = { id: number; p: number; a: number; b: number; kind: "hl" | "ul"; note?: string };
+type Sel = { p: number; a: number; b: number; text: string; x: number; y: number };
+const marksKey = (id: string) => `yz-article-marks:${id}`;
+const MARK_CLS = { hl: "am-hl", ul: "am-ul" } as const;
+
+/** 选中的字（同一段里）→ 段号和字符范围 */
+function readSelection(): Sel | null {
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  const el = (n: Node) => (n.nodeType === 1 ? (n as Element) : n.parentElement);
+  const para = el(r.commonAncestorContainer)?.closest<HTMLElement>("[data-p]");
+  if (!para) return null;
+  const ws = [...para.querySelectorAll<HTMLElement>(".w")].filter((w) => r.intersectsNode(w));
+  if (!ws.length) return null;
+  const a = Number(ws[0].dataset.o);
+  const last = ws[ws.length - 1];
+  const b = Number(last.dataset.o) + (last.textContent?.length ?? 0);
+  const box = r.getBoundingClientRect();
+  return { p: Number(para.dataset.p), a, b, text: sel.toString().trim(), x: box.left + box.width / 2, y: box.top };
+}
 
 /** 外刊阅读页：正文点词查词、选短语、加生词本；VOA 能边听边读；右边 Agent 分屏讲这篇 */
 export function ArticlePage() {
@@ -23,6 +44,59 @@ export function ArticlePage() {
   const [agent, setAgent] = useState(false);
   const [width, setWidth] = useState(() => Number(localStorage.getItem("yz-agent-w")) || 420);
   const aiOn = useAgentEnabled();
+  const [tr, setTr] = useState<string[][][] | null>(null);
+  const [showTr, setShowTr] = useState(false);
+  const [trBusy, setTrBusy] = useState<string | null>(null);
+  const [marks, setMarks] = useState<Mark[]>([]);
+  const [sel, setSel] = useState<Sel | null>(null);
+  const [noting, setNoting] = useState<string | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    setTr(null);
+    setShowTr(false);
+    setMarks(JSON.parse(localStorage.getItem(marksKey(id)) || "[]"));
+    fetch(`/api/agent/trans?id=${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((x) => x && setTr(x), () => {});
+  }, [id]);
+  const saveMarks = (m: Mark[]) => {
+    setMarks(m);
+    localStorage.setItem(marksKey(id), JSON.stringify(m));
+  };
+  const trMap = useMemo(() => new Map((tr ?? []).flat().map(([en, zh]) => [sentenceKey(en), zh])), [tr]);
+  const trans = useCallback((s: string) => ({ text: trMap.get(sentenceKey(s)) ?? null, ready: true }), [trMap]);
+  const translate = async () => {
+    if (tr) return setShowTr(!showTr);
+    if (!a || trBusy === "…") return;
+    if (!aiOn) return setTrBusy("翻译要先激活 Agent（右上角 Agent 里输激活码）");
+    setTrBusy("…");
+    try {
+      const r = await fetch("/api/agent/trans", { method: "POST", headers: agentHeaders(true), body: JSON.stringify({ id: a.id, paras: a.paras.map((p) => p.t) }) });
+      const x = await r.json();
+      if (!r.ok) throw new Error(x.error || "翻译失败");
+      setTr(x);
+      setShowTr(true);
+      setTrBusy(null);
+    } catch (e) {
+      setTrBusy(e instanceof Error ? e.message : "翻译失败，再试一次");
+    }
+  };
+  useEffect(() => {
+    const up = () => window.setTimeout(() => setSel(readSelection()), 0);
+    document.addEventListener("selectionchange", up);
+    return () => document.removeEventListener("selectionchange", up);
+  }, []);
+  const addMark = (kind: Mark["kind"], note?: string) => {
+    if (!sel) return;
+    saveMarks([...marks.filter((m) => !(m.p === sel.p && m.a === sel.a && m.b === sel.b && m.kind === kind)), { id: Date.now(), p: sel.p, a: sel.a, b: sel.b, kind, note }]);
+    getSelection()?.removeAllRanges();
+    setSel(null);
+  };
+  const overlapped = sel ? marks.filter((m) => m.p === sel.p && m.a < sel.b && m.b > sel.a) : [];
+  const onWord = useCallback((h: WordClick) => {
+    if (getSelection()?.isCollapsed === false) return;
+    setHit(h);
+  }, []);
   useEffect(() => {
     setA(null);
     setErr(false);
@@ -70,14 +144,18 @@ export function ArticlePage() {
       </div>
     );
   return (
-    <WordTextProvider onWord={setHit} marks>
+    <WordTextProvider onWord={onWord} marks>
       <div className="flex h-dvh bg-[var(--paper-100)]">
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} onScroll={() => setSel(null)} className="min-w-0 flex-1 overflow-y-auto">
           <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b border-[var(--line-soft)] bg-white/90 px-3 backdrop-blur">
             <Link to="/articles" className="gr-tool" aria-label="回外刊列表">
               <ArrowLeft className="size-[18px]" />
             </Link>
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{a.title}</p>
+            <button type="button" onClick={() => void translate()} className={cn("gr-tool", showTr && "is-on")} aria-label="译文" title={tr ? "显示 / 隐藏逐段译文" : "生成全文译文"}>
+              <Translate className="size-[18px]" />
+              <span className="gr-tool-text">{trBusy === "…" ? "翻译中…" : "译文"}</span>
+            </button>
             <button type="button" onClick={() => setAgent(!agent)} className={cn("gr-tool", agent && "is-on")} aria-label="Agent">
               <Sparkle className="size-[18px]" />
               <span className="gr-tool-text">Agent</span>
@@ -98,23 +176,40 @@ export function ArticlePage() {
             </p>
             {a.audio && <audio controls preload="none" src={ARTICLES_BASE + a.audio} className="mt-4 w-full" />}
             <div className="mt-6 space-y-4 font-serif text-[18px] leading-[1.75] text-[var(--ink)]">
-              {a.paras.map((p, i) =>
-                p.k === "h" ? (
-                  <h2 key={i} className="pt-2 text-[20px] font-semibold">
-                    <WordText text={p.t} />
+              {trBusy && trBusy !== "…" && <p className="font-sans text-[13px] text-[var(--red,#c43)]">{trBusy}</p>}
+              {a.paras.map((p, i) => {
+                const ranges = marks.filter((m) => m.p === i).map((m) => ({ a: m.a, b: m.b, cls: MARK_CLS[m.kind] }));
+                const notes = marks.filter((m) => m.p === i && m.note);
+                const zh = showTr && tr?.[i]?.map((x) => x[1]).join("");
+                const body = p.k === "h" ? (
+                  <h2 className="pt-2 text-[20px] font-semibold">
+                    <WordText text={p.t} ranges={ranges} />
                   </h2>
                 ) : p.k === "q" ? (
-                  <blockquote key={i} className="border-l-[3px] border-[var(--line)] pl-4 text-[var(--ink-700)]">
-                    <WordText text={p.t} />
+                  <blockquote className="border-l-[3px] border-[var(--line)] pl-4 text-[var(--ink-700)]">
+                    <WordText text={p.t} ranges={ranges} />
                   </blockquote>
                 ) : p.k === "fine" ? (
-                  <p key={i} className="font-sans text-[12px] leading-[1.6] text-[var(--ink-500)] italic">
-                    {p.t}
-                  </p>
+                  <p className="font-sans text-[12px] leading-[1.6] text-[var(--ink-500)] italic">{p.t}</p>
                 ) : (
-                  <WordText key={i} as="p" text={p.t} />
-                ),
-              )}
+                  <WordText as="p" text={p.t} ranges={ranges} />
+                );
+                return (
+                  <div key={i} data-p={i}>
+                    {body}
+                    {zh && <p className="mt-1.5 font-sans text-[14.5px] leading-[1.7] text-[var(--ink-500)]">{zh}</p>}
+                    {notes.map((m) => (
+                      <p key={m.id} className="mt-1.5 flex gap-2 rounded-[8px] bg-[var(--paper-100)] px-2.5 py-1.5 font-sans text-[13px] leading-[1.55] text-[var(--ink-700)]">
+                        <span className="flex-none text-[var(--ink-500)]">「{p.t.slice(m.a, m.b)}」</span>
+                        <span className="min-w-0 flex-1">{m.note}</span>
+                        <button type="button" className="flex-none text-[var(--ink-500)] hover:text-[var(--ink)]" onClick={() => saveMarks(marks.filter((x) => x.id !== m.id))} aria-label="删除批注">
+                          ×
+                        </button>
+                      </p>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
             {!!a.glossary?.length && (
               <section className="mt-10 rounded-[14px] bg-white p-4 ring-1 ring-[var(--line)]">
@@ -148,6 +243,46 @@ export function ArticlePage() {
           />
         )}
       </div>
+      {sel &&
+        !hit &&
+        createPortal(
+          <div
+            className="fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-[10px] bg-[var(--ink)] p-1 text-white shadow-lg"
+            style={{ left: sel.x, top: sel.y - 8 }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {noting !== null ? (
+              <form
+                className="flex items-center gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (noting.trim()) addMark("ul", noting.trim());
+                  setNoting(null);
+                }}
+              >
+                <input autoFocus value={noting} onChange={(e) => setNoting(e.target.value)} placeholder="写批注，回车保存" className="h-7 w-48 rounded-[6px] bg-white/15 px-2 text-[13px] text-white outline-none placeholder:text-white/60" onMouseDown={(e) => e.stopPropagation()} />
+              </form>
+            ) : (
+              <>
+                {(
+                  [
+                  ["高亮", Highlighter, () => addMark("hl")],
+                  ["划线", TextUnderline, () => addMark("ul")],
+                  ["批注", NotePencil, () => setNoting("")],
+                  ...(overlapped.length ? [["清除", Eraser, () => (saveMarks(marks.filter((m) => !overlapped.includes(m))), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
+                  ...(aiOn ? [["问 Agent", Sparkle, () => (setAgent(true), setSel(null))] as [string, typeof Highlighter, () => void]] : []),
+                  ] as [string, typeof Highlighter, () => void][]
+                ).map(([label, Icon, fn]) => (
+                  <button key={label} type="button" onClick={fn} className="flex h-8 items-center gap-1 rounded-[7px] px-2 text-[13px] hover:bg-white/15">
+                    <Icon className="size-4" />
+                    {label}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
       {hit &&
         createPortal(
           <WordCard
@@ -156,7 +291,7 @@ export function ArticlePage() {
             anchor={anchor}
             bounds={bounds}
             source={{ paperId: `article:${a.id}`, paperTitle: a.title }}
-            trans={NO_TRANS}
+            trans={trans}
             onLookedUp={() => {}}
             onClose={() => setHit(null)}
           />,

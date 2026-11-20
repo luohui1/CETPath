@@ -80,6 +80,13 @@ button:disabled {
 .w:hover {
   background: var(--blue-tint);
 }
+.w.am-hl {
+  background: rgba(255, 222, 89, 0.55);
+}
+.w.am-ul {
+  text-decoration: underline 2px var(--blue);
+  text-underline-offset: 4px;
+}
 .w.is-vocab {
   box-shadow: inset 0 -2px 0 var(--pixel-blue);
 }

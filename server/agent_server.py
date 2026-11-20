@@ -28,6 +28,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONFIG = os.environ.get("YZ_AGENT_CONFIG", "/srv/yingyu/config/agent.json")
+TRANS_DIR = os.path.join(os.path.dirname(CONFIG), "trans")  # 外刊译文缓存：一篇翻一次，大家共用
+_trans_busy: set[str] = set()
 MAX_BODY = 256 * 1024
 MAX_TURNS = 24
 MAX_MEMORY = 60
@@ -493,6 +495,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         cfg = load()
+        if path == "/api/agent/trans":
+            aid = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id", [""])[0]
+            p = os.path.join(TRANS_DIR, aid + ".json")
+            if re.fullmatch(r"(voa|tc)-\d+", aid) and os.path.exists(p):
+                return self.send_json(200, json.load(open(p)))
+            return self.send_json(404, {"error": "还没有译文"})
         if path in ("/admin", "/admin/"):
             raw = ADMIN_HTML.encode()
             self.send_response(200)
@@ -582,9 +590,52 @@ class Handler(BaseHTTPRequestHandler):
             return self.chat(cfg, data)
         if path == "/api/agent/ink":
             return self.ink(cfg, data)
+        if path == "/api/agent/trans":
+            return self.trans(cfg, data)
         if path == "/api/agent/remember":
             return self.remember(cfg, data)
         self.send_json(404, {"error": "not found"})
+
+    def trans(self, cfg: dict, data: dict):
+        """外刊逐句翻译：返回每段的 [[英文句, 中文], ...]，存起来下次直接给"""
+        aid = str(data.get("id", ""))
+        paras = data.get("paras")
+        if not re.fullmatch(r"(voa|tc)-\d+", aid) or not isinstance(paras, list) or not paras or len(paras) > 200:
+            return self.send_json(400, {"error": "参数不对"})
+        paras = [str(p)[:4000] for p in paras]
+        if sum(map(len, paras)) > 40000:
+            return self.send_json(400, {"error": "文章太长"})
+        p = os.path.join(TRANS_DIR, aid + ".json")
+        if os.path.exists(p):
+            return self.send_json(200, json.load(open(p)))
+        with _lock:
+            if aid in _trans_busy:
+                return self.send_json(409, {"error": "正在翻译，稍等再试"})
+            _trans_busy.add(aid)
+        try:
+            prompt = (
+                "把下面每段英文按句子切开，逐句翻成自然、准确的简体中文（给四六级考生看）。"
+                "只输出 JSON：一个数组，每段一个元素，元素是 [[英文原句, 中文], ...]；英文原句照抄、不改一个字。"
+                f"一共 {len(paras)} 段，数组长度必须是 {len(paras)}。\n\n"
+                + "\n\n".join(f"[{i + 1}] {t}" for i, t in enumerate(paras))
+            )
+            with upstream(cfg, [{"role": "user", "content": prompt}], False, 16000, 0.2) as r:
+                out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
+            out = re.sub(r"^```(?:json)?\s*|\s*```$", "", out)
+            res = json.loads(out)
+            if not isinstance(res, list) or len(res) != len(paras):
+                return self.send_json(502, {"error": "译文格式不对，再试一次"})
+            res = [[[str(x[0]), str(x[1])] for x in para if isinstance(x, list) and len(x) >= 2] for para in res]
+            os.makedirs(TRANS_DIR, exist_ok=True)
+            with open(p + ".tmp", "w") as f:
+                json.dump(res, f, ensure_ascii=False)
+            os.replace(p + ".tmp", p)
+            return self.send_json(200, res)
+        except Exception as e:  # noqa: BLE001
+            return self.send_json(502, {"error": upstream_error(e) if isinstance(e, urllib.error.URLError) else "翻译失败，再试一次"})
+        finally:
+            with _lock:
+                _trans_busy.discard(aid)
 
     def activated(self, cfg: dict) -> bool:
         """服务器没设激活码就都算激活；设了就要请求头里带对"""

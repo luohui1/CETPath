@@ -89,6 +89,7 @@ export const WordText = memo(function WordText({
   className,
   as: Tag = "span",
   trigger = "click",
+  ranges,
 }: {
   text: string;
   renderBlank?: (num: number) => ReactNode;
@@ -96,6 +97,8 @@ export const WordText = memo(function WordText({
   as?: "span" | "p" | "div";
   /** hold：点一下留给外层（比如听力面板里点句子定位），长按或右键才查词 */
   trigger?: "click" | "hold";
+  /** 给一段字符范围 [a, b) 里的词加样式（外刊的高亮、划线） */
+  ranges?: { a: number; b: number; cls: string }[];
 }) {
   const { onWord, marks } = useContext(Ctx);
   const { vocab, lemma } = useContext(MarksCtx);
@@ -163,7 +166,7 @@ export const WordText = memo(function WordText({
       const lower = w.toLowerCase().replace(/’/g, "'");
       const marked = marks && (vocab.has(lower) || vocab.has(lemma[lower] ?? ""));
       parts.push(
-        <span key={base + m.index!} className={cn("w", marked && "is-vocab")} data-o={base + m.index!}>
+        <span key={base + m.index!} className={cn("w", marked && "is-vocab", ranges?.filter((r) => base + m.index! >= r.a && base + m.index! < r.b).map((r) => r.cls))} data-o={base + m.index!}>
           {w}
         </span>,
       );
