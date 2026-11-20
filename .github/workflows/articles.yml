@@ -38,5 +38,6 @@ jobs:
           KEY: ${{ secrets.ARTICLES_SSH_KEY }}
         run: |
           install -m 600 /dev/null ~/key && printf '%s\n' "$KEY" > ~/key
-          tar -C public/articles-data -czf - . | ssh -i ~/key -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes yzarticles@8.162.0.101
+          echo "8.162.0.101 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPSXFJDk0Tb6r71Y3kMUBQnJl/xxakNKp+NsRIgGFUkh" > ~/known_hosts
+          tar -C public/articles-data -czf - . | ssh -i ~/key -o UserKnownHostsFile=~/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes yzarticles@8.162.0.101
           rm -f ~/key
