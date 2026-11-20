@@ -44,7 +44,8 @@ export async function signIn(name: string, password: string, register: boolean) 
 }
 
 export async function signOut() {
-  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  const r = await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+  if (!r?.ok) throw new Error("退出失败，检查一下网络再试");
   stopSync();
   me = null;
   meP = Promise.resolve(null);

@@ -52,7 +52,7 @@ function Account() {
         <Row title={me.name} desc={`${label}。生词、错题、做题记录、笔记、Agent 档案和对话会在登录了这个账号的设备间同步`}>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => void syncNow()} loading={st.status === "syncing"}>立即同步</Button>
-            <Button size="sm" onClick={() => void signOut()}>退出登录</Button>
+            <Button size="sm" onClick={() => signOut().catch((e: Error) => alert(e.message))}>退出登录</Button>
           </div>
         </Row>
       ) : (
