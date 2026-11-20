@@ -1,11 +1,61 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { LogoMark } from "@/components/Logo";
-import { PaperThumb } from "@/components/paper-ui";
 import { signIn } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const COVER = "cet6-2026-06-1";
+
+/** 示意卷面：自己写的例句，不用任何真题内容 */
+function Sheet({ className, style, children }: { className?: string; style?: React.CSSProperties; children?: React.ReactNode }) {
+  return (
+    <div className={cn("absolute inset-0 rounded-[6px] bg-[#fffdf8] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_30px_60px_-20px_rgba(15,31,56,0.35),0_0_0_1px_rgba(15,31,56,0.06)]", className)} style={style}>
+      {children}
+    </div>
+  );
+}
+const bar = (w: string, key?: number) => <span key={key} className="block h-[7px] rounded-full bg-[#e6e2d8]" style={{ width: w }} />;
+
+function MockPaper({ small }: { small?: boolean }) {
+  return (
+    <div className={cn("[perspective:1600px]", small ? "h-[330px] w-[290px]" : "h-[560px] w-[470px]")}>
+      <div className="welcome-float relative size-full [transform-style:preserve-3d] [transform:rotateX(16deg)_rotateY(-22deg)_rotateZ(4deg)]">
+        <Sheet className="[transform:translateZ(-60px)_translate(34px,26px)] opacity-70" />
+        <Sheet className="[transform:translateZ(-30px)_translate(17px,13px)]" />
+        <Sheet className={cn("overflow-hidden", small ? "p-5" : "p-9")}>
+          <div className="flex items-baseline justify-between font-serif">
+            <span className={cn("font-bold", small ? "text-[13px]" : "text-[18px]")}>Section C · Reading</span>
+            <span className="text-[11px] text-[var(--ink-500)]">25 min</span>
+          </div>
+          <div className="mt-4 space-y-2.5">{["94%", "100%", "88%", "97%"].map(bar)}</div>
+          <p className={cn("relative mt-5 font-serif leading-[1.7]", small ? "text-[13px]" : "text-[19px]")}>
+            <span className="bg-[#ffe27a]/80 box-decoration-clone px-0.5">Small habits, repeated daily,</span>{" "}
+            <span className="relative">
+              quietly shape
+              <svg viewBox="0 0 120 40" preserveAspectRatio="none" className="absolute -inset-x-2 -inset-y-1.5 h-[calc(100%+12px)] w-[calc(100%+16px)] overflow-visible">
+                <path d="M70 4 C 30 0, 2 8, 4 22 C 6 36, 90 40, 114 24 C 126 14, 110 2, 80 5" fill="none" stroke="#d0342c" strokeWidth="2.4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              </svg>
+            </span>{" "}
+            who we become.
+          </p>
+          <span className={cn("block rotate-[-3deg] text-right font-['Kaiti_SC','STKaiti','KaiTi',serif] text-[#d0342c]", small ? "text-[17px]" : "text-[26px]")}>悄悄塑造 ↑</span>
+          <div className="mt-3 space-y-2.5">{["100%", "91%", "96%", "62%"].map(bar)}</div>
+          <div className={cn("mt-6 space-y-2", small && "hidden")}>
+            {["A", "B", "C", "D"].map((l, i) => (
+              <div key={l} className="flex items-center gap-3">
+                <span className={cn("grid size-6 place-items-center rounded-full text-[12px] font-semibold", i === 2 ? "bg-[var(--blue)] text-white" : "shadow-[inset_0_0_0_1.5px_#d9d4c8] text-[var(--ink-500)]")}>{l}</span>
+                {bar(["70%", "58%", "76%", "64%"][i])}
+              </div>
+            ))}
+          </div>
+        </Sheet>
+        <div className={cn("absolute rounded-[12px] bg-white/95 shadow-[0_24px_50px_-18px_rgba(15,31,56,0.45),0_0_0_1px_rgba(15,31,56,0.06)] backdrop-blur [transform:translateZ(80px)]", small ? "-bottom-6 -left-4 w-[200px] p-3 text-[12px]" : "-bottom-10 -left-24 w-[270px] p-4 text-[14px]")}>
+          <span className="inline-block rounded bg-[var(--blue)] px-1.5 text-[11px] font-semibold text-white">Agent</span>
+          <p className="mt-1.5 leading-[1.6]">主干是 habits shape who we become，repeated daily 是插进来的修饰。</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function WelcomePage() {
   const nav = useNavigate();
@@ -33,18 +83,8 @@ export function WelcomePage() {
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[var(--paper,#f6f4ee)] text-[var(--ink)]">
-      {/* 右边一张放大的真卷，带红笔圈注和 Agent 批注，就是用起来的样子 */}
-      <div aria-hidden className="pointer-events-none absolute top-24 -right-24 hidden w-[600px] rotate-[-5deg] lg:block xl:right-0">
-        <PaperThumb id={COVER} width={600} fan />
-        <svg viewBox="0 0 600 300" className="absolute top-[150px] left-0 w-full overflow-visible">
-          <path d="M318 62 C 260 40, 196 52, 200 78 C 204 104, 300 108, 352 92 C 392 78, 380 50, 330 44" fill="none" stroke="#d0342c" strokeWidth="3.2" strokeLinecap="round" />
-          <path d="M356 90 Q 410 120 430 160" fill="none" stroke="#d0342c" strokeWidth="2.6" strokeLinecap="round" />
-        </svg>
-        <span className="absolute top-[318px] left-[400px] rotate-[4deg] font-['Kaiti_SC','STKaiti','KaiTi',serif] text-[30px] text-[#d0342c]">开头必须引用！</span>
-        <div className="absolute top-[420px] -left-28 w-[260px] rotate-[5deg] rounded-[10px] bg-white p-4 text-[14px] leading-[1.6] shadow-[0_18px_40px_-16px_rgba(15,31,56,0.35),0_0_0_1px_var(--line)]">
-          <span className="mb-1 inline-block rounded bg-[var(--blue)] px-1.5 text-[11px] font-semibold text-white">Agent</span>
-          <p>写作要求：开头必须引用题目里给的这句话，漏了会扣分。</p>
-        </div>
+      <div aria-hidden className="pointer-events-none absolute top-28 right-[max(24px,calc(50%-560px))] hidden lg:block">
+        <MockPaper />
       </div>
 
       <div className="relative mx-auto max-w-[1180px] px-6 pt-8 pb-16 sm:px-10">
@@ -87,8 +127,8 @@ export function WelcomePage() {
           </Link>
         </div>
 
-        <div className="relative mt-14 lg:hidden">
-          <PaperThumb id={COVER} width={300} fan className="rotate-[-4deg]" />
+        <div aria-hidden className="relative mt-16 flex justify-center pb-10 lg:hidden">
+          <MockPaper small />
         </div>
       </div>
     </div>
