@@ -109,7 +109,7 @@ function ContinueCard({ item, next, weakest, className }: { item?: AttemptItem; 
             </Link>
           </p>
         )}
-        <div className="mt-auto flex items-center gap-3 pt-5">
+        <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
           {(item || next) && (
             <Link to={item ? paperPath(item.paper.id, item.section?.id) : paperPath(next!.id)}>
               <Button variant="primary" size="lg">

@@ -69,8 +69,8 @@ export function ExamCountdown({ startedAt, weak, defaultName, className }: { sta
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex h-9 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex h-9 min-w-0 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
             <CalendarBlank className="size-[18px] text-[var(--ink-500)]" />
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent outline-none" aria-label="考试日期" />
           </label>
