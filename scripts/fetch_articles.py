@@ -24,7 +24,7 @@ VOA_FEEDS = [  # Learning English 的几个文章栏目（rssfeeds 页上）
     "https://learningenglish.voanews.com/api/z-viqql-vomx-tpero_qq",
 ]
 TC_FEEDS = {"global": "https://theconversation.com/global/articles.atom"}
-WIRE = re.compile(r"\b(Associated Press|\(AP\)|AP Photo|Reuters|AFP|Agence France-Presse)\b")
+WIRE = re.compile(r"\bAssociated Press\b|\(AP\)|\bAP Photo\b|\bReuters\b|\bAFP\b|\bAgence France-Presse\b")
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -139,19 +139,19 @@ def voa_article(a, out):
     cut = [body.find(s) for s in ('<div class="c-author', "Quiz - ", ">Related<", 'class="share--box', 'id="comments"') if body.find(s) > 0]
     body = body[: min(cut)] if cut else body[:80000]
     gloss = []
-    g = re.search(r"Words in This Story</h2>(.*)", body, re.S)
+    g = re.search(r"Words in This Story(?:\s*</(?:strong|b|em|span)>)*\s*</h2>(.*)", body, re.S)
     if g:
         body = body[: g.start()]
         for p in re.findall(r"<p[^>]*>(.*?)</p>", g.group(1), re.S):
             t = text_of(p)
-            m = re.match(r"(.+?)\s+[–—-]\s+(.+)", t)
+            m = re.match(r"(.+?)\s+[–—-]\s*(.+)", t)
             if m:
                 gloss.append({"w": m.group(1).strip(), "d": m.group(2).strip()})
     paras = [p for p in blocks(body) if p["t"] not in ("No media source currently available",) and not p["t"].startswith("Quiz -")]
     paras = [p for p in paras if p["t"] not in ("Load more", "Share", "Print")]
     if "Day in Photos" in " ".join(a["topics"]) or sum(len(p["t"].split()) for p in paras) < 150:
         return None  # 图集、太短的不要
-    if WIRE.search(" ".join(p["t"] for p in paras[-6:])) or WIRE.search(page[page.find("<title>"): page.find("<title>") + 400]):
+    if WIRE.search(" ".join(p["t"] for p in paras)) or WIRE.search(page[page.find("<title>"): page.find("<title>") + 400]):
         print("  跳过（通讯社稿）", a["title"], file=sys.stderr)
         return None
     # 结尾署名一行（I'm Jill Robbins. / ___ wrote this story...）留着当作者
