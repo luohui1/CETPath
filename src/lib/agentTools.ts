@@ -400,6 +400,7 @@ export function findText(
   pages: PdfWordsPage[],
   text: string,
   page?: number,
+  shown?: (page: number, y: number) => boolean, // 只认卷面上显示着的地方（专项练习只显示那一部分）
 ): { page: number; a: number; b: number } | null {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
   const want = text.split(/\s+/).map(norm).filter(Boolean);
@@ -418,7 +419,7 @@ export function findText(
       for (let i = 0; i + n <= w.length; i++) {
         let ok = true;
         for (let k = 0; k < n && ok; k++) ok = w[i + k] === want[k];
-        if (ok)
+        if (ok && (!shown || shown(pi + 1, pages[pi].w[i][2])))
           return {
             page: pi + 1,
             a: i,

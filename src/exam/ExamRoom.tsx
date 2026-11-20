@@ -1779,7 +1779,13 @@ export function ExamRoom({
     );
   const paperLink: PaperLink = {
     locate: (text) => {
-      const h = pages ? findText(pages, text) : null;
+      const h = pages
+        ? findText(pages, text, undefined, (n, y) => {
+            if (n < firstPage || n > lastPage) return false;
+            const c = range ? clips.get(n) : undefined;
+            return !c || (y >= c.top && y <= (c.bottom ?? Infinity));
+          })
+        : null;
       if (!h || !pages) return false;
       scrollToY(topOf(h.page, pages[h.page - 1].w[h.a][2]) - 160);
       setAgentFlash({ page: h.page, range: [h.a, h.b] });
