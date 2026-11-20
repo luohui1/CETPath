@@ -172,7 +172,7 @@ export function ArticlePage() {
               <span className="gr-tool-text">Agent</span>
             </button>
           </header>
-          <article className={cn("mx-auto px-5 pt-8 pb-24 transition-[max-width] duration-500 [transition-timing-function:cubic-bezier(.3,1.1,.45,1)]", showTr && tr ? "max-w-[720px] lg:max-w-[1180px]" : "max-w-[720px]")}>
+          <article className={cn("@container mx-auto px-5 pt-8 pb-24 transition-[max-width] duration-500 [transition-timing-function:cubic-bezier(.3,1.1,.45,1)]", showTr && tr ? "max-w-[720px] lg:max-w-[1180px]" : "max-w-[720px]")}>
             <p className="text-[12px] font-medium text-[var(--blue)]">
               {SOURCE_NAMES[a.source]} · {a.level}难度 · {a.words} 词 · 约 {a.minutes} 分钟
             </p>
@@ -208,11 +208,11 @@ export function ArticlePage() {
                 );
                 const side = rows.length > 0 && showTr;
                 return (
-                  <div key={i} data-p={i} className={cn(side && "lg:grid lg:grid-cols-[680px_minmax(0,1fr)] lg:gap-x-12")}>
+                  <div key={i} data-p={i} className={cn(side && "@min-[1100px]:grid @min-[1100px]:grid-cols-[680px_minmax(0,1fr)] @min-[1100px]:gap-x-12")}>
                     {body}
                     {(side || notes.length > 0) && (
                       <div className="font-sans">
-                        {side && <p className="animate-pop mt-1.5 text-[15px] leading-[1.8] text-[var(--ink-500)] lg:mt-1">{rows.map((x) => x[1]).join("")}</p>}
+                        {side && <p className="animate-pop mt-1.5 text-[15px] leading-[1.8] text-[var(--ink-500)] @min-[1100px]:mt-1">{rows.map((x) => x[1]).join("")}</p>}
                         {notes.map((m) => (
                           <p key={m.id} className="group animate-pop mt-2 border-l-2 border-[#e0b43c] pl-3 text-[14px] leading-[1.65] text-[var(--ink-700)]">
                             <span className="text-[var(--ink-500)] italic">{p.t.slice(m.a, m.b)}</span>
