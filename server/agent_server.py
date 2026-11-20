@@ -239,7 +239,7 @@ CET_GUIDES = {
     "writing": """写作讲题和批改：先说审题，题目是哪一类（观点论述、现象分析、书信/应用文、图表），对应开头段、主体段、结尾段各写什么。主体段用“观点句 + 理由/解释 + 例子”扩展，别堆模板句。批改按四六级 15 分制的档次给分数区间，最多指出 3 处最影响分数的问题（跑题、语法错、句式单一、衔接生硬），每处给一句改法。可以给一两个升级句式，但要贴合这篇的内容。""",
     "translation": """翻译讲题和批改：中文流水句先拆开，找出真正的主语和主谓，其他部分处理成从句、非谓语或介词短语；注意中英差异：中文无主句英文要补主语或用被动，中文多动词英文只留一个谓语，中文定语前置英文常后置。不会的词降级处理，用更简单的词或解释性说法，别空着。批改按 15 分制给分数区间，最多指出 3 处最扣分的问题（主谓不对、时态、漏译、中式英语），每处给改法，最后给一版参考译文。""",
 }
-_CET_WORDS = [("listening", r"听力"), ("banked", r"选词填空|15选10|十五选十"), ("matching", r"长篇阅读|段落匹配|信息匹配"), ("careful", r"仔细阅读|阅读理解"), ("writing", r"作文|写作"), ("translation", r"翻译")]
+_CET_WORDS = [("listening", r"听力"), ("banked", r"选词填空|15选10|十五选十"), ("matching", r"长篇阅读|段落匹配|信息匹配"), ("careful", r"仔细阅读|阅读理解"), ("writing", r"作文|写作"), ("translation", r"翻译(题|部分)|汉译英|段落翻译")]
 
 
 def cet_kind(last: str, ctx: dict) -> str | None:
@@ -247,10 +247,11 @@ def cet_kind(last: str, ctx: dict) -> str | None:
     if not isinstance(ctx, dict) or ctx.get("article") or not re.search(r"四级|六级", str(ctx.get("paper", ""))):
         return None
     for src in (last, str(ctx.get("view") or "")):
-        for k, pat in _CET_WORDS:
-            if re.search(pat, src):
-                return k
         m = re.search(r"第\s*(\d{1,2})\s*题", src)
+        if not m:
+            for k, pat in _CET_WORDS:
+                if re.search(pat, src):
+                    return k
         if m:
             n = int(m.group(1))
             return "listening" if n <= 25 else "banked" if n <= 35 else "matching" if n <= 45 else "careful" if n <= 55 else None
