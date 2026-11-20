@@ -219,6 +219,8 @@ def main():
     def save(a):
         nonlocal new
         if taken.get(a["level"], 0) >= args.per_level:
+            if a.get("audio"):  # 这个等级今天已经够了，下好的音频也删掉
+                (out / a["audio"]).unlink(missing_ok=True)
             return
         taken[a["level"]] = taken.get(a["level"], 0) + 1
         a["fetched"] = now
