@@ -92,7 +92,10 @@ async function applyRow(tbl: string, k: string, row: unknown) {
       const old = await db.memory.where("kind").equals("profile").first();
       if (row === null) {
         if (old) await db.memory.delete(old.id!);
-      } else await db.memory.put({ ...(row as Row), ...(old ? { id: old.id } : {}) } as never);
+      } else {
+        const { id: _id, ...rest } = row as Row;
+        await db.memory.put({ ...rest, ...(old ? { id: old.id } : {}) } as never);
+      }
       return;
     }
     if (row === null) {
