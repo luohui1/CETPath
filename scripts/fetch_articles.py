@@ -50,8 +50,10 @@ def blocks(body):
     """HTML 正文 → [{k, t}]：p 段落、h 小标题、q 引用；图片、视频、嵌入一律不要"""
     body = re.sub(r"<(figure|iframe|script|style|aside|table)\b.*?</\1>", "", body, flags=re.S | re.I)
     out = []
-    for m in re.finditer(r"<(p|h2|h3|blockquote)\b([^>]*)>(.*?)</\1>", body, re.S | re.I):
+    for m in re.finditer(r"<(p|h2|h3|blockquote|li)\b([^>]*)>(.*?)</\1>", body, re.S | re.I):
         tag, attrs, inner = m.group(1).lower(), m.group(2), m.group(3)
+        if tag == "li" and re.search(r"<p\b", inner, re.I):
+            continue  # 里面有 <p> 的列表项，段落会单独取到
         t = text_of(inner)
         if not t:
             continue
