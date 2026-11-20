@@ -568,7 +568,8 @@ export function ExamRoom({
   const tightPad = canvasWidth < 900;
   const pagePad = tightPad ? 32 : 96;
   const avail = canvasWidth - 12 - pagePad;
-  const narrow = canvasWidth < 820; // 工具栏放不下时省掉次要的按钮和数字
+  // 工具栏放不下时省掉次要的按钮和数字；横屏矮屏（平板横放）顶栏的按钮也并进工具栏这一行，要更早收
+  const narrow = canvasWidth < (compact ? 1100 : 820);
   const slim = narrow || compact; // 并成一行时也省
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
