@@ -1,6 +1,6 @@
 import { AuthGate } from "./AuthGate";
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigation } from "react-router";
 import { SidebarSimple } from "@phosphor-icons/react";
 import { pendingCounts } from "@/lib/learning";
 import { backfillMastery, usePendingMistakes } from "@/lib/mistakes";
@@ -127,6 +127,14 @@ function Countdown({ collapsed }: { collapsed: boolean }) {
 }
 
 /** 应用外壳：左侧窄导航（可以收成图标栏），右侧内容 */
+/** 切页时下一页还在加载：顶上一条细进度条，让人知道点到了 */
+function NavProgress() {
+  const loading = useNavigation().state === "loading";
+  return (
+    <div aria-hidden className={cn("pointer-events-none fixed inset-x-0 top-0 z-50 h-[2px] origin-left bg-[var(--blue)] transition-[transform,opacity] duration-[1200ms] ease-out", loading ? "scale-x-90 opacity-100" : "scale-x-0 opacity-0 duration-200")} />
+  );
+}
+
 export function Layout() {
   const settings = useSettings();
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
@@ -188,6 +196,7 @@ export function Layout() {
         </div>
       </aside>
 
+      <NavProgress />
       <main key={pathname} className="page-in mx-auto w-full max-w-[1120px] px-5 pt-8 pb-16 md:px-10 md:pt-10">
         <AuthGate />
         <Outlet />

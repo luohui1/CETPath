@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useParams } from "react-router";
+import { goBack } from "@/lib/nav";
+import { Link, useParams, useNavigate } from "react-router";
 import { ArrowLeft, Eraser, Highlighter, PencilSimple, NotePencil, Sparkle, TextUnderline, Translate } from "@phosphor-icons/react";
 import { WordText, WordTextProvider, type WordClick } from "@/components/WordText";
 import { WordCard } from "@/exam/WordCard";
@@ -38,6 +39,7 @@ function readSelection(): Sel | null {
 
 /** 外刊阅读页：正文点词查词、选短语、加生词本；VOA 能边听边读；右边 Agent 分屏讲这篇 */
 export function ArticlePage() {
+  const navigate = useNavigate();
   const { id = "" } = useParams();
   const [a, setA] = useState<Article | null>(null);
   const [err, setErr] = useState(false);
@@ -155,7 +157,7 @@ export function ArticlePage() {
       <div className="flex h-dvh bg-[var(--paper-100)]">
         <main ref={mainRef} data-ink-scroll onScroll={() => setSel(null)} className="min-w-0 flex-1 overflow-y-auto">
           <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b border-[var(--line-soft)] bg-white/90 px-3 backdrop-blur">
-            <Link to="/articles" className="gr-tool" aria-label="回外刊列表">
+            <Link to="/articles" onClick={(e) => goBack(navigate, "/articles", e)} className="gr-tool" aria-label="回外刊列表">
               <ArrowLeft className="size-[18px]" />
             </Link>
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{a.title}</p>

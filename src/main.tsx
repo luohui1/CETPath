@@ -22,7 +22,11 @@ import { NotFoundPage } from "./pages/NotFound";
  * 进那一页才下载。慢网（国内到新加坡 14–50KB/s）下第一次打开站点少下一大半脚本。
  * 装好 Service Worker 以后所有包都在预缓存里，切页不用等网络。
  */
-const page = (load: () => Promise<ComponentType>) => ({ lazy: async () => ({ Component: await load() }) });
+const loaders: (() => Promise<unknown>)[] = [];
+const page = (load: () => Promise<ComponentType>) => {
+  loaders.push(load);
+  return { lazy: async () => ({ Component: await load() }) };
+};
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
 
 void loadMe(); // 从哪个页面打开都先查登录、开始同步
@@ -54,7 +58,11 @@ const router = createBrowserRouter([
 
 // 首页画出来、浏览器空下来以后，先把做题页那一包取好：点"开始做题"时不用再等
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 2000));
-idle(() => void reader().catch(() => {}));
+// 再把其余各页的包也取好：切页时不用等下载（慢网下以前每切一页都要卡一下）
+idle(() => {
+  void reader().catch(() => {});
+  loaders.forEach((l, i) => setTimeout(() => void l().catch(() => {}), 300 * (i + 1)));
+});
 
 registerSW({ immediate: true });
 

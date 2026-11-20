@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { goBack } from "@/lib/nav";
 import { inkNotes } from "@/lib/ink";
 import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
@@ -1729,7 +1730,7 @@ export function ExamRoom({
 
   const backLink = (
     <Tip label={back.label}>
-      <Link to={back.to} aria-label={back.label} className="gr-iconbtn">
+      <Link to={back.to} onClick={(e) => goBack(navigate, back.to, e)} aria-label={back.label} className="gr-iconbtn">
         <ArrowLeft className="size-[18px]" />
       </Link>
     </Tip>
