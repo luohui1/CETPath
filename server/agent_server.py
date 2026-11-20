@@ -246,7 +246,11 @@ def cet_kind(last: str, ctx: dict) -> str | None:
     """四六级卷子：按提问里的题型词、题号或卷面当前部分判断是哪一类题"""
     if not isinstance(ctx, dict) or ctx.get("article") or not re.search(r"四级|六级", str(ctx.get("paper", ""))):
         return None
-    for src in (last, str(ctx.get("view") or "")):
+    view = str(ctx.get("view") or "")
+    sec = re.search(r"（(听力|选词填空|长篇阅读|仔细阅读|阅读理解|写作|翻译)）", view)
+    if not re.search(r"第\s*\d{1,2}\s*题", last) and not any(re.search(p, last) for _, p in _CET_WORDS) and sec:
+        return {"听力": "listening", "选词填空": "banked", "长篇阅读": "matching", "仔细阅读": "careful", "阅读理解": "careful", "写作": "writing", "翻译": "translation"}[sec.group(1)]
+    for src in (last, view):
         m = re.search(r"第\s*(\d{1,2})\s*题", src)
         if not m:
             for k, pat in _CET_WORDS:
