@@ -11,7 +11,10 @@ export function loadMe(): Promise<Me> {
   if (!meP)
     meP = fetch("/api/auth/me")
       .then(async (r) => (r.ok && (r.headers.get("content-type") || "").includes("json") ? ((await r.json()) as { name: string }) : null))
-      .catch(() => null)
+      .catch(() => {
+        meP = null; // 断网查不到：联网后重查
+        return null;
+      })
       .then((m) => {
         me = m;
         if (m) void startSync(m.name);
@@ -51,3 +54,10 @@ export async function signOut() {
   meP = Promise.resolve(null);
   emit();
 }
+
+addEventListener("online", () => {
+  if (!me) {
+    meP = null;
+    void loadMe();
+  }
+});
