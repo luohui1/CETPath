@@ -116,6 +116,7 @@ export function useAgentEnabled(): boolean | null {
 /** 激活这台设备；成功返回 null，否则返回错误提示 */
 export async function activateAgent(code: string): Promise<string | null> {
   const c = code.trim();
+  if (!/^[\x21-\x7e]+$/.test(c)) return "激活码只含英文字母、数字和符号";
   try {
     const r = await fetch("/api/agent/activate", {
       method: "POST",

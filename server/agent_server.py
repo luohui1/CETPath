@@ -415,7 +415,11 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(data.get(k), str):
                     cfg[k] = data[k].strip()
             if isinstance(data.get("access_code"), str):
-                cfg["access_code"] = data["access_code"].strip()[:64]
+                ac = data["access_code"].strip()
+                # 激活码放在请求头里，浏览器只允许 ASCII
+                if not re.fullmatch(r"[\x21-\x7e]{0,64}", ac):
+                    return self.send_json(400, {"error": "激活码只能用英文字母、数字和符号，最多 64 位"})
+                cfg["access_code"] = ac
             if isinstance(data.get("models"), list):
                 cfg["models"] = [str(m).strip() for m in data["models"] if str(m).strip()][:20]
             if isinstance(data.get("api_key"), str) and data["api_key"].strip():
