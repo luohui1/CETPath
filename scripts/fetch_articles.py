@@ -53,7 +53,8 @@ def blocks(body):
     for m in re.finditer(r"<(p|h2|h3|blockquote|li)\b([^>]*)>(.*?)</\1>", body, re.S | re.I):
         tag, attrs, inner = m.group(1).lower(), m.group(2), m.group(3)
         if tag == "li" and re.search(r"<p\b", inner, re.I):
-            continue  # 里面有 <p> 的列表项，段落会单独取到
+            out += blocks(inner)  # 列表项里套着段落：按段落取
+            continue
         t = text_of(inner)
         if not t:
             continue
