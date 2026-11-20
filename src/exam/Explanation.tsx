@@ -236,11 +236,13 @@ function restAfterBrief(text: string, brief: string) {
  */
 function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields; brief: string; official?: string }) {
   const options = Object.entries(f.options ?? {}).filter(([k]) => k !== q.answer);
-  const reasoning = !official && !f.grammar && !f.meaning && f.reasoning ? restAfterBrief(f.reasoning, brief) : "";
+  const reasoning = !f.grammar && !f.meaning && f.reasoning ? restAfterBrief(f.reasoning, brief) : "";
+  // 有整理好的思路时，官方原文收进最后一个折叠里，不再整段摊在最前面
+  const foldOfficial = !!official && (!!reasoning || options.length > 0);
   const aiParts = options.length > 0 || !!f.mapping?.length || !!f.vocab?.length;
   return (
     <>
-      {official && <OfficialText text={official} />}
+      {official && !foldOfficial && <OfficialText text={official} />}
       {!official && f.grammar && <CardSection label="语法">{f.grammar}</CardSection>}
       {!official && f.meaning && <CardSection label="语义">{f.meaning}</CardSection>}
       {reasoning && <CardSection label="思路">{reasoning}</CardSection>}
@@ -250,7 +252,10 @@ function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields
             {options.map(([k, v]) => (
               <li key={k} className="flex gap-2.5">
                 <span className="num mt-[3px] grid size-[22px] flex-none place-items-center rounded-full bg-[var(--paper-200)] text-[12px] font-semibold text-[var(--ink-700)]">{k}</span>
-                <span className="min-w-0">{v}</span>
+                <span className="min-w-0">
+                  {f.traps?.[k] && <span className="mr-1.5 inline-block rounded-[5px] bg-[var(--red)]/10 px-1.5 text-[12px] leading-[20px] font-medium text-[var(--red)]">{f.traps[k]}</span>}
+                  {v}
+                </span>
               </li>
             ))}
           </ul>
@@ -297,6 +302,14 @@ function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields
         </CardSection>
       )}
       {!!f.vocab?.length && <VocabSection list={f.vocab} sentence={f.locate?.quote} />}
+      {foldOfficial && (
+        <details className="group">
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--ink-500)] select-none hover:text-[var(--ink-700)]">官方解析原文</summary>
+          <div className="mt-2">
+            <OfficialText text={official!} />
+          </div>
+        </details>
+      )}
       {official && aiParts && <p className="text-[12px] leading-5 text-[var(--ink-500)]">上面的一句话结论、逐项分析、对照和生词由 AI 按官方解析整理，仅供参考。</p>}
     </>
   );
@@ -387,7 +400,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
   // 展开按钮后面写里面有什么
   const inside = f
     ? [
-        official ? "官方解析" : f.grammar || f.meaning ? "语法语义" : f.reasoning && restAfterBrief(f.reasoning, brief) ? "思路" : "",
+        f.grammar || f.meaning ? "语法语义" : f.reasoning && restAfterBrief(f.reasoning, brief) ? "思路" : official ? "官方解析" : "",
         Object.keys(f.options ?? {}).some((k) => k !== q.answer) && "逐项",
         f.mapping?.length && "对照",
         f.translation && showLoc && "译文",
@@ -407,6 +420,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
         <header className={cn("flex min-h-8 flex-wrap items-center gap-y-1", narrow ? "gap-x-2" : "gap-x-3")}>
           {title}
           {choice && answer && <AnswerMark letter={q.answer!} />}
+          {f?.kind && <span className="rounded-full bg-[var(--paper-200)] px-2 text-[12px] leading-[22px] font-medium text-[var(--ink-700)]">{f.kind}</span>}
           {mine !== undefined && choice && (
             <span className={cn("inline-flex items-center gap-1 text-[14px] font-medium", right ? "text-[var(--blue)]" : mine ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>
               {right ? <Check className="size-4" weight="bold" /> : mine ? <X className="size-4" weight="bold" /> : null}
@@ -422,6 +436,12 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
         </header>
       )}
       {brief && <p className={cn("text-[15px] leading-[1.65] font-medium text-[var(--ink)]", head && "mt-2")}>{brief}</p>}
+      {f?.signal && (
+        <p className="mt-1.5 flex gap-2 text-[14px] leading-[1.6] text-[var(--ink-700)]">
+          <span className="flex-none rounded-[5px] bg-[var(--blue)]/10 px-1.5 text-[12px] leading-[22px] font-medium text-[var(--blue)]">信号</span>
+          <span className="min-w-0">{f.signal}</span>
+        </p>
+      )}
       {showLoc && (
         <QuoteBlock
           className="mt-3"
