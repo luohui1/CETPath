@@ -139,12 +139,12 @@ def voa_article(a, out):
     cut = [body.find(s) for s in ('<div class="c-author', "Quiz - ", ">Related<", 'class="share--box', 'id="comments"') if body.find(s) > 0]
     body = body[: min(cut)] if cut else body[:80000]
     gloss = []
-    g = re.search(r"Words in This Story</h2>(.*)", body, re.S)
+    g = re.search(r"Words in This Story(?:\s*</(?:strong|b|em|span)>)*\s*</h2>(.*)", body, re.S)
     if g:
         body = body[: g.start()]
         for p in re.findall(r"<p[^>]*>(.*?)</p>", g.group(1), re.S):
             t = text_of(p)
-            m = re.match(r"(.+?)\s+[–—-]\s+(.+)", t)
+            m = re.match(r"(.+?)\s+[–—-]\s*(.+)", t)
             if m:
                 gloss.append({"w": m.group(1).strip(), "d": m.group(2).strip()})
     paras = [p for p in blocks(body) if p["t"] not in ("No media source currently available",) and not p["t"].startswith("Quiz -")]
