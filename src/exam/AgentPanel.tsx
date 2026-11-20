@@ -110,7 +110,7 @@ export function AgentPanel({
       ...(threads.get(id) ?? []),
       { role: "user" as const, content: text.trim() },
     ];
-    const ctx = thread.ctx;
+    let ctx = thread.ctx; // 存进本机的上下文（识别出手写笔记后换成带笔记的）
     const put = (list: ChatMsg[], persist = false) => {
       threads.set(id, list);
       setMsgs(list);
@@ -130,6 +130,7 @@ export function AgentPanel({
       const ink = env?.ink ? await env.ink(ctl.signal).catch(() => "") : "";
       if (ctl.signal.aborted) throw new DOMException("stopped", "AbortError");
       const live = ink ? { ...thread.ctx, ink } : thread.ctx;
+      ctx = live;
       let list: ChatMsg[] = base;
       let answer = "";
       // 模型要用工具：在本机执行，把结果接回去再问，最多 4 轮
