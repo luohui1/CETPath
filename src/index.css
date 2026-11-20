@@ -54,6 +54,12 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 贴着右边的提示气泡、弹层会把页面撑宽；平板上一拖就能拖出右边、下边的大片空白 */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   min-height: 100dvh;
 }
