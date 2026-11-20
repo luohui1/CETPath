@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Eraser, Highlighter, NotePencil, Sparkle, TextUnderline, Translate } from "@phosphor-icons/react";
+import { ArrowLeft, Eraser, Highlighter, PencilSimple, NotePencil, Sparkle, TextUnderline, Translate } from "@phosphor-icons/react";
 import { WordText, WordTextProvider, type WordClick } from "@/components/WordText";
 import { WordCard } from "@/exam/WordCard";
 import { AgentSplit } from "@/exam/AgentSplit";
 import type { AgentThread } from "@/exam/AgentPanel";
 import { agentHeaders, useAgentEnabled } from "@/lib/agent";
 import { sentenceKey } from "@/lib/trans";
+import { ArticleInk } from "./ArticleInk";
 import { ARTICLES_BASE, articleText, loadArticle, SOURCE_NAMES, type Article } from "@/lib/articles";
 import { EmptyState, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,8 @@ export function ArticlePage() {
   const [noting, setNoting] = useState<string | null>(null);
   const [ask, setAsk] = useState<AgentThread | null>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [pen, setPen] = useState(false);
   useEffect(() => {
     setTr(null);
     setShowTr(false);
@@ -156,6 +159,10 @@ export function ArticlePage() {
               <ArrowLeft className="size-[18px]" />
             </Link>
             <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{a.title}</p>
+            <button type="button" onClick={() => setPen(!pen)} className={cn("gr-tool", pen && "is-on")} aria-label="手写" title="在文章上手写">
+              <PencilSimple className="size-[18px]" />
+              <span className="gr-tool-text">手写</span>
+            </button>
             <button type="button" onClick={() => void translate()} className={cn("gr-tool", showTr && "is-on")} aria-label="译文" title={tr ? "显示 / 隐藏逐段译文" : "生成全文译文"}>
               <Translate className="size-[18px]" />
               <span className="gr-tool-text">{trBusy === "…" ? "翻译中…" : "译文"}</span>
@@ -179,7 +186,8 @@ export function ArticlePage() {
               · {a.license}
             </p>
             {a.audio && <audio controls preload="none" src={ARTICLES_BASE + a.audio} className="mt-4 w-full" />}
-            <div className="mt-6 space-y-4 font-serif text-[18px] leading-[1.75] text-[var(--ink)]">
+            <div ref={boxRef} className="relative mt-6 space-y-4 font-serif text-[18px] leading-[1.75] text-[var(--ink)]">
+              <ArticleInk id={id} box={boxRef} on={pen} onClose={() => setPen(false)} />
               {trBusy && trBusy !== "…" && <p className="font-sans text-[13px] text-[var(--red,#c43)]">{trBusy}</p>}
               {a.paras.map((p, i) => {
                 const ranges = marks.filter((m) => m.p === i).map((m) => ({ a: m.a, b: m.b, cls: MARK_CLS[m.kind] }));
