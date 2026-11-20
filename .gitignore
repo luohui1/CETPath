@@ -24,3 +24,4 @@ __pycache__/
 /deploy/deploy-vps.sh
 /docs/部署.md
 /docs/后续安排.md
+/public/articles-data/

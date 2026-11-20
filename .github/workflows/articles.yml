@@ -1,0 +1,34 @@
+# 外刊：每天北京时间 6 点抓 VOA Learning English 和 The Conversation 的新文章，传到服务器
+# 服务器连不上这两个网站，所以在 GitHub 上抓。ARTICLES_SSH_KEY 只能往 /srv/yingyu/articles-data 解 tar 包
+name: articles
+on:
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/articles.yml", "scripts/fetch_articles.py"]
+concurrency: articles
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: 取服务器上现有的列表（已抓过的不重抓）
+        run: |
+          mkdir -p public/articles-data
+          curl -sf http://8.162.0.101/articles-data/index.json -o public/articles-data/index.json || true
+      - name: 取词表（估难度用；词表不在仓库里，从站上拿）
+        run: |
+          mkdir -p public/dict/books
+          curl -sf http://8.162.0.101/dict/lemma.json -o public/dict/lemma.json || true
+          for b in cet4 cet6 ky; do curl -sf http://8.162.0.101/dict/books/$b.json -o public/dict/books/$b.json || true; done
+      - name: 抓新文章
+        run: python3 scripts/fetch_articles.py --per-feed 6 --keep-days 60
+      - name: 传到服务器
+        env:
+          KEY: ${{ secrets.ARTICLES_SSH_KEY }}
+        run: |
+          install -m 600 /dev/null ~/key && printf '%s\n' "$KEY" > ~/key
+          tar -C public/articles-data -czf - . | ssh -i ~/key -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes yzarticles@8.162.0.101
+          rm -f ~/key
