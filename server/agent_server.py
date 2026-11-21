@@ -841,7 +841,8 @@ class Handler(BaseHTTPRequestHandler):
         with sdb() as c:
             c.execute("DELETE FROM sessions WHERE exp<?", (time.time(),))
             c.execute("INSERT INTO sessions VALUES (?,?,?)", (tok, uid, time.time() + SESSION_DAYS * 86400))
-        return self.send_json(200, {"name": name}, {"Set-Cookie": f"yz_sess={tok}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax"})
+        secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+        return self.send_json(200, {"name": name}, {"Set-Cookie": f"yz_sess={tok}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax{secure}"})
 
     def sync(self, data: dict):
         """按条同步：push 是本机改过的行（row 为 null 表示删了），t 是改的时间，后改的为准；返回 since 之后别的设备改过的行"""
