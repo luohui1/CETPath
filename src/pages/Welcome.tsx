@@ -103,7 +103,7 @@ export function WelcomePage() {
           </span>
         </h1>
         <p className="mt-8 max-w-[30em] text-[17px] leading-[1.75] text-[var(--ink-700)]">
-          四六级、考研真卷原样打开，在卷子上写写画画；做完和 Agent 复盘，它看得到你错在哪、每题用了多久。还有每天更新的外刊。
+          四六级、考研真卷原样打开，在卷子上写写画画；做完和 Agent 复盘，它看得到你错在哪、每题用了多久。
         </p>
 
         <div className="mt-12 max-w-[460px]">

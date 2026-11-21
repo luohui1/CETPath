@@ -1,5 +1,7 @@
 /** 外刊：每天由 GitHub Actions 抓 VOA Learning English 和英文维基百科，放在 /articles-data/ 下 */
 export const ARTICLES_BASE = "/articles-data/";
+/** 外刊暂时下线：入口和页面都不显示，代码保留 */
+export const ARTICLES_ON = false;
 
 export type ArticlePara = { k: "p" | "h" | "q" | "fine"; t: string };
 export interface ArticleMeta {

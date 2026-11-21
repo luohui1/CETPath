@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
+import { ARTICLES_ON } from "./lib/articles";
 import { registerSW } from "virtual:pwa-register";
 import { IconContext } from "@phosphor-icons/react";
 // 数字和英文展示用的衬线体，只要拉丁字符
@@ -34,7 +35,9 @@ void loadMe(); // 从哪个页面打开都先查登录、开始同步
 const router = createBrowserRouter([
   { path: "/welcome", ...page(() => import("./pages/Welcome").then((m) => m.WelcomePage)) },
   // 做题页是沉浸式考场，不显示应用侧边栏；/paper/:id/retry?q=… 是重做错题
-  { path: "/articles/:id", ...page(() => import("./pages/Article").then((m) => m.ArticlePage)) },
+  ARTICLES_ON
+    ? { path: "/articles/:id", ...page(() => import("./pages/Article").then((m) => m.ArticlePage)) }
+    : { path: "/articles/*", element: <Navigate to="/" replace /> },
   { path: "/paper/:id/:section?", ...page(reader), hydrateFallbackElement: <div className="min-h-dvh bg-[var(--paper-100)]" /> },
   {
     element: <Layout />,
@@ -42,7 +45,9 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <HomePage /> },
       { path: "/papers", ...page(() => import("./pages/Papers").then((m) => m.PapersPage)) },
-      { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) },
+      ARTICLES_ON
+        ? { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) }
+        : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },
       { path: "/review", ...page(() => import("./pages/Review").then((m) => m.ReviewPage)) },

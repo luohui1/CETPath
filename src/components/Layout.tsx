@@ -9,6 +9,7 @@ import { cn, daysUntil } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { PixelIcon, type PixelName } from "./PixelIcon";
 import { WORD_PAGES } from "./WordsTabs";
+import { ARTICLES_ON } from "@/lib/articles";
 
 const KEY = "yy-sidebar-collapsed";
 
@@ -151,7 +152,7 @@ export function Layout() {
     { to: "/", label: "首页", icon: "house", end: true },
     { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
     { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
-    { to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" },
+    ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
     { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: mistakes ?? 0, red: true },
     { to: "/review", label: "单词", short: "单词", icon: "bolt", badge: counts ? counts.dueReviews + counts.newLeft : 0, match: WORD_PAGES.map((p) => p.to) },
     { to: "/ask", label: "AI 助教", short: "AI", icon: "star" },

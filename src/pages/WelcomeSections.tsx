@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { ARTICLES_ON } from "@/lib/articles";
 
 /* 落地页下半部分：每个模块一段，配自己画的示意图（不用任何真题内容） */
 const card = "rounded-[14px] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_30px_60px_-24px_rgba(15,31,56,0.35),0_0_0_1px_rgba(15,31,56,0.06)]";
@@ -109,7 +110,7 @@ const ROWS: { tag: string; title: string; desc: string; art: ReactNode }[] = [
   { tag: "Agent", title: "做完题，找它复盘", desc: "它看得到你每题选了什么、错在哪、用了多久。按定位、对照、排除一步步讲，说人话；还会记住你的薄弱点，下次讲得更对路。", art: <AgentArt /> },
   { tag: "卷面", title: "像在纸上一样写", desc: "笔、高亮、划线、便签、套索、橡皮，平板上手指滑动、笔写字。你写的笔记 Agent 也认得出来。", art: <InkArt /> },
   { tag: "长难句", title: "一句话拆成几块", desc: "主语、谓语、从句、修饰用颜色分开，点一块看它的作用和意思，最后给一句通顺的译文。", art: <SyntaxArt /> },
-  { tag: "外刊", title: "每天一篇新外刊", desc: "VOA 和 The Conversation 每天更新，按四六级难度分好。点词查词、中英对照、选句子问 Agent，读完还能按真题题型出题。", art: <ArticleArt /> },
+  { tag: "外刊", title: "每天一篇新外刊", desc: "VOA 和英文维基百科每天更新，按四六级难度分好。点词查词、中英对照、选句子问 Agent，读完还能按真题题型出题。", art: <ArticleArt /> },
   { tag: "同步", title: "电脑、平板、手机都一样", desc: "登录后生词、错题、做题记录、笔记和 Agent 档案自动同步。没网也能用，联网后自动补传。", art: <SyncArt /> },
 ];
 
@@ -117,7 +118,7 @@ export function WelcomeSections() {
   return (
     <div className="relative border-t border-[var(--line)] bg-[linear-gradient(#fbfaf6,var(--paper,#f6f4ee))]">
       <div className="mx-auto max-w-[1180px] space-y-28 px-6 py-24 sm:px-10 lg:space-y-36 lg:py-32">
-        {ROWS.map((r, i) => (
+        {ROWS.filter((r) => ARTICLES_ON || r.tag !== "外刊").map((r, i) => (
           <section key={r.tag} className={cn("grid items-center gap-12 lg:grid-cols-2 lg:gap-20", i % 2 && "lg:[&>*:first-child]:order-2")}>
             <div>
               <span className="font-serif text-[15px] font-semibold text-[#d0342c]">0{i + 1} · {r.tag}</span>
