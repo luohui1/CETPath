@@ -78,8 +78,10 @@ function render(marks: MarkRow[], box: Box): string {
   return c.toDataURL("image/png");
 }
 
-/** 正在认的块：后台还没认完时再提问，不重复发 */
-const inflight = new Set<string>();
+/** 正在认的块：后台还没认完时再提问，等同一个请求，不重复发 */
+const inflight = new Map<string, Promise<void>>();
+/** 各次调用共用一份缓存：后台认完的，别的调用马上看得到 */
+let memo: Record<string, string> | null = null;
 
 const loadCache = (): Record<string, string> => {
   try {
@@ -104,7 +106,7 @@ export async function inkNotes(
     (m) => m.kind === "pen" && (m.points?.length ?? 0) > 1,
   );
   if (!pens.length) return "";
-  const cache = loadCache();
+  const cache = (memo ??= loadCache());
   const byPage = new Map<number, MarkRow[]>();
   for (const m of pens) byPage.set(m.page, [...(byPage.get(m.page) ?? []), m]);
   const jobs: { page: number; key: string; box: Box; marks: MarkRow[] }[] = [];
@@ -121,7 +123,7 @@ export async function inkNotes(
           .sort()
           .join(","),
       });
-  const todo = jobs.filter((j) => !(j.key in cache) && !inflight.has(j.key)).slice(0, 24);
+  const todo = jobs.filter((j) => !(j.key in cache)).slice(0, 24);
   const one = async (j: (typeof jobs)[number]) => {
     const data = pages?.[j.page - 1];
     const words = data
@@ -131,7 +133,6 @@ export async function inkNotes(
           .join(" ")
           .slice(0, 300)
       : "";
-    inflight.add(j.key);
     try {
       const r = await fetch("/api/agent/ink", {
         method: "POST",
@@ -162,7 +163,16 @@ export async function inkNotes(
   // 一块一个请求（每张图几十 KB），最多 6 个同时
   const queue = [...todo];
   const worker = async () => {
-    while (queue.length && !signal?.aborted) await one(queue.shift()!);
+    while (queue.length && !signal?.aborted) {
+      const j = queue.shift()!;
+      if (j.key in cache) continue;
+      let p = inflight.get(j.key);
+      if (!p) {
+        p = one(j);
+        inflight.set(j.key, p);
+      }
+      await p;
+    }
   };
   const all = Promise.all(Array.from({ length: 6 }, worker));
   await (budgetMs === undefined ? all : Promise.race([all, new Promise((r) => setTimeout(r, budgetMs))]));
