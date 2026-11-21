@@ -61,7 +61,7 @@ RATE = (40, 600)  # 每个 IP 每 10 分钟最多 40 次提问
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
 _handoff_hits: dict[str, list[float]] = {}
-_handoffs: dict[str, tuple[float, bytes]] = {}  # 从 http 搬到 https 时暂存一次本地数据，取一次就删
+_handoffs: dict[str, tuple[float, str, bytes]] = {}  # 从 http 搬到 https 时暂存一次本地数据，取一次就删；只有存的那个浏览器（带同一个 yz_ho cookie）取得到
 _handoff_lock = threading.Lock()
 _bad_codes: dict[str, list[float]] = {}
 _trans_hits: dict[str, list[float]] = {}  # 外刊翻译（一篇一次）
@@ -659,16 +659,21 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         cfg = load()
         if path.startswith("/api/handoff/"):
+            tok, nonce = path.rsplit("/", 1)[1], self.cookie("yz_ho") or ""
             with _handoff_lock:
-                e = _handoffs.pop(path.rsplit("/", 1)[1], None)
-            if not e or e[0] < time.time():
+                e = _handoffs.get(tok)
+                ok = bool(e and e[0] >= time.time() and nonce and hmac.compare_digest(e[1], nonce))
+                if ok:
+                    del _handoffs[tok]
+            if not ok:
                 return self.send_json(404, {"error": "没有这份数据"})
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(e[1])))
+            self.send_header("Content-Length", str(len(e[2])))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Set-Cookie", "yz_ho=; Path=/api/handoff; Max-Age=0")
             self.end_headers()
-            return self.wfile.write(e[1])
+            return self.wfile.write(e[2])
         if path == "/api/auth/me":
             u = self.user()
             return self.send_json(200, {"name": u[1]}) if u else self.send_json(401, {"error": "没登录"})
@@ -725,14 +730,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/handoff":
             if limited(_handoff_hits, self.ip(), 20, 3600):
                 return self.send_json(429, {"error": "太频繁"})
-            tok, now = secrets.token_urlsafe(24), time.time()
+            tok, nonce, now = secrets.token_urlsafe(24), secrets.token_urlsafe(24), time.time()
             with _handoff_lock:
                 for k in [k for k, v in _handoffs.items() if v[0] < now]:
                     del _handoffs[k]
                 if len(_handoffs) >= 200:
                     return self.send_json(503, {"error": "太忙"})
-                _handoffs[tok] = (now + 900, json.dumps(data, ensure_ascii=False).encode())
-            return self.send_json(200, {"token": tok})
+                _handoffs[tok] = (now + 900, nonce, json.dumps(data, ensure_ascii=False).encode())
+            return self.send_json(200, {"token": tok}, {"Set-Cookie": f"yz_ho={nonce}; Path=/api/handoff; Max-Age=900; HttpOnly; SameSite=Lax"})
         if path == "/api/admin/logout":
             return self.send_json(200, {"ok": True}, {"Set-Cookie": "yz_admin=; Path=/; Max-Age=0"})
         if path == "/api/admin/config":
