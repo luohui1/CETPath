@@ -55,11 +55,27 @@ export async function takeHandoff() {
     if (!r.ok) return;
     const data = (await r.json()) as Handoff;
     if (data?.app !== "yingyu-zhidao" || !data.tables) return;
-    for (const [k, v] of Object.entries(data.ls || {})) if (k !== MOVED) localStorage.setItem(k, v);
+    // https 这边已有的不覆盖：只补进没有的
+    for (const [k, v] of Object.entries(data.ls || {})) if (k !== MOVED && localStorage.getItem(k) === null) localStorage.setItem(k, v);
     await db.transaction("rw", TABLES.map((t) => db.table(t)), async () => {
       for (const t of TABLES) {
         const rows = data.tables[t];
-        if (Array.isArray(rows) && rows.length) await db.table(t).bulkPut(rows);
+        if (!Array.isArray(rows) || !rows.length) continue;
+        const table = db.table(t);
+        if (!(await table.count())) {
+          await table.bulkPut(rows);
+          continue;
+        }
+        const pk = table.schema.primKey;
+        if (pk.auto) {
+          // 自增编号两边各编各的，撞号不代表是同一条：去掉编号当新的加
+          await table.bulkAdd(rows.map((r) => Object.fromEntries(Object.entries(r as object).filter(([k]) => k !== pk.keyPath))));
+          continue;
+        }
+        const keys = rows.map((r) => (r as Record<string, unknown>)[pk.keyPath as string]) as never[];
+        const have = await table.bulkGet(keys);
+        const fresh = rows.filter((_, i) => have[i] === undefined);
+        if (fresh.length) await table.bulkAdd(fresh);
       }
     });
   } catch {
