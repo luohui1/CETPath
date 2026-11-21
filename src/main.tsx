@@ -143,5 +143,8 @@ const start = () => Promise.race([primeAppData(), new Promise((r) => setTimeout(
 if (memoryDb) void start();
 else
   void leaveHttp().then((away) => {
-    if (!away) void takeHandoff().then(start, start);
+    if (!away)
+      void takeHandoff().then((back) => {
+        if (!back) void start();
+      }, start);
   });

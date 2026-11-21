@@ -14,6 +14,13 @@ export async function leaveHttp(): Promise<boolean> {
   const target = new URL(location.href);
   target.protocol = "https:";
   try {
+    if (target.searchParams.has("nohttps")) {
+      // https 那边没搬成，退回来了：这次留在 http，下次打开再搬
+      localStorage.removeItem(MOVED);
+      target.searchParams.delete("nohttps");
+      history.replaceState(history.state, "", target.pathname + target.search + target.hash);
+      return false;
+    }
     if (localStorage.getItem(MOVED)) {
       location.replace(target.href);
       return true;
@@ -43,18 +50,24 @@ export async function leaveHttp(): Promise<boolean> {
   }
 }
 
-/** 在 https 页上：地址里带着取件码，就把 http 那边的数据并进来 */
-export async function takeHandoff() {
+/** 在 https 页上：地址里带着取件码，就把 http 那边的数据并进来。搬不成就退回 http（返回 true 表示正在跳走），下次打开再搬 */
+export async function takeHandoff(): Promise<boolean> {
   const url = new URL(location.href);
   const tok = url.searchParams.get("handoff");
-  if (!tok) return;
+  if (!tok) return false;
   url.searchParams.delete("handoff");
   history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  const back = () => {
+    url.protocol = "http:";
+    url.searchParams.set("nohttps", "1");
+    location.replace(url.href);
+    return true;
+  };
   try {
     const r = await timeout(fetch(`/api/handoff/${encodeURIComponent(tok)}`), 15000);
-    if (!r.ok) return;
+    if (!r.ok) return back();
     const data = (await r.json()) as Handoff;
-    if (data?.app !== "yingyu-zhidao" || !data.tables) return;
+    if (data?.app !== "yingyu-zhidao" || !data.tables) return back();
     // https 这边已有的不覆盖：只补进没有的
     for (const [k, v] of Object.entries(data.ls || {})) if (k !== MOVED && localStorage.getItem(k) === null) localStorage.setItem(k, v);
     await db.transaction("rw", TABLES.map((t) => db.table(t)), async () => {
@@ -78,7 +91,8 @@ export async function takeHandoff() {
         if (fresh.length) await table.bulkAdd(fresh);
       }
     });
+    return false;
   } catch {
-    // 搬不过来就算了：http 那边的数据还在
+    return back();
   }
 }
