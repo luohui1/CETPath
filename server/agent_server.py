@@ -49,6 +49,7 @@ def sdb() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, uid INTEGER, exp REAL);
         CREATE TABLE IF NOT EXISTS rows (uid INTEGER, tbl TEXT, k TEXT, data TEXT, t REAL, seq INTEGER, PRIMARY KEY (uid, tbl, k));
         CREATE INDEX IF NOT EXISTS rows_seq ON rows (uid, seq);
+        CREATE TABLE IF NOT EXISTS usage (t REAL, kind TEXT, model TEXT, pin INTEGER, pout INTEGER);
         """
     )
     return c
@@ -270,7 +271,7 @@ def translate_paras(cfg: dict, paras: list[str], p: str):
         f"一共 {len(paras)} 段，数组长度必须是 {len(paras)}。\n\n"
         + "\n\n".join(f"[{i + 1}] {t}" for i, t in enumerate(paras))
     )
-    with upstream(cfg, [{"role": "user", "content": prompt}], False, 16000, 0.2) as r:
+    with upstream(cfg, [{"role": "user", "content": prompt}], False, 16000, 0.2, kind="trans") as r:
         out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
     out = re.sub(r"^```(?:json)?\s*|\s*```$", "", out)
     res = json.loads(out)
@@ -506,9 +507,69 @@ TOOLS = [
 
 
 # ---------- 上游 ----------
-def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None, model: str | None = None, tools: list | None = None):
+def record_usage(kind: str, model: str, u: dict):
+    try:
+        with sdb() as c:
+            c.execute("INSERT INTO usage VALUES (?,?,?,?,?)", (time.time(), kind, model, int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0)))
+    except (sqlite3.Error, TypeError, ValueError, AttributeError):
+        pass
+
+
+class Metered:
+    """包住上游响应：读完或流到最后一块时，把接口返回的 usage 记进 usage 表"""
+
+    def __init__(self, r, kind: str, model: str):
+        self.r, self.kind, self.model, self.done = r, kind, model, False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.r.close()
+
+    def close(self):
+        self.r.close()
+
+    def grab(self, raw: bytes):
+        if self.done or b'"usage"' not in raw:
+            return
+        try:
+            u = json.loads(raw).get("usage")
+        except (json.JSONDecodeError, AttributeError):
+            return
+        if isinstance(u, dict) and u.get("prompt_tokens") is not None:
+            self.done = True
+            record_usage(self.kind, self.model, u)
+
+    def read(self, *a):
+        b = self.r.read(*a)
+        self.grab(b)
+        return b
+
+    def __iter__(self):
+        for line in self.r:
+            if line.startswith(b"data:"):
+                self.grab(line[5:].strip())
+            yield line
+
+
+def usage_summary() -> dict:
+    now = time.time()
+    day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1))
+    with sdb() as c:
+        def tot(since: float):
+            n, a, b = c.execute("SELECT COUNT(*), COALESCE(SUM(pin),0), COALESCE(SUM(pout),0) FROM usage WHERE t>=?", (since,)).fetchone()
+            return {"calls": n, "in": a, "out": b}
+        by = [{"kind": k, "model": m, "calls": n, "in": a, "out": b} for k, m, n, a, b in c.execute("SELECT kind, model, COUNT(*), SUM(pin), SUM(pout) FROM usage GROUP BY kind, model ORDER BY SUM(pin)+SUM(pout) DESC")]
+        first = c.execute("SELECT MIN(t) FROM usage").fetchone()[0]
+    return {"today": tot(day0), "week": tot(now - 7 * 86400), "all": tot(0), "by": by, "since": first}
+
+
+def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 1800, temperature: float | None = None, model: str | None = None, tools: list | None = None, kind: str = "chat"):
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
     body = {"model": model or cfg["model"], "messages": messages, "stream": stream, "max_tokens": max_tokens}
+    if stream:
+        body["stream_options"] = {"include_usage": True}
     if tools:
         body["tools"] = tools
     t = cfg.get("temperature") if temperature is None else temperature
@@ -518,7 +579,7 @@ def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 18
     req.add_header("Content-Type", "application/json")
     req.add_header("Authorization", f"Bearer {cfg.get('api_key', '')}")
     req.add_header("User-Agent", "yingyu-agent/1.0")  # 不少接口在 Cloudflare 后面，默认的 Python-urllib 会被拦（1010）
-    return urllib.request.urlopen(req, timeout=90)
+    return Metered(urllib.request.urlopen(req, timeout=90), kind, body["model"])
 
 
 def models(cfg: dict) -> list[str]:
@@ -622,6 +683,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(401, {"error": "请先登录"})
             key = cfg.get("api_key", "")
             self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "access_code": cfg.get("access_code", ""), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
+        elif path == "/api/admin/usage":
+            if not self.admin(cfg):
+                return self.send_json(401, {"error": "请先登录"})
+            self.send_json(200, usage_summary())
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -672,7 +737,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "地址、模型、密钥要先填全"})
             try:
                 t0 = time.time()
-                with upstream(cfg, [{"role": "user", "content": "用一句中文说：连接成功"}], False, 40) as r:
+                with upstream(cfg, [{"role": "user", "content": "用一句中文说：连接成功"}], False, 40, kind="test") as r:
                     reply = json.load(r)["choices"][0]["message"]["content"]
                 return self.send_json(200, {"ok": True, "reply": reply, "ms": int((time.time() - t0) * 1000)})
             except Exception as e:  # noqa: BLE001
@@ -850,7 +915,7 @@ class Handler(BaseHTTPRequestHandler):
         msgs = [{"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": png}}]}]
         vision = cfg.get("vision_model") or next((m for m in models(cfg) if "gemini" in m.lower()), None)
         try:
-            with upstream(cfg, msgs, False, 300, 0, model=vision) as r:
+            with upstream(cfg, msgs, False, 300, 0, model=vision, kind="ink") as r:
                 out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
@@ -936,7 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
         convo = "\n".join(f"{'学习者' if t['role'] == 'user' else '助教'}：{t['content'][:1500]}" for t in turns if t["role"] in ("user", "assistant") and t["content"])
         msgs = [{"role": "system", "content": REMEMBER + f"\n今天是 {today()}，写日期时用完整年份。"}, {"role": "user", "content": f"现在的档案：\n{profile or '（空的）'}\n\n对话：\n{convo}"}]
         try:
-            with upstream(cfg, msgs, False, 1600, 0) as r:
+            with upstream(cfg, msgs, False, 1600, 0, kind="remember") as r:
                 text = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
@@ -979,12 +1044,17 @@ button.primary{background:#2f6bff;color:#fff}button:disabled{opacity:.5}.hint{fo
 <label>温度（可空，默认用接口的）</label><input id="temperature" inputmode="decimal" placeholder="0.3">
 <div class="row"><button class="primary" id="save">保存</button><button id="test">测试连接</button><button class="out" id="logout">退出</button></div>
 <div id="msg"></div></div>
+<div class="card" id="usage" hidden style="margin-top:16px"><label>模型用量（token，接口自己报的数）</label><table id="ut" style="width:100%;font-size:14px;border-collapse:collapse"></table><div class="hint" id="uhint"></div></div>
 </main><script>
 const $=id=>document.getElementById(id);
 async function api(p,o={}){const r=await fetch(p,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...o});let d={};try{d=await r.json()}catch{}return[r.status,d]}
+const KIND={chat:"提问",ink:"手写识别",trans:"外刊翻译",remember:"更新记忆",test:"测试连接"};const fmt=n=>Number(n||0).toLocaleString("zh-CN");
+async function usage(){const[s,d]=await api("/api/admin/usage");if(s!==200)return;const r=(a,b,c,e)=>`<tr><td style="padding:4px 0">${a}</td><td align="right">${b}</td><td align="right">${c}</td><td align="right">${e}</td></tr>`;
+$("ut").innerHTML=r("<b>范围</b>","<b>次数</b>","<b>输入</b>","<b>输出</b>")+[["今天",d.today],["近 7 天",d.week],["全部",d.all]].map(([n,x])=>r(n,fmt(x.calls),fmt(x.in),fmt(x.out))).join("")+d.by.map(x=>r((KIND[x.kind]||x.kind)+" · "+x.model,fmt(x.calls),fmt(x.in),fmt(x.out))).join("");
+$("uhint").textContent=d.since?"从 "+new Date(d.since*1000).toLocaleString("zh-CN")+" 开始记录":"还没有调用记录";$("usage").hidden=false}
 function say(t,ok){$("msg").textContent=t;$("msg").className=ok?"ok":"err"}
 async function boot(){const[s,d]=await api("/api/admin/config");if(s===401){$("login").hidden=false;$("form").hidden=true;$("pw").focus();return}
-$("login").hidden=true;$("form").hidden=false;$("base_url").value=d.base_url||"";$("model").value=d.model||"";$("temperature").value=d.temperature??"";
+$("login").hidden=true;$("form").hidden=false;usage();$("base_url").value=d.base_url||"";$("model").value=d.model||"";$("temperature").value=d.temperature??"";
 $("api_key").value="";$("api_key").placeholder=d.api_key_set?"已保存（不改就留空）":"sk-...";$("keyhint").textContent=d.api_key_set?"已保存的密钥尾号 "+d.api_key_tail:"还没填"}
 $("go").onclick=async()=>{const[s,d]=await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:$("pw").value})});if(s===200){$("pw").value="";boot()}else $("lmsg").textContent=d.error||"登录失败"};
 $("pw").onkeydown=e=>e.key==="Enter"&&$("go").click();
