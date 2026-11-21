@@ -12,6 +12,7 @@ import "@fontsource/source-serif-4/latin-700.css";
 import "./index.css";
 import { primeAppData } from "./lib/insights";
 import { db, memoryDb } from "./lib/db";
+import { leaveHttp, takeHandoff } from "./lib/https";
 import type { ComponentType } from "react";
 import { Layout } from "./components/Layout";
 import { loadMe } from "./lib/auth";
@@ -137,4 +138,10 @@ const render = () =>
       </IconContext.Provider>
     </StrictMode>,
   );
-Promise.race([primeAppData(), new Promise((r) => setTimeout(r, 600))]).then(render, render);
+const start = () => Promise.race([primeAppData(), new Promise((r) => setTimeout(r, 600))]).then(render, render);
+// 站点换成 https：http 页先把本地数据搬过去再跳走；内存库时读不到真数据，不搬也不跳
+if (memoryDb) void start();
+else
+  void leaveHttp().then((away) => {
+    if (!away) void takeHandoff().then(start, start);
+  });
