@@ -946,7 +946,7 @@ class Handler(BaseHTTPRequestHandler):
         msgs = [{"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": png}}]}]
         vision = cfg.get("vision_model") or next((m for m in models(cfg) if "gemini" in m.lower()), None)
         try:
-            with upstream(cfg, msgs, False, 300, 0, model=vision, kind="ink") as r:
+            with upstream(cfg, msgs, False, 1200, 0, model=vision, kind="ink") as r:
                 out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})

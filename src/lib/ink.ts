@@ -78,6 +78,9 @@ function render(marks: MarkRow[], box: Box): string {
   return c.toDataURL("image/png");
 }
 
+/** 正在认的块：后台还没认完时再提问，不重复发 */
+const inflight = new Set<string>();
+
 const loadCache = (): Record<string, string> => {
   try {
     return JSON.parse(localStorage.getItem(CACHE_KEY) ?? "{}") as Record<
@@ -89,11 +92,13 @@ const loadCache = (): Record<string, string> => {
   }
 };
 
-/** 这套卷所有手写笔记转成的文字（按页），给 Agent 当上下文；没有手写就返回空串 */
+/** 这套卷所有手写笔记转成的文字（按页），给 Agent 当上下文；没有手写就返回空串。
+ *  budgetMs：最多等这么久，到点先用已经认出来的，没认完的在后台接着认、存进缓存，下次提问就有了 */
 export async function inkNotes(
   marks: MarkRow[],
   pages: PdfWordsPage[] | null,
   signal?: AbortSignal,
+  budgetMs?: number,
 ): Promise<string> {
   const pens = marks.filter(
     (m) => m.kind === "pen" && (m.points?.length ?? 0) > 1,
@@ -116,49 +121,51 @@ export async function inkNotes(
           .sort()
           .join(","),
       });
-  const todo = jobs.filter((j) => !(j.key in cache)).slice(0, 24);
-  // 一块一个请求（每张图几十 KB），最多 4 个同时
-  for (let i = 0; i < todo.length && !signal?.aborted; i += 4)
-    await Promise.all(
-      todo.slice(i, i + 4).map(async (j) => {
-        const data = pages?.[j.page - 1];
-        const words = data
-          ? data.w
-              .filter((w) => near([w[1], w[2], w[3], w[4]], j.box, 12))
-              .map((w) => w[0])
-              .join(" ")
-              .slice(0, 300)
-          : "";
-        try {
-          const r = await fetch("/api/agent/ink", {
-            method: "POST",
-            headers: agentHeaders(true),
-            body: JSON.stringify({
-              png: render(j.marks, j.box),
-              near: words,
-              covered: data
-                ? data.w
-                    .filter((w) => near([w[1], w[2], w[3], w[4]], j.box, 0))
-                    .map((w) => w[0])
-                    .join(" ")
-                    .slice(0, 200)
-                : "",
-            }),
-            signal,
-          });
-          if (r.ok)
-            cache[j.key] = (
-              ((await r.json()) as { text?: string }).text ?? ""
-            ).trim();
-        } catch {
-          /* 识别失败这次就不带，下次再试 */
-        }
-      }),
-    );
-  // 只留现在还在的笔迹的结果
-  const keep: Record<string, string> = {};
-  for (const j of jobs) if (j.key in cache) keep[j.key] = cache[j.key];
-  localStorage.setItem(CACHE_KEY, JSON.stringify({ ...loadCache(), ...keep }));
+  const todo = jobs.filter((j) => !(j.key in cache) && !inflight.has(j.key)).slice(0, 24);
+  const one = async (j: (typeof jobs)[number]) => {
+    const data = pages?.[j.page - 1];
+    const words = data
+      ? data.w
+          .filter((w) => near([w[1], w[2], w[3], w[4]], j.box, 12))
+          .map((w) => w[0])
+          .join(" ")
+          .slice(0, 300)
+      : "";
+    inflight.add(j.key);
+    try {
+      const r = await fetch("/api/agent/ink", {
+        method: "POST",
+        headers: agentHeaders(true),
+        body: JSON.stringify({
+          png: render(j.marks, j.box),
+          near: words,
+          covered: data
+            ? data.w
+                .filter((w) => near([w[1], w[2], w[3], w[4]], j.box, 0))
+                .map((w) => w[0])
+                .join(" ")
+                .slice(0, 200)
+            : "",
+        }),
+        signal,
+      });
+      if (r.ok) {
+        cache[j.key] = (((await r.json()) as { text?: string }).text ?? "").trim();
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ ...loadCache(), [j.key]: cache[j.key] }));
+      }
+    } catch {
+      /* 识别失败这次就不带，下次再试 */
+    } finally {
+      inflight.delete(j.key);
+    }
+  };
+  // 一块一个请求（每张图几十 KB），最多 6 个同时
+  const queue = [...todo];
+  const worker = async () => {
+    while (queue.length && !signal?.aborted) await one(queue.shift()!);
+  };
+  const all = Promise.all(Array.from({ length: 6 }, worker));
+  await (budgetMs === undefined ? all : Promise.race([all, new Promise((r) => setTimeout(r, budgetMs))]));
   return jobs
     .filter((j) => cache[j.key])
     .map(

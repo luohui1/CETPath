@@ -414,6 +414,9 @@ export function ExamRoom({
   const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
   // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
   const [agentOpen, setAgentOpen] = useState(false);
+  // 工具栏实际放不下（开笔后多出预设、颜色）时逐级收：1 按钮只留图标，2 再收起笔的预设；还放不下就这一行左右滑
+  const [squeeze, setSqueeze] = useState(0);
+  const [toolOver, setToolOver] = useState(false);
   const [agentW, setAgentW] = useState(() => Number(localStorage.getItem("yz-agent-w")) || 460);
   useEffect(() => {
     if (panel) setAgentOpen(false);
@@ -569,7 +572,7 @@ export function ExamRoom({
   const pagePad = tightPad ? 32 : 96;
   const avail = canvasWidth - 12 - pagePad;
   // 工具栏放不下时省掉次要的按钮和数字；横屏矮屏（平板横放）顶栏的按钮也并进工具栏这一行，要更早收
-  const narrow = canvasWidth < (compact ? 1100 : 820);
+  const narrow = canvasWidth < (compact ? 1100 : 820) || squeeze > 0;
   const slim = narrow || compact; // 并成一行时也省
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
@@ -690,6 +693,44 @@ export function ExamRoom({
     ro.observe(toolRow);
     return () => ro.disconnect();
   }, [toolRow]);
+  // 每一级收法下整行要多宽（按当前这组按钮记）：收起后量不到前一级的宽度，所以记下来比
+  const toolFit = useRef(new Map<string, number[]>());
+  const toolKey = `${tool}|${compact}|${agentOpen}|${canvasWidth < (compact ? 1100 : 820)}`;
+  useLayoutEffect(() => {
+    if (!toolRow) return;
+    const bar = toolRow.firstElementChild as HTMLElement | null;
+    if (!bar) return;
+    const check = () => {
+      const avail = bar.offsetWidth;
+      const prev = bar.style.width;
+      bar.style.width = "max-content";
+      const need = bar.offsetWidth;
+      bar.style.width = prev;
+      const w = toolFit.current.get(toolKey) ?? [];
+      w[squeeze] = need;
+      toolFit.current.set(toolKey, w);
+      let next = 2;
+      for (let l = 0; l <= 2; l++)
+        if (w[l] === undefined || w[l] <= avail) {
+          next = l;
+          break;
+        }
+      setSqueeze(next);
+      setToolOver(next === 2 && w[2] !== undefined && w[2] > avail);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(toolRow);
+    for (const c of bar.children) ro.observe(c);
+    return () => ro.disconnect();
+  }, [toolRow, toolKey, squeeze]);
+  // 打开 Agent 时先在后台把手写笔记认好，提问时就不用等
+  const inkWarm = useRef({ marksRaw, pages });
+  inkWarm.current = { marksRaw, pages };
+  useEffect(() => {
+    const { marksRaw: m, pages: p } = inkWarm.current;
+    if (agentOpen && m?.length) void inkNotes(m, p);
+  }, [agentOpen]);
 
   // 滚动时只有这一个监听（每帧最多算一次）：当前页（缩略图栏、状态栏页码）、当前部分（顶栏）、矮屏工具栏收起。
   // 各页、各部分的起点只在排版变了时量一次，滚动时只做比较（滚动里量元素位置会卡）；值没变不 setState
@@ -1832,7 +1873,7 @@ export function ExamRoom({
       sentence={agentThread}
       onClearSentence={() => setAgentThread(null)}
       onClose={() => setAgentOpen(false)}
-      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal), pages, where }}
+      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal, 4000), pages, where }}
     />
     </PaperLinkCtx.Provider>
   );
@@ -1888,6 +1929,7 @@ export function ExamRoom({
         ref={setToolRow}
         className={cn(
           "no-print px-1.5 py-1.5",
+          toolOver && "overflow-x-auto",
           // 矮屏：这一行浮在卷面和侧栏上面（高 48），往下滚时整行收上去
           compact && "absolute inset-x-0 top-0 z-40 rounded-[var(--radius-md)] bg-white py-0 shadow-[var(--elev-1)] transition-transform duration-200 ease-out",
           compact && barHidden && "-translate-y-[calc(100%+8px)]",
@@ -1924,7 +1966,7 @@ export function ExamRoom({
                     ...(tool === "pen"
                       ? [
                           // 手写笔：3 个预设槽，颜色和粗细收在旁边的小弹框里
-                          ...presets.map((p, i) => ({
+                          ...(squeeze >= 2 ? [] : presets).map((p, i) => ({
                             icon: "circle" as const,
                             label: `笔 ${i + 1}`,
                             render: (
