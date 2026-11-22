@@ -45,7 +45,7 @@ const Ctx = createContext<WordCtx>({ marks: false });
 export type VocabMarks = { vocab: Set<string>; lemma: Record<string, string> };
 
 const normTok = (t: string) => t.toLowerCase().replace(/’/g, "'").replace(/^[^a-z']+|[^a-z']+$/g, "");
-const phraseIndex = new WeakMap<Set<string>, Map<string, string[][]>>();
+const phraseIndex = new WeakMap<Set<string>, Map<string, { toks: string[]; key: string }[]>>();
 /** 生词本里的短语按第一个词归好：focus on → focus: [[focus, on]] */
 function phrasesOf(vocab: Set<string>) {
   let idx = phraseIndex.get(vocab);
@@ -54,7 +54,7 @@ function phrasesOf(vocab: Set<string>) {
     for (const v of vocab) {
       const toks = v.split(/\s+/).map(normTok).filter(Boolean);
       if (toks.length < 2) continue;
-      idx.set(toks[0], [...(idx.get(toks[0]) ?? []), toks]);
+      idx.set(toks[0], [...(idx.get(toks[0]) ?? []), { toks, key: v }]);
     }
     phraseIndex.set(vocab, idx);
   }
@@ -82,11 +82,11 @@ export function vocabHits(tokens: string[], m: VocabMarks, sent?: number[]) {
       keys.add(word);
       if (!hits.has(i)) hits.set(i, true);
     }
-    for (const p of [...(phrases.get(k) ?? []), ...(base !== k ? (phrases.get(base) ?? []) : [])]) {
+    for (const { toks: p, key } of [...(phrases.get(k) ?? []), ...(base !== k ? (phrases.get(base) ?? []) : [])]) {
       const end = i + p.length - 1;
       if (end >= forms.length || (sent && sent[end] !== sent[i])) continue;
       if (!p.every((t, j) => forms[i + j][0] === t || forms[i + j][1] === t)) continue;
-      keys.add(p.join(" "));
+      keys.add(key);
       for (let j = i; j < end; j++) hits.set(j, hits.get(j) ?? false);
       hits.set(end, true);
     }
@@ -211,7 +211,14 @@ export const WordText = memo(function WordText({
   const parts: ReactNode[] = [];
   let last = 0;
   // 生词本里的词和短语：整段一起找（短语跨好几个词）
-  const marked = useMemo(() => (marks ? vocabHits([...text.matchAll(WORD_RE)].map((m) => m[0]), { vocab, lemma }).hits : null), [marks, text, vocab, lemma]);
+  const marked = useMemo(() => {
+    if (!marks) return null;
+    const ms = [...text.matchAll(WORD_RE)];
+    // 词之间隔着句号、问号等就算下一句，短语不跨句
+    let n = 0;
+    const sent = ms.map((m, i) => (i && /[.!?;:]/.test(text.slice(ms[i - 1].index! + ms[i - 1][0].length, m.index)) ? ++n : n));
+    return vocabHits(ms.map((m) => m[0]), { vocab, lemma }, sent).hits;
+  }, [marks, text, vocab, lemma]);
   let tok = 0;
   // 词之间的空格、数字也要跟着标（高亮连成一片）
   const gap = (t: string, at: number) => {
