@@ -6,6 +6,7 @@ import { db, type CardRow, type VocabItem } from "@/lib/db";
 import { lookup, phonetic, shortTranslation, translationLines } from "@/lib/dict";
 import { addToVocab, isMastered, removeFromVocab, State, STATE_LABELS } from "@/lib/learning";
 import { useEntries } from "@/lib/useEntries";
+import { lookupOnline } from "@/lib/youdao";
 import { speak } from "@/lib/speech";
 import { cn, downloadText, fromNow, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
@@ -80,9 +81,14 @@ export function VocabPage() {
     e.preventDefault();
     const w = adding.trim();
     if (!w) return;
-    const r = await lookup(w);
+    const r = /\s/.test(w) ? null : await lookup(w);
     if (!r) {
-      setAddMsg(`词典里没有找到 ${w}`);
+      // 离线词典没有的词和短语也加：在线查到释义就随词存下，查不到先只存词
+      const key = w.toLowerCase().replace(/\s+/g, " ");
+      const online = await lookupOnline(w);
+      await addToVocab(key, undefined, online?.entry);
+      setAddMsg(online ? `已加入 ${key}` : `已加入 ${key}（没查到释义）`);
+      setAdding("");
       return;
     }
     await addToVocab(r.lemma);

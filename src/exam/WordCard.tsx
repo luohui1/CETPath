@@ -87,7 +87,7 @@ function PhraseRow({ phrase, trans, from, between, sentence, source }: { phrase:
   const saved = useLiveQuery(async () => !!(await db.vocab.get(key)), [key]);
   const toggle = async () => {
     if (saved) await removeFromVocab(key);
-    else await addToVocab(key, source ? { ...source, sentence } : undefined, { w: plain, t: trans.replace(/；/g, "\n") });
+    else await addToVocab(key, source ? { ...source, sentence } : undefined, trans ? { w: plain, t: trans.replace(/；/g, "\n") } : undefined);
   };
   return (
     <div className="flex items-start gap-2">
@@ -248,7 +248,8 @@ export function WordCard({
 
   // 离线查不到、在线查到的：生词本存在线的释义
   const onlineMain = (!result || !!result.parts) && !!online?.entry.t;
-  const vocabKey = result && !result.parts ? result.lemma : onlineMain ? online!.entry.w.toLowerCase() : null;
+  // 离线、在线都查不到的也能加，只存词，释义空着
+  const vocabKey = result && !result.parts ? result.lemma : onlineMain ? online!.entry.w.toLowerCase() : result === null && online === null ? word.toLowerCase() : null;
   const inVocab = useLiveQuery(async () => (vocabKey ? !!(await db.vocab.get(vocabKey)) : false), [vocabKey]);
   const toggleVocab = async () => {
     if (!vocabKey) return;
@@ -596,7 +597,12 @@ export function WordCard({
                     <PhraseRow phrase={picked.phrase} trans={picked.trans} from={picked.from} sentence={hit.sentence} source={source} />
                   </div>
                 ) : (
-                  <p className="text-[14px] text-[var(--ink-500)]">“{pickShow}” 不是词典里的短语：可以再连几个词，或者看整句译文</p>
+                  <div className="space-y-2">
+                    <p className="text-[14px] text-[var(--ink-500)]">“{pickShow}” 词典里查不到：可以再连几个词，或者看整句译文；要记也可以直接加</p>
+                    <div className="rounded-[8px] bg-[var(--blue-tint)] px-2.5 py-2">
+                      <PhraseRow phrase={pickShow} trans="" sentence={hit.sentence} source={source} />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

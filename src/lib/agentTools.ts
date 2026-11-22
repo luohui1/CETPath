@@ -16,6 +16,7 @@ import {
 import { masteryId, scoredQuestions } from "./mistakes";
 import { getProfile, saveProfile } from "./profile";
 import { touchMemory } from "./agent";
+import { lookupOnline } from "./youdao";
 import { KIND_NAMES, type Paper, type PdfWordsPage } from "./papers";
 import { newMark, wordRange } from "./marks";
 import type { ToolCall } from "./agent";
@@ -46,11 +47,11 @@ export async function runTool(
       case "lookup_word": {
         const w = String(a.word ?? "").trim();
         const lemma = await toLemma(w);
-        const e = await getEntry(lemma);
+        const e = (await getEntry(lemma)) ?? (await lookupOnline(w))?.entry;
         if (!e)
           return {
             label: `查词 · ${w}（词典里没有）`,
-            result: `本机词典里没有 ${w}`,
+            result: `本机词典和在线词典都没查到 ${w}`,
           };
         const ph = phonetic(e);
         return {
@@ -63,13 +64,18 @@ export async function runTool(
       case "add_to_vocab": {
         const w = String(a.word ?? "").trim();
         if (!w) return { label: "生词本：没有词", result: "没给要加的词" };
-        const lemma = await toLemma(w);
-        const entry = await getEntry(lemma);
-        // 词典里没有的不加：生词本和背词卡片都要靠词典释义
+        const phrase = /\s/.test(w);
+        const lemma = phrase ? w.toLowerCase().replace(/\s+/g, " ") : await toLemma(w);
+        const meaning = typeof a.meaning === "string" ? a.meaning.trim().slice(0, 200) : "";
+        // 离线词典没有的词和短语：先查在线词典，再不行用 Agent 给的释义，释义随词存进生词本
+        const entry =
+          (await getEntry(lemma)) ??
+          (await lookupOnline(w))?.entry ??
+          (meaning ? { w: phrase ? w : lemma, t: meaning } : undefined);
         if (!entry)
           return {
-            label: `生词本：词典里没有 ${w}`,
-            result: `本机词典里没有 ${w}，没加进生词本；可以告诉学习者它的意思，让他自己决定怎么记`,
+            label: `生词本：缺释义 ${w}`,
+            result: `词典里查不到 ${w}，请带上 meaning（简短中文释义）再调用一次 add_to_vocab`,
           };
         const sentence =
           typeof a.sentence === "string" ? a.sentence.slice(0, 400) : "";

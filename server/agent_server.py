@@ -387,7 +387,7 @@ def _fn(name: str, desc: str, props: dict, required: list[str]) -> dict:
 
 TOOLS = [
     _fn("lookup_word", "查学习者本机词典里一个英文单词的音标和中文释义。需要准确词义、熟词僻义时用。", {"word": {"type": "string", "description": "英文单词"}}, ["word"]),
-    _fn("add_to_vocab", "把单词加进学习者的生词本（同时进入背词卡片）。学习者说要记、要收藏某个词时用。", {"word": {"type": "string"}, "sentence": {"type": "string", "description": "这个词出现的原句，可选"}}, ["word"]),
+    _fn("add_to_vocab", "把单词或短语加进学习者的生词本（同时进入背词卡片）。学习者说要记、要收藏某个词或短语时用。", {"word": {"type": "string", "description": "单词或短语"}, "meaning": {"type": "string", "description": "简短中文释义；词典里没有的词和短语靠它存进生词本，建议总是给"}, "sentence": {"type": "string", "description": "这个词出现的原句，可选"}}, ["word"]),
     _fn("add_to_mistakes", "把当前这套卷的某道选择题加进错题本，可附一句错因笔记。只在做题页（有试卷）时可用。", {"number": {"type": "integer", "description": "题号"}, "note": {"type": "string", "description": "错因或要点，可选"}}, ["number"]),
     _fn(
         "update_profile",
