@@ -61,7 +61,7 @@ export function AgentSplit({
   sentence: AgentThread | null;
   onClearSentence: () => void;
   onClose: () => void;
-  review?: number; // 交卷单上点了复盘：切回整卷会话，没聊过就自动问复盘
+  review?: number; // 交卷单上点了复盘：切回整卷会话，没聊过就自动问复盘（只对这条默认会话）
   env?: ToolEnv;
 }) {
   const self = useRef<HTMLElement>(null);
@@ -270,7 +270,7 @@ export function AgentSplit({
           key={thread.id}
           thread={thread}
           inDock
-          noAutoAsk={(thread.id.startsWith("paper:") && !review) || thread.id.startsWith("article:")}
+          noAutoAsk={(thread.id.startsWith("paper:") && !(review && !sid)) || thread.id.startsWith("article:")} // 复盘只自动问一次：点了"新对话"或选了别的会话就不再自动问
         />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
