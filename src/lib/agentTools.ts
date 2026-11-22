@@ -31,6 +31,12 @@ export type ToolEnv = {
 };
 type Result = { label: string; result: string };
 
+/** 在线词典的释义；只有拼写建议、没有释义的不算 */
+async function onlineEntry(w: string) {
+  const e = (await lookupOnline(w))?.entry;
+  return e?.t ? e : undefined;
+}
+
 export async function runTool(
   name: string,
   raw: string,
@@ -47,8 +53,7 @@ export async function runTool(
       case "lookup_word": {
         const w = String(a.word ?? "").trim();
         const lemma = await toLemma(w);
-        const online = (await lookupOnline(w))?.entry;
-        const e = (await getEntry(lemma)) ?? (online?.t ? online : undefined);
+        const e = (await getEntry(lemma)) ?? (await onlineEntry(w));
         if (!e)
           return {
             label: `查词 · ${w}（词典里没有）`,
@@ -69,10 +74,9 @@ export async function runTool(
         const lemma = phrase ? w.toLowerCase().replace(/\s+/g, " ") : await toLemma(w);
         const meaning = typeof a.meaning === "string" ? a.meaning.trim().slice(0, 200) : "";
         // 离线词典没有的词和短语：先查在线词典，再不行用 Agent 给的释义，释义随词存进生词本
-        const online = (await lookupOnline(w))?.entry;
         const entry =
           (await getEntry(lemma)) ??
-          (online?.t ? online : undefined) ??
+          (await onlineEntry(w)) ??
           (meaning ? { w: phrase ? w : lemma, t: meaning } : undefined);
         if (!entry)
           return {
