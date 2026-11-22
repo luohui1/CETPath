@@ -11,6 +11,8 @@ export interface VocabSource {
   paperTitle: string;
   sentence: string;
   addedAt: number;
+  /** 出处句的译文：卷子的译文层里没有时让模型翻的，存下来下次不用再翻 */
+  zh?: string;
 }
 
 export interface VocabItem {

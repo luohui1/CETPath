@@ -9,6 +9,7 @@ import { colorValue, marksForWord, NOTE_COLOR, type MarkRow } from "@/lib/marks"
 import { loadPaperIndex } from "@/lib/papers";
 import { shortTitle } from "@/lib/exportPdf";
 import { HighlightSentence } from "@/components/HighlightSentence";
+import { SourceZh } from "@/components/SourceZh";
 
 let titleCache: Map<string, string> | null = null;
 
@@ -80,6 +81,7 @@ export function WordContext({ word, sources }: { word: string; sources: VocabSou
             {sources.map((s, i) => (
               <li key={i} className="text-[15px] leading-6">
                 <HighlightSentence sentence={s.sentence} word={word} className="serif" />
+                <SourceZh word={word} s={s} className="mt-0.5" />
                 <div className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-[var(--ink-500)]">
                   <span>{title(s.paperId, s.paperTitle)}</span>
                   <GoLink to={sourceHref(s.paperId, `?sent=${encodeURIComponent(s.sentence)}`)} />

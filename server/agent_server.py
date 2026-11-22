@@ -65,6 +65,7 @@ _handoffs: dict[str, tuple[float, str, bytes]] = {}  # 从 http 搬到 https 时
 _handoff_lock = threading.Lock()
 _bad_codes: dict[str, list[float]] = {}
 _trans_hits: dict[str, list[float]] = {}  # 外刊翻译（一篇一次）
+_sent_hits: dict[str, list[float]] = {}  # 生词出处句翻译（一句一次，翻好的存在学习者本机）
 _ink_hits: dict[str, list[float]] = {}  # 手写识别（一块笔迹一次）  # 激活码输错的次数
 _fails: dict[str, list[float]] = {}
 
@@ -820,6 +821,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.chat(cfg, data)
         if path == "/api/agent/ink":
             return self.ink(cfg, data)
+        if path == "/api/agent/sent":
+            return self.sent(cfg, data)
         if path == "/api/agent/trans":
             return self.trans(cfg, data)
         if path == "/api/agent/remember":
@@ -1046,6 +1049,23 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
+    def sent(self, cfg: dict, data: dict):
+        """生词本出处句 → 中文译文（卷子的译文层里没有这句时用）"""
+        if not ready(cfg):
+            return self.send_json(503, {"error": "AI 助教还没配置好"})
+        s = str(data.get("sentence") or "").strip()
+        if not s or len(s) > 800:
+            return self.send_json(400, {"error": "句子不对"})
+        if limited(_sent_hits, self.ip(), 200, 3600):
+            return self.send_json(429, {"error": "翻译太频繁"})
+        msgs = [{"role": "user", "content": "把下面这句英语考试原文翻成通顺的中文，只输出译文：\n" + s}]
+        try:
+            with upstream(cfg, msgs, False, 600, 0.2, kind="sent") as r:
+                zh = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
+        except Exception as e:  # noqa: BLE001
+            return self.send_json(502, {"error": upstream_error(e)})
+        self.send_json(200, {"zh": zh[:600]})
+
     def remember(self, cfg: dict, data: dict):
         if not ready(cfg):
             return self.send_json(503, {"error": "AI 助教还没配置好"})
@@ -1105,7 +1125,7 @@ button.primary{background:#2f6bff;color:#fff}button:disabled{opacity:.5}.hint{fo
 </main><script>
 const $=id=>document.getElementById(id);
 async function api(p,o={}){const r=await fetch(p,{credentials:"same-origin",headers:{"Content-Type":"application/json"},...o});let d={};try{d=await r.json()}catch{}return[r.status,d]}
-const KIND={chat:"提问",ink:"手写识别",trans:"外刊翻译",remember:"更新记忆",test:"测试连接"};const fmt=n=>Number(n||0).toLocaleString("zh-CN");
+const KIND={chat:"提问",ink:"手写识别",trans:"外刊翻译",remember:"更新记忆",sent:"生词原句翻译",test:"测试连接"};const fmt=n=>Number(n||0).toLocaleString("zh-CN");
 async function usage(){const[s,d]=await api("/api/admin/usage");if(s!==200)return;const r=(a,b,c,e)=>`<tr><td style="padding:4px 0">${a}</td><td align="right">${b}</td><td align="right">${c}</td><td align="right">${e}</td></tr>`;
 $("ut").innerHTML=r("<b>范围</b>","<b>次数</b>","<b>输入</b>","<b>输出</b>")+[["今天",d.today],["近 7 天",d.week],["全部",d.all]].map(([n,x])=>r(n,fmt(x.calls),fmt(x.in),fmt(x.out))).join("")+d.by.map(x=>r((KIND[x.kind]||x.kind)+" · "+x.model,fmt(x.calls),fmt(x.in),fmt(x.out))).join("");
 $("uhint").textContent=d.since?"从 "+new Date(d.since*1000).toLocaleString("zh-CN")+" 开始记录":"还没有调用记录";$("usage").hidden=false}

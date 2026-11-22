@@ -15,6 +15,7 @@ import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/compo
 
 import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
+import { SourceZh } from "@/components/SourceZh";
 
 type Sort = "recent" | "alpha" | "due" | "seen";
 
@@ -301,6 +302,7 @@ export function VocabPage() {
                         {it.sources.map((s, i) => (
                           <div key={i} className="card px-3.5 py-2.5">
                             <HighlightSentence sentence={s.sentence} word={it.word} className="serif text-[15px] leading-relaxed" />
+                            <SourceZh word={it.word} s={s} className="mt-1" />
                             <Link to={sourceHref(s.paperId)} className="mt-1 block text-[13px] text-[var(--blue)] hover:underline">
                               {s.paperTitle}
                             </Link>
