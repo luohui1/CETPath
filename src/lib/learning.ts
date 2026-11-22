@@ -95,6 +95,12 @@ export async function markSeen(paperId: string, words: string[]) {
 }
 
 /** 移出生词本；还没开始学的卡片一起删掉，学过的保留复习记录 */
+/** 改生词的常用释义；空串就恢复词典释义。词不在生词本里返回 false */
+export async function setVocabMeaning(word: string, meaning: string) {
+  const m = meaning.trim().slice(0, 300);
+  return (await db.vocab.update(word, { meaning: m || undefined })) > 0;
+}
+
 export async function removeFromVocab(word: string) {
   await db.transaction("rw", db.vocab, db.cards, async () => {
     await db.vocab.delete(word);

@@ -56,9 +56,14 @@ export function loadLemma() {
 export async function getEntry(word: string): Promise<DictEntry | undefined> {
   const key = word.toLowerCase();
   const shard = await loadShard(shardOf(key));
-  if (shard[key]) return shard[key];
+  const v = await db.vocab.get(key);
   // 离线词典里没有的短语、在线查到的词：加入生词本时存了释义（生词本、复习、考场的生词面板都走这里）
-  return (await db.vocab.get(key))?.gloss;
+  const base = shard[key] ?? v?.gloss;
+  const own = v?.meaning?.trim();
+  if (!own) return base;
+  const mine = own.split("\n").map((l) => l.trim()).filter(Boolean);
+  const rest = base ? translationLines(base).filter((l) => !mine.includes(l)) : [];
+  return { ...(base ?? { w: v!.word }), t: [...mine, ...rest].join("\n") };
 }
 
 const FORM_NAMES: Record<string, string> = {

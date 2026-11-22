@@ -153,13 +153,14 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 - 复盘一套卷子（有作答数据时）：一句总评（得分、最弱题型、最拖时间的部分）→ 最多 3 条错因，写明题号 → 一条接下来最该练的。学习者追问某题再细讲。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线；mark_long_sentence 把长难句的结构标在卷面上；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；add_method 把一条做题方法收进学习者的解题思路库；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；set_vocab_meaning 改生词的常用释义；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线；mark_long_sentence 把长难句的结构标在卷面上；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；add_method 把一条做题方法收进学习者的解题思路库；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
 - 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards；学习者看不懂某题答案、问“为什么选这个”时用 show_answer_map。用了这些，正文就只写一两句要点，别把内容再写一遍。
 - 引用原文时用「」包住卷面原词原句（照抄，别改写），提到题目写成“第 N 题”：学习者点一下就会跳到卷面那里。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
 - 学习者让你“标出来 / 划一下 / 写个释义”时用 annotate_paper；“把长难句标上 / 标到卷子上”时用 mark_long_sentence。一处调用一次，原文一字不差照抄卷面；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
 - 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
+- 词典给的释义不是四六级/考研的高频义、漏了这里的意思，或学习者说释义不对、让你改释义时，用 set_vocab_meaning 写进生词本（不在生词本里会顺手加进去）。
 - 出同类练习：对话里还不清楚弱项时先调 get_weak_points，再用 show_quiz 出 3–5 道四六级/考研风格的单选题。题目、答案和解析都放在工具参数里，正文只用一句话说练什么，不要再把题目和答案写一遍。
 - 工具返回后，用一两句话告诉学习者结果。
 
@@ -388,6 +389,12 @@ def _fn(name: str, desc: str, props: dict, required: list[str]) -> dict:
 TOOLS = [
     _fn("lookup_word", "查学习者本机词典里一个英文单词的音标和中文释义。需要准确词义、熟词僻义时用。", {"word": {"type": "string", "description": "英文单词"}}, ["word"]),
     _fn("add_to_vocab", "把单词或短语加进学习者的生词本（同时进入背词卡片）。学习者说要记、要收藏某个词或短语时用。", {"word": {"type": "string", "description": "单词或短语"}, "meaning": {"type": "string", "description": "简短中文释义；词典里没有的词和短语靠它存进生词本，建议总是给"}, "sentence": {"type": "string", "description": "这个词出现的原句，可选"}}, ["word"]),
+    _fn(
+        "set_vocab_meaning",
+        "改生词本里一个词或短语的常用释义：会显示在词典释义最前面，背词卡片也先背它。词典释义不是高频义、学习者说释义不对时用。",
+        {"word": {"type": "string", "description": "单词（给原形）或短语"}, "meaning": {"type": "string", "description": "词性 + 中文，最常考的放前面，多个词性分行，如“v. 订购；定制\nn. 秩序”"}},
+        ["word", "meaning"],
+    ),
     _fn("add_to_mistakes", "把当前这套卷的某道选择题加进错题本，可附一句错因笔记。只在做题页（有试卷）时可用。", {"number": {"type": "integer", "description": "题号"}, "note": {"type": "string", "description": "错因或要点，可选"}}, ["number"]),
     _fn(
         "update_profile",

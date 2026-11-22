@@ -20,6 +20,8 @@ export interface VocabItem {
   note?: string;
   /** 离线词典里没有的（短语 focus on、有道在线查到的词）：加入时把释义一起存下，生词本、复习都用它（2026-11-12） */
   gloss?: DictEntry;
+  /** 学习者或 Agent 改的常用释义（词典给的不是高频义时）：显示在词典释义最前面，背词也先背它 */
+  meaning?: string;
   /** 加入以后又在哪些卷子里出现过（不含加入时的出处）：出现得多的先背 */
   seen?: string[];
 }

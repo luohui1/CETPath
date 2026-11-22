@@ -11,6 +11,7 @@ import {
   addToVocab,
   isMastered,
   removeFromVocab,
+  setVocabMeaning,
   STATE_LABELS,
 } from "./learning";
 import { masteryId, scoredQuestions } from "./mistakes";
@@ -98,6 +99,25 @@ export async function runTool(
         return {
           label: `已加入生词本 · ${lemma}`,
           result: `已把 ${lemma} 加进生词本`,
+        };
+      }
+      case "set_vocab_meaning": {
+        const w = String(a.word ?? "").trim();
+        const meaning = String(a.meaning ?? "").trim();
+        if (!w || !meaning) return { label: "改释义：缺内容", result: "要给 word 和 meaning" };
+        const phrase = /\s/.test(w);
+        const lemma = phrase ? w.toLowerCase().replace(/\s+/g, " ") : await toLemma(w);
+        // 还不在生词本里：先加进去，改的释义才有地方存
+        if (!(await db.vocab.get(lemma)))
+          await addToVocab(
+            lemma,
+            undefined,
+            (await getEntry(lemma)) ? undefined : { w: phrase ? w : lemma, t: meaning },
+          );
+        await setVocabMeaning(lemma, meaning);
+        return {
+          label: `改了释义 · ${lemma}`,
+          result: `已把 ${lemma} 的常用释义改成「${meaning}」，生词本、背词卡片和查词卡片都会先显示它`,
         };
       }
       case "list_vocab": {

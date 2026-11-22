@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router";
 import { BookBookmark, Brain, CaretDown, DownloadSimple, MagnifyingGlass, Plus, Printer, SpeakerHigh, Trash } from "@phosphor-icons/react";
 import { db, type CardRow, type VocabItem } from "@/lib/db";
 import { lookup, phonetic, shortTranslation, translationLines } from "@/lib/dict";
-import { addToVocab, isMastered, removeFromVocab, State, STATE_LABELS } from "@/lib/learning";
+import { addToVocab, isMastered, removeFromVocab, setVocabMeaning, State, STATE_LABELS } from "@/lib/learning";
 import { useEntries } from "@/lib/useEntries";
 import { lookupOnline } from "@/lib/youdao";
 import { speak } from "@/lib/speech";
@@ -74,7 +74,11 @@ export function VocabPage() {
     return l;
   }, [items, paperFilter, query, sort, cardMap]);
 
-  const entries = useEntries(list.map((it) => it.word));
+  const entries = useEntries(
+    list.map((it) => it.word),
+    list.map((it) => it.meaning ?? "").join("|"),
+  );
+  const [editing, setEditing] = useState<string | null>(null);
   const dueCount = (cards ?? []).filter((c) => c.due <= Date.now()).length;
   const todayStart = new Date().setHours(0, 0, 0, 0);
 
@@ -256,7 +260,41 @@ export function VocabPage() {
                     <div className="sm:hidden">
                       <StatusBadge card={cardMap.get(it.word)} />
                     </div>
-                    {e && <DefinitionLines lines={translationLines(e)} />}
+                    {editing === it.word ? (
+                      <form
+                        className="no-print space-y-2"
+                        onSubmit={(ev) => {
+                          ev.preventDefault();
+                          const v = new FormData(ev.currentTarget).get("m");
+                          void setVocabMeaning(it.word, String(v ?? "")).then(() => setEditing(null));
+                        }}
+                      >
+                        <textarea
+                          name="m"
+                          defaultValue={it.meaning ?? ""}
+                          autoFocus
+                          rows={2}
+                          placeholder={"常用释义，如 v. 订购；定制（多个词性分行）"}
+                          className="w-full rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-[15px]"
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" type="submit">保存</Button>
+                          <Button size="sm" variant="ghost" type="button" onClick={() => setEditing(null)}>取消</Button>
+                          <span className="self-center text-[12px] text-[var(--ink-500)]">留空就用回词典释义</span>
+                        </div>
+                      </form>
+                    ) : (
+                      <div>
+                        {e && <DefinitionLines lines={translationLines(e)} />}
+                        <button
+                          type="button"
+                          onClick={() => setEditing(it.word)}
+                          className="no-print mt-1 text-[13px] text-[var(--blue)] hover:underline"
+                        >
+                          {it.meaning ? "改常用释义" : "释义不对？改成常用释义"}
+                        </button>
+                      </div>
+                    )}
                     {it.sources.length > 0 && (
                       <div className="space-y-2">
                         <div className="tag-paper">真题出处</div>
