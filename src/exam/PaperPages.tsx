@@ -693,7 +693,8 @@ export const ExamPage = memo(function ExamPage(p: ExamPageProps) {
           const [x0, y0, , y1] = g.anchor!.box;
           const playing = p.playingSeg === g.audioSegment;
           return (
-            <div key={g.id} className="absolute z-[3]" style={{ left: x0 * scale - 42, top: ((y0 + y1) / 2) * scale - 14 }}>
+            // 放在作答圈左边、压在它的扩大点按区上面，不然整个按钮都被作答圈接走
+            <div key={g.id} className="absolute z-[9]" style={{ left: Math.max(2, x0 * scale - 64), top: ((y0 + y1) / 2) * scale - 14 }}>
               <Tip label={playing ? "暂停" : `播放 ${g.title}`} side="top">
                 <button
                   type="button"
