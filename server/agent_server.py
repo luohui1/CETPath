@@ -349,7 +349,7 @@ def context_block(ctx: dict) -> str:
             "被问到笔记时归纳成几条要点，别逐条照念：\n" + str(ctx["ink"])[:3000]
         )
     if ctx.get("paperText"):
-        parts.append("这套卷的原文（按页，从卷面文字层取；扫描卷可能有个别识别错字，按上下文理解）。问到某题时直接从这里找题目、选项和文章：\n" + str(ctx["paperText"])[:30000])
+        parts.append("这套卷的原文（按页，从卷面文字层取；扫描卷可能有个别识别错字，按上下文理解）。问到某题时直接从这里找题目、选项和文章。每句一行，文章正文按卷面分好了段，标着〔第 N 段〕（每篇从 1 数，跨页接着数）；说“第几段”“第几句”、引用原文时都按这里的分段和分句来，别自己重新数：\n" + str(ctx["paperText"])[:40000])
     if ctx.get("word"):
         parts.append(f"他点的词：{str(ctx['word'])[:60]}")
     if ctx.get("syntax"):
@@ -597,8 +597,8 @@ def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 18
         body["stream_options"] = {"include_usage": True}
     if tools:
         body["tools"] = tools
-    if not cfg.get("thinking") and "deepseek" in body["model"].lower():
-        body["thinking"] = {"type": "disabled"}  # 开着思考要先想 7–15 秒才出字，还会吃掉 max_tokens
+    if cfg.get("thinking") is False and "deepseek" in body["model"].lower():
+        body["thinking"] = {"type": "disabled"}  # 后台关了思考才关：开着要先想 7–15 秒才出字（思考过程会实时显示）
     t = cfg.get("temperature") if temperature is None else temperature
     if t is not None:
         body["temperature"] = t
@@ -999,7 +999,7 @@ class Handler(BaseHTTPRequestHandler):
             sys_msg += "\n\n" + ctx
         try:
             pick = data.get("model") if data.get("model") in models(cfg) else None
-            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, 4000, model=pick, tools=TOOLS if data.get("tools") else None)
+            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, 8000, model=pick, tools=TOOLS if data.get("tools") else None)
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
         self.send_response(200)

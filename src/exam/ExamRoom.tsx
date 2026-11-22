@@ -35,7 +35,7 @@ import { Sparkle,
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { retryPath } from "@/lib/attempts";
-import { allQuestions, findAudioLine, kindName, KIND_NAMES, type ExplainFields, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
+import { allQuestions, findAudioLine, kindName, KIND_NAMES, type ExplainFields, type Group, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
 import { suggestMap } from "@/lib/report";
 import { colorValue, COLORS, colorTool, markBounds, PEN_SIZES, useMarkHistory, wordAt, type ColorTool, type MarkRow, type Tool } from "@/lib/marks";
 import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
@@ -1888,13 +1888,30 @@ export function ExamRoom({
   // 学习者此刻在卷面上看哪，每次提问时交给 Agent
   const where = () => {
     const s = scrollStore.get();
-    const qs = allQuestions(paper).filter((q) => (q.page ?? q.blank?.page) === s.page);
+    const qs = allQuestions(paper).filter((q) => q.number > 0 && (q.page ?? q.blank?.page) === s.page);
     const sec = paper.sections.find((x) => x.id === s.part);
     const open = openQ ? allQuestions(paper).find((q) => q.id === openQ.split("@")[0]) : null;
+    // 正在看哪篇：屏幕上部那一行往后，最先做完题的那组。文章在题目前面，看到第二篇正文时第一篇的题已经在上面了
+    let grp: { sec: Section; g: Group } | null = null;
+    if (stage) {
+      const at = stage.scrollTop + stage.clientHeight * 0.4;
+      outer: for (const x of paper.sections)
+        for (const g of x.groups) {
+          const lastQ = [...g.questions].reverse().find((q) => q.page && q.box);
+          if (lastQ && topOf(lastQ.page!, lastQ.box![1]) >= at) {
+            grp = { sec: x, g };
+            break outer;
+          }
+        }
+    }
+    const gqs = grp?.g.questions.filter((q) => q.number > 0) ?? [];
     return (
       `第 ${s.page} 页` +
       (sec ? `（${kindName(sec.kind, paper.exam)}）` : "") +
-      (qs.length ? `，这一页是第 ${qs[0].number}–${qs[qs.length - 1].number} 题` : "") +
+      (qs.length ? `，这一页上有第 ${qs[0].number}–${qs[qs.length - 1].number} 题` : "") +
+      (grp && gqs.length
+        ? `；屏幕上正在看的是 ${grp.g.title || kindName(grp.sec.kind, paper.exam)}（第 ${gqs[0].number}–${gqs[gqs.length - 1].number} 题），“这篇”指它`
+        : "") +
       (open ? `；刚点开第 ${open.number} 题` : "") +
       "。学习者说“这题”“这篇”“这段”时先按这个理解。"
     );

@@ -381,15 +381,44 @@ export function useAgentModels(): Models | null {
   return m;
 }
 
-/** 整套卷的原文（按页，从卷面文字层取），让 Agent 问到哪题都看得到题目和文章 */
-export function paperText(pages: PdfWordsPage[] | null, max = 30000): string {
+/**
+ * 整套卷的原文（按页，从卷面文字层取），让 Agent 问到哪题都看得到题目和文章。
+ * 每句一行；正文按卷面缩进分段，标〔第 N 段〕（每篇文章从 1 数，跨页接着数），Agent 说"第几段第几句"才不会数错
+ */
+export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
   if (!pages) return "";
   let out = "";
+  let para = 0; // 这篇文章数到第几段；0 = 不在文章正文里（题目、说明）
+  let inPassage = false;
   pages.forEach((p, i) => {
-    const t = p.s.join(" ").replace(/\s+/g, " ").trim();
-    if (t) out += `\n[第 ${i + 1} 页] ${t}`;
+    if (!p.s.length) return;
+    const minX = Math.min(...p.w.map((w) => w[1]));
+    const starts = new Set<number>(); // 缩进开头的句子：新的一段
+    let prevK = -1;
+    let prevY = -Infinity;
+    for (const w of p.w) {
+      const newLine = Math.abs(w[2] - prevY) > 3;
+      if (newLine && w[5] !== prevK && w[1] > minX + 12) starts.add(w[5]);
+      if (newLine) prevY = w[2];
+      prevK = w[5];
+    }
+    out += `\n\n[第 ${i + 1} 页]`;
+    p.s.forEach((raw, k) => {
+      const t = raw.replace(/\s+/g, " ").trim();
+      if (!t) return;
+      if (/are based on the (following )?(passage|recording|conversation)|^(Passage|Section|Part)\s/i.test(t)) {
+        inPassage = /passage/i.test(t);
+        para = 0;
+        out += "\n" + t;
+        return;
+      }
+      if (/^\d{1,2}\s*[.．]\s*\S|^[A-D]\)\s/.test(t) && t.length < 300) inPassage = false; // 到题目了
+      if (inPassage && (starts.has(k) || para === 0)) out += `\n〔第 ${++para} 段〕`;
+      out += "\n" + t;
+    });
   });
-  return out.length > max ? out.slice(0, max) + "\n（后面省略）" : out.trim();
+  out = out.trim();
+  return out.length > max ? out.slice(0, max) + "\n（后面省略）" : out;
 }
 
 /** 学习者在卷面上的标注：高亮、划线的原文和批注，便签内容（手写笔迹没有文字，只计数） */
