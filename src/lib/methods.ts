@@ -4,7 +4,7 @@ export const GENERAL = "通用";
 
 /** 收进解题思路库；同一段话收过就只更新出处和时间 */
 export async function addMethod(m: Pick<MethodRow, "text" | "from"> & Partial<Pick<MethodRow, "kind" | "source">>) {
-  const text = m.text.trim().slice(0, 1200);
+  const text = m.text.trim();
   if (!text) return null;
   const now = Date.now();
   const old = await db.methods.filter((r) => r.text === text).first();
