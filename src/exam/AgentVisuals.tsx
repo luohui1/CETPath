@@ -301,7 +301,10 @@ function AnswerMap({
   data: {
     question?: string;
     answer?: string;
+    ask?: string;
+    locate?: string;
     quote?: string;
+    quoteZh?: string;
     pairs?: Pair[];
     options?: Opt[];
   };
@@ -319,6 +322,15 @@ function AnswerMap({
     .filter((o) => o.letter || o.text);
   const [on, setOn] = useState<number | null>(null);
   if (!str(data.quote) && !opts.length) return null;
+  const marks = "①②③④⑤";
+  const no: Record<string, string> = {};
+  for (const [k, has] of [
+    ["ask", !!str(data.ask)],
+    ["quote", !!(str(data.quote) || str(data.locate))],
+    ["pairs", pairs.length > 0],
+    ["opts", opts.length > 0],
+  ] as const)
+    if (has) no[k] = marks[Object.keys(no).length];
   return (
     <div className="mt-2 overflow-hidden rounded-[14px] ring-1 ring-[var(--line)]">
       <div className="flex items-center gap-2 bg-[var(--paper-100)] px-3.5 py-2">
@@ -332,20 +344,36 @@ function AnswerMap({
         )}
       </div>
       <div className="space-y-3 px-3.5 py-3">
-        {str(data.quote) && (
+        {str(data.ask) && (
           <div>
             <p className="mb-1 text-[11px] font-medium text-[var(--ink-500)]">
-              ① 原文定位句
+              {no.ask} 题目在问什么
             </p>
-            <p className="rounded-[8px] bg-[#f6f9ff] px-2.5 py-2 font-serif text-[14px] leading-[1.6] text-[var(--ink)]">
-              <Quote text={str(data.quote)!}>{str(data.quote)}</Quote>
+            <p className="text-[14px] leading-[1.6] text-[var(--ink)]">{str(data.ask)}</p>
+          </div>
+        )}
+        {(str(data.quote) || str(data.locate)) && (
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-[var(--ink-500)]">
+              {no.quote} 怎么定位 · 定位句
             </p>
+            {str(data.locate) && (
+              <p className="mb-1 text-[14px] leading-[1.6] text-[var(--ink)]">{str(data.locate)}</p>
+            )}
+            {str(data.quote) && (
+              <p className="rounded-[8px] bg-[#f6f9ff] px-2.5 py-2 font-serif text-[14px] leading-[1.6] text-[var(--ink)]">
+                <Quote text={str(data.quote)!}>{str(data.quote)}</Quote>
+              </p>
+            )}
+            {str(data.quoteZh) && (
+              <p className="mt-1 text-[13px] leading-[1.6] text-[var(--ink-700)]">{str(data.quoteZh)}</p>
+            )}
           </div>
         )}
         {pairs.length > 0 && (
           <div>
             <p className="mb-1 text-[11px] font-medium text-[var(--ink-500)]">
-              ② 原文 ⇄ 选项（同义替换）
+              {no.pairs} 原文 ⇄ 选项（同义替换）
             </p>
             <div className="space-y-1.5">
               {pairs.map((p, i) => (
@@ -368,7 +396,7 @@ function AnswerMap({
         {opts.length > 0 && (
           <div>
             <p className="mb-1 text-[11px] font-medium text-[var(--ink-500)]">
-              ③ 逐个选项 · 点开看理由
+              {no.opts} 逐个选项 · 点开看理由
             </p>
             <div className="space-y-1">
               {opts.map((o, k) => (
