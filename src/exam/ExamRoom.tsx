@@ -2540,9 +2540,9 @@ export function ExamRoom({
             onSyntax={hit.page != null && synOf(hit.sentence) ? () => openSyntax(sentenceKey(hit.sentence), false) : undefined}
             onAsk={
               aiOn && hit.sentence
-                ? () => {
+                ? (word?: string) => {
                     closeWord();
-                    askAI(hit.sentence, hit.word);
+                    askAI(hit.sentence, word);
                   }
                 : undefined
             }
