@@ -83,7 +83,7 @@ export function BooksPage() {
   const learned = useMemo(() => new Set(learnedWords ?? []), [learnedWords]);
   const [bookSets, setBookSets] = useState<Record<string, Set<string>>>({});
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
-  const vocabLearned = useCachedLiveQuery("vocab-learned", () => db.cards.where("origin").equals("vocab").filter((c) => c.state !== State.New).count());
+  const vocabLearned = useCachedLiveQuery("vocab-learned", async () => (await db.cards.bulkGet(await db.vocab.toCollection().primaryKeys())).filter((c) => c && c.state !== State.New).length);
 
   useEffect(() => {
     loadBookMeta().then(setBooks, () => setBooks([]));
