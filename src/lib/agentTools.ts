@@ -471,7 +471,8 @@ export function quizOf(
  * 中间隔的词数差不多，免得只凭开头几个词标到别处去
  */
 export function findSpan(pages: PdfWordsPage[], text: string, page?: number): { page: number; a: number; b: number } | null {
-  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // 卷面词层不收数字（In 2020 只有 In），要标的原文里的数字也去掉
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
   const want = text.split(/\s+/).map(norm).filter(Boolean);
   if (!want.length) return null;
   const order = page && pages[page - 1] ? [page - 1, ...pages.map((_, i) => i).filter((i) => i !== page - 1)] : pages.map((_, i) => i);
