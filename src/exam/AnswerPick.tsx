@@ -3,7 +3,8 @@ import { BookmarkSimple, Check, Lightbulb } from "@phosphor-icons/react";
 import { lookup } from "@/lib/dict";
 import { addToVocab } from "@/lib/learning";
 import { lookupOnline } from "@/lib/youdao";
-import { addMethod } from "@/lib/methods";
+import { useLiveQuery } from "dexie-react-hooks";
+import { addMethod, hasMethod } from "@/lib/methods";
 import type { Paper } from "@/lib/papers";
 
 const EN = /^[A-Za-z][A-Za-z'’ -]*[A-Za-z]$|^[A-Za-z]$/;
@@ -75,14 +76,13 @@ export function AnswerPick({ root, paper }: { root: RefObject<HTMLElement | null
 
 /** 整条回答收进思路库（回答下面的小按钮） */
 export function SaveAnswer({ text, paper }: { text: string; paper?: Paper }) {
-  const [saved, setSaved] = useState(false);
+  const saved = useLiveQuery(() => hasMethod(text), [text]) ?? false;
   return (
     <button
       type="button"
       disabled={saved}
       onClick={async () => {
         await addMethod({ text, from: "agent", source: paper ? { paperId: paper.id, paperTitle: paper.title } : undefined });
-        setSaved(true);
       }}
       className="mt-1 inline-flex items-center gap-1 text-[12px] text-[var(--ink-500)] hover:text-[var(--blue)] disabled:text-[var(--blue)]"
     >
