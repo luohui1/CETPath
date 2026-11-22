@@ -10,7 +10,7 @@ export function SourceZh({ word, s, className }: { word: string; s: VocabSource;
     let off = false;
     setZh(s.zh);
     if (!s.zh)
-      sourceZh(word, s).then(
+      sourceZh(s).then(
         (z) => !off && setZh(z),
         () => !off && setZh(null),
       );

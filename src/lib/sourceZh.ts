@@ -16,7 +16,7 @@ async function translate(sentence: string): Promise<string | null> {
 }
 
 /** 生词出处句的译文：先找这套卷的译文层，没有再让模型翻一句，翻好的存进生词本，下次直接用 */
-export function sourceZh(word: string, s: VocabSource): Promise<string | null> {
+export function sourceZh(s: VocabSource): Promise<string | null> {
   if (s.zh) return Promise.resolve(s.zh);
   const key = `${s.paperId}|${s.sentence}`;
   let p = pending.get(key);
@@ -26,15 +26,14 @@ export function sourceZh(word: string, s: VocabSource): Promise<string | null> {
       if (local) return local;
       if (!(await agentEnabled())) return null;
       const zh = await translate(s.sentence);
+      // 同一句可能是好几个生词的出处：都存上
+      const same = (x: VocabSource) => x.paperId === s.paperId && x.sentence === s.sentence;
       if (zh)
-        await db.transaction("rw", db.vocab, async () => {
-          const it = await db.vocab.get(word);
-          if (!it) return;
-          it.sources = it.sources.map((x) =>
-            x.paperId === s.paperId && x.sentence === s.sentence ? { ...x, zh } : x,
-          );
-          await db.vocab.put(it);
-        });
+        await db.vocab
+          .filter((it) => it.sources.some((x) => same(x) && !x.zh))
+          .modify((it) => {
+            it.sources = it.sources.map((x) => (same(x) ? { ...x, zh } : x));
+          });
       return zh;
     })();
     p.then(
