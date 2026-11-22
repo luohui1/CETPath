@@ -42,6 +42,7 @@ import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
 import { shortTitle, type AnswerSheet } from "@/lib/exportPdf";
 import { cn, formatDuration } from "@/lib/utils";
 import { useVocabMarks, WordTextProvider, type WordClick } from "@/components/WordText";
+import { markSeen } from "@/lib/learning";
 import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
 import { prefetchAudio, touchAudio } from "@/lib/audioCache";
@@ -483,9 +484,23 @@ export function ExamRoom({
   const [report, setReport] = useState<{ open: boolean; retired: string[] }>({ open: false, retired: [] });
   const history = useMarkHistory();
   const bar = useRef<ListeningBarHandle>(null);
-  const marksData = useVocabMarks(settings.showVocabMarks);
+  const marksData = useVocabMarks(true);
   const vocabMarks = settings.showVocabMarks ? marksData : null;
-  const vocabCount = useLiveQuery(() => db.vocab.filter((v) => v.sources.some((s) => s.paperId === paper.id)).count(), [paper.id]) ?? 0;
+  // 生词本里的词这套卷子里又出现了：记下来（出现得多的先背），生词面板里列出来
+  const seenVocab = useMemo(() => {
+    if (!pages || !marksData.vocab.size) return [];
+    const out = new Set<string>();
+    for (const p of pages)
+      for (const [t] of p.w) {
+        const l = t.toLowerCase();
+        const k = marksData.vocab.has(l) ? l : marksData.lemma[l];
+        if (k && marksData.vocab.has(k)) out.add(k);
+      }
+    return [...out];
+  }, [pages, marksData]);
+  useEffect(() => void markSeen(paper.id, seenVocab), [paper.id, seenVocab]);
+  const vocabCount =
+    useLiveQuery(() => db.vocab.filter((v) => v.sources.some((s) => s.paperId === paper.id) || seenVocab.includes(v.word)).count(), [paper.id, seenVocab]) ?? 0;
   const flagList = useSame(attempt?.flags);
   const flags = useMemo(() => new Set(flagList ?? []), [flagList]);
   const struck = useSame(attempt?.struck ?? NO_STRUCK);
@@ -1929,6 +1944,7 @@ export function ExamRoom({
       elapsed={elapsed}
       flags={flags}
       vocabCount={vocabCount}
+      seenVocab={seenVocab}
       justSubmitted={justSubmitted}
       marks={marks}
       history={history}

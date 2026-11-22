@@ -16,7 +16,7 @@ import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/compo
 import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
 
-type Sort = "recent" | "alpha" | "due";
+type Sort = "recent" | "alpha" | "due" | "seen";
 
 /** 记忆状态的小标签：纸底墨字；已掌握墨底白字，待复习荧光黄 */
 function StatusBadge({ card }: { card?: CardRow }) {
@@ -69,6 +69,7 @@ export function VocabPage() {
     const q = query.trim().toLowerCase();
     if (q) l = l.filter((it) => it.word.includes(q));
     if (sort === "alpha") l = [...l].sort((a, b) => a.word.localeCompare(b.word));
+    if (sort === "seen") l = [...l].sort((a, b) => (b.seen?.length ?? 0) - (a.seen?.length ?? 0));
     if (sort === "due") l = [...l].sort((a, b) => (cardMap.get(a.word)?.due ?? Infinity) - (cardMap.get(b.word)?.due ?? Infinity));
     return l;
   }, [items, paperFilter, query, sort, cardMap]);
@@ -183,6 +184,7 @@ export function VocabPage() {
             { value: "recent", label: "最近添加" },
             { value: "alpha", label: "字母" },
             { value: "due", label: "复习时间" },
+            { value: "seen", label: "又出现" },
           ]}
         />
       </div>
@@ -238,6 +240,7 @@ export function VocabPage() {
                     <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
                       <StatusBadge card={cardMap.get(it.word)} />
                       <span className="text-[13px] text-[var(--ink-500)]">
+                        {it.seen?.length ? `又在 ${it.seen.length} 套卷子出现 · ` : ""}
                         {it.sources.length ? `${it.sources.length} 处出处 · ` : ""}
                         {timeAgo(it.addedAt)}
                       </span>

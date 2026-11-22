@@ -19,6 +19,8 @@ export interface VocabItem {
   note?: string;
   /** 离线词典里没有的（短语 focus on、有道在线查到的词）：加入时把释义一起存下，生词本、复习都用它（2026-11-12） */
   gloss?: DictEntry;
+  /** 加入以后又在哪些卷子里出现过（不含加入时的出处）：出现得多的先背 */
+  seen?: string[];
 }
 
 /** FSRS 记忆卡片，日期都存成时间戳 */

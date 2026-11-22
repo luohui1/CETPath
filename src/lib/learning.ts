@@ -83,6 +83,17 @@ export async function addToVocab(word: string, source?: Omit<VocabSource, "added
   });
 }
 
+/** 卷面上又碰到生词本里的词：记下这套卷子 */
+export async function markSeen(paperId: string, words: string[]) {
+  if (!words.length) return;
+  await db.transaction("rw", db.vocab, async () => {
+    for (const it of await db.vocab.bulkGet(words)) {
+      if (!it || it.sources.some((s) => s.paperId === paperId) || it.seen?.includes(paperId)) continue;
+      await db.vocab.update(it.word, { seen: [...(it.seen ?? []), paperId] });
+    }
+  });
+}
+
 /** 移出生词本；还没开始学的卡片一起删掉，学过的保留复习记录 */
 export async function removeFromVocab(word: string) {
   await db.transaction("rw", db.vocab, db.cards, async () => {
@@ -147,10 +158,10 @@ export async function buildQueue(extraNew = 0): Promise<QueueItem[]> {
   let quota = Math.max(0, settings.dailyNew + extraNew - today.newWords);
   const fresh: QueueItem[] = [];
   if (quota > 0) {
-    const vocabNew = (await db.cards.where("state").equals(State.New).toArray())
-      .filter((c) => c.origin === "vocab")
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(0, quota);
+    const vocabCards = (await db.cards.where("state").equals(State.New).toArray()).filter((c) => c.origin === "vocab");
+    // 生词本里在后来的卷子上反复出现的词先背
+    const seen = new Map((await db.vocab.bulkGet(vocabCards.map((c) => c.word))).map((v, i) => [vocabCards[i].word, v?.seen?.length ?? 0]));
+    const vocabNew = vocabCards.sort((a, b) => (seen.get(b.word) ?? 0) - (seen.get(a.word) ?? 0) || a.createdAt - b.createdAt).slice(0, quota);
     fresh.push(...vocabNew.map((c) => ({ word: c.word, origin: c.origin, isNew: true })));
     quota -= vocabNew.length;
   }

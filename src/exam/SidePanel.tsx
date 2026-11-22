@@ -312,20 +312,21 @@ function ExplainPanel({ paper, answers, elapsed, onJump }: { paper: Paper; answe
   );
 }
 
-function PaperVocab({ paper }: { paper: Paper }) {
+function PaperVocab({ paper, seen }: { paper: Paper; seen: string[] }) {
   const items = useLiveQuery(() => db.vocab.filter((v) => v.sources.some((s) => s.paperId === paper.id)).toArray(), [paper.id]);
   const list = useMemo(() => [...(items ?? [])].sort((a, b) => b.addedAt - a.addedAt), [items]);
-  const entries = useEntries(list.map((v) => v.word));
-  if (!list.length) {
+  // 以前加的、这套卷子里又出现的
+  const again = useLiveQuery(() => db.vocab.bulkGet(seen), [seen]);
+  const againList = useMemo(() => (again ?? []).filter((v) => v && !v.sources.some((s) => s.paperId === paper.id)).map((v) => v!), [again, paper.id]);
+  const entries = useEntries([...list, ...againList].map((v) => v.word));
+  if (!list.length && !againList.length) {
     return (
       <div className="flex min-h-0 flex-1 items-center">
         <EmptyState icon={<BookmarkSimple className="size-[22px]" />} title="还没有生词" desc="在卷面上点单词，加入生词本的词会出现在这里，并记下它在这套卷子里的原句。" />
       </div>
     );
   }
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-      {list.map((v) => {
+  const row = (v: (typeof list)[number]) => {
         const e = entries.get(v.word);
         return (
           <div key={v.word} className="group flex items-start gap-1 rounded-[10px] px-2.5 py-2 hover:bg-[var(--fill-quiet)]">
@@ -344,7 +345,17 @@ function PaperVocab({ paper }: { paper: Paper }) {
             </button>
           </div>
         );
-      })}
+  };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      {list.length > 0 && againList.length > 0 && <div className="px-2.5 pt-1.5 pb-1 text-[12px] text-[var(--ink-500)]">在这套卷子里加的</div>}
+      {list.map(row)}
+      {againList.length > 0 && (
+        <div className="px-2.5 pt-3 pb-1 text-[12px] text-[var(--ink-500)]">
+          以前加的，这套卷子里又出现了 <span className="num">{againList.length}</span> 个（卷面上划了蓝线）
+        </div>
+      )}
+      {againList.map(row)}
     </div>
   );
 }
@@ -744,6 +755,7 @@ export function Dock({
   submitted,
   elapsed,
   vocabCount,
+  seenVocab,
   justSubmitted,
   flags,
   marks,
@@ -782,6 +794,7 @@ export function Dock({
   submitted: boolean;
   elapsed: number;
   vocabCount: number;
+  seenVocab: string[];
   justSubmitted?: boolean;
   flags: Set<string>;
   marks: MarkRow[];
@@ -940,7 +953,7 @@ export function Dock({
       {shown === "explain" && <ExplainPanel paper={paper} answers={answers} elapsed={elapsed} onJump={onJump} />}
       {shown === "write" && <WritePanel paper={paper} attemptKey={attemptKey} attemptInit={attemptInit} texts={texts} submitted={submitted} focus={focusWrite} onJump={onJump} onFocus={onWriteFocus} />}
       {shown === "notes" && <NotesPanel marks={marks} history={history} onJumpMark={onJumpMark} onClear={onClearMarks} />}
-      {shown === "vocab" && <PaperVocab paper={paper} />}
+      {shown === "vocab" && <PaperVocab paper={paper} seen={seenVocab} />}
       {shown === "syntax" && syntax && <SyntaxPanel syntax={syntax} />}
       {shown === "ask" && <AgentPanel thread={agent ?? null} inDock />}
     </aside>

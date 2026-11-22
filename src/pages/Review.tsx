@@ -134,7 +134,7 @@ function StartScreen({ onStart }: { onStart: () => void }) {
           {doneToday > 0 && total > 0 && <Bubbles total={doneToday + total} done={doneToday} max={24} className="mt-4" />}
           <p className="mt-3 text-[14px] text-[var(--ink-500)]">
             到期复习 <span className="num text-[var(--ink-700)]">{counts.dueReviews}</span> · 新词 <span className="num text-[var(--ink-700)]">{counts.newLeft}</span>
-            {book ? `（${book.name}）` : ""} · 今天已复习 <span className="num text-[var(--ink-700)]">{doneToday}</span>
+            {book ? `（${book.name}）` : vocabCount ? "（生词本）" : ""} · 今天已复习 <span className="num text-[var(--ink-700)]">{doneToday}</span>
           </p>
           <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-3 pt-6">
             {noSource ? (
