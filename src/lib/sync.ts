@@ -5,7 +5,7 @@ import { db } from "./db";
  * 跨设备同步：登录后，本机每张表改过的行记进"待上传"，定时和服务器交换（POST /api/sync）。
  * 按条同步、后改的为准；从服务器拉下来写进本机时打上标记，不会又被当成本机改动传回去。
  */
-const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats"] as const;
+const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods"] as const;
 type Tbl = (typeof TABLES)[number];
 type Row = Record<string, unknown>;
 const OUT = "yz-sync-out";

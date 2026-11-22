@@ -37,7 +37,7 @@ SESSION_DAYS = 180
 _auth_hits: dict[str, list[float]] = {}
 _reg_hits: dict[str, list[float]] = {}
 NAME_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fa5]{2,20}")
-SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "kv"}
+SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "kv"}
 
 
 def sdb() -> sqlite3.Connection:
@@ -153,7 +153,7 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 - 复盘一套卷子（有作答数据时）：一句总评（得分、最弱题型、最拖时间的部分）→ 最多 3 条错因，写明题号 → 一条接下来最该练的。学习者追问某题再细讲。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；add_method 把一条做题方法收进学习者的解题思路库；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
 - 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards；学习者看不懂某题答案、问“为什么选这个”时用 show_answer_map。用了这些，正文就只写一两句要点，别把内容再写一遍。
 - 引用原文时用「」包住卷面原词原句（照抄，别改写），提到题目写成“第 N 题”：学习者点一下就会跳到卷面那里。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
@@ -413,6 +413,7 @@ TOOLS = [
         [],
     ),
     _fn("remove_from_vocab", "把一个词从学习者的生词本删掉。学习者说不要这个词了时用。", {"word": {"type": "string"}}, ["word"]),
+    _fn("add_method", "把一条做题方法（比如定位句该往前看还是往后看、某类陷阱怎么识别）收进学习者的解题思路库。学习者说要记下这个方法/思路时用；写成能复用的一两句话，别写某题的答案。", {"text": {"type": "string", "description": "方法本身，一两句话"}, "kind": {"type": "string", "description": "适用题型，如 细节、推理、主旨、态度、听力、选词填空、段落匹配、翻译、写作；通用的不填"}}, ["text"]),
     _fn("mark_known", "把生词本里的一个词标成已掌握（两个月后再复习）。学习者说这个词会了时用。", {"word": {"type": "string"}}, ["word"]),
     _fn(
         "show_sentence_map",

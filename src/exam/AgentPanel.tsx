@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { quizOf, runTool, type ToolEnv } from "@/lib/agentTools";
 import { AgentQuiz } from "./AgentQuiz";
+import { AnswerPick, SaveAnswer } from "./AnswerPick";
 import { AgentVisual, VISUAL_TOOLS } from "./AgentVisuals";
 import { AgentActivate } from "@/components/AgentActivate";
 import { db } from "@/lib/db";
@@ -100,6 +101,7 @@ export function AgentPanel({
   const lastAnswer = msgs.map((m) => m.role).lastIndexOf("assistant");
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const asked = useRef<string | null>(null);
 
   useEffect(() => {
@@ -289,7 +291,8 @@ export function AgentPanel({
     : thread.ctx.sentence;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div ref={list} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <AnswerPick root={list} paper={env?.paper} />
       <div className="px-4 pt-3">
         <div
           className={cn(
@@ -384,6 +387,7 @@ export function AgentPanel({
             <div key={i}>
               {m.content ? (
                 <div
+                  data-answer
                   className={cn(
                     "relative",
                     folded && "max-h-[6.5rem] overflow-hidden",
@@ -413,6 +417,9 @@ export function AgentPanel({
                   />
                   {folded ? "展开回答" : "收起回答"}
                 </button>
+              )}
+              {m.content && !streaming && !folded && (
+                <SaveAnswer text={m.content} paper={env?.paper} />
               )}
               {m.calls?.map((c) => {
                 const quiz = c.name === "show_quiz" ? quizOf(c) : null;

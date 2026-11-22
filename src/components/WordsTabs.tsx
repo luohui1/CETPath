@@ -8,10 +8,16 @@ export const WORD_PAGES = [
   { to: "/vocab", label: "生词本" },
 ] as const;
 
-export function WordsTabs() {
+/** 错题本、解题思路库共用的顶部切换 */
+export const MISTAKE_PAGES = [
+  { to: "/mistakes", label: "错题本" },
+  { to: "/methods", label: "解题思路" },
+] as const;
+
+export function WordsTabs({ pages = WORD_PAGES, label = "单词" }: { pages?: readonly { to: string; label: string }[]; label?: string }) {
   return (
-    <nav className="mb-5 inline-flex rounded-[11px] bg-[var(--fill-quiet)] p-1" aria-label="单词">
-      {WORD_PAGES.map((p) => (
+    <nav className="mb-5 inline-flex rounded-[11px] bg-[var(--fill-quiet)] p-1" aria-label={label}>
+      {pages.map((p) => (
         <NavLink
           key={p.to}
           to={p.to}

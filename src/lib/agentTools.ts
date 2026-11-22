@@ -17,6 +17,7 @@ import { masteryId, scoredQuestions } from "./mistakes";
 import { getProfile, saveProfile } from "./profile";
 import { touchMemory } from "./agent";
 import { lookupOnline } from "./youdao";
+import { addMethod } from "./methods";
 import { KIND_NAMES, type Paper, type PdfWordsPage } from "./papers";
 import { newMark, wordRange } from "./marks";
 import type { ToolCall } from "./agent";
@@ -160,6 +161,18 @@ export async function runTool(
           label: `从生词本删了 · ${lemma}`,
           result: `已把 ${lemma} 从生词本删掉`,
         };
+      }
+      case "add_method": {
+        const text = String(a.text ?? "").trim();
+        if (!text) return { label: "思路库：没有内容", result: "没给要记的方法" };
+        const kind = typeof a.kind === "string" ? a.kind.trim() : "";
+        await addMethod({
+          text,
+          kind: kind || undefined,
+          from: "agent",
+          source: env.paper ? { paperId: env.paper.id, paperTitle: env.paper.title } : undefined,
+        });
+        return { label: `已收进解题思路库${kind ? ` · ${kind}` : ""}`, result: "已收进解题思路库" };
       }
       case "mark_known": {
         const lemma = await toLemma(String(a.word ?? "").trim());

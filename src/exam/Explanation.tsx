@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CaretDown, Check, Crosshair, Play, Plus, X } from "@phosphor-icons/react";
+import { CaretDown, Check, Crosshair, Lightbulb, Play, Plus, X } from "@phosphor-icons/react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { addMethod, hasMethod } from "@/lib/methods";
 import type { ExplainFields, ExplainSource, Question } from "@/lib/papers";
 import { addToVocab } from "@/lib/learning";
 import { setSetting, useSettings } from "@/lib/settings";
@@ -150,6 +152,25 @@ function grammarMeaning(grammar?: string, meaning?: string) {
   const tail = (g.match(/[^，,：:]*$/)?.[0] ?? g).trim();
   const gs = tail.length >= 4 && tail.length <= 24 ? tail : hardCut(tail.length < 4 ? g : tail, 23) + "…";
   return clip(`语法：${gs}；语义：${m}`, BRIEF_MAX);
+}
+
+/** 信号旁的"收进思路库"：存题型 + 信号，记下出处题号 */
+function SaveSignal({ q, kind, signal }: { q: Question; kind?: string; signal: string }) {
+  const ctx = useContext(ExplainContext);
+  const saved = useLiveQuery(() => hasMethod(signal), [signal]);
+  if (!ctx) return null;
+  return (
+    <button
+      type="button"
+      disabled={!!saved}
+      onClick={() => void addMethod({ text: signal, kind, from: "explain", source: { paperId: ctx.paperId, paperTitle: ctx.paperTitle, questionId: q.id, number: q.number } })}
+      className="-my-0.5 inline-flex h-7 flex-none items-center gap-1 rounded-full px-2 text-[12px] text-[var(--ink-500)] hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
+      title="收进解题思路库"
+    >
+      {saved ? <Check className="size-3" weight="bold" /> : <Lightbulb className="size-3" />}
+      {saved ? "已收" : "收进思路库"}
+    </button>
+  );
 }
 
 /* ---------- 展开后的细节：一个个小节，小标题在上 ---------- */
@@ -450,7 +471,8 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
       {f?.signal && (
         <p className="mt-1.5 flex gap-2 text-[14px] leading-[1.6] text-[var(--ink-700)]">
           <span className="flex-none rounded-[5px] bg-[var(--blue)]/10 px-1.5 text-[12px] leading-[22px] font-medium text-[var(--blue)]">信号</span>
-          <span className="min-w-0">{f.signal}</span>
+          <span className="min-w-0 flex-1">{f.signal}</span>
+          {ctx && <SaveSignal q={q} kind={f.kind} signal={f.signal} />}
         </p>
       )}
       {showLoc && (

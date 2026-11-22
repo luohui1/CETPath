@@ -51,6 +51,7 @@ const router = createBrowserRouter([
         : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },
+      { path: "/methods", ...page(() => import("./pages/Methods").then((m) => m.MethodsPage)) },
       { path: "/review", ...page(() => import("./pages/Review").then((m) => m.ReviewPage)) },
       { path: "/vocab", ...page(() => import("./pages/Vocab").then((m) => m.VocabPage)) },
       { path: "/books", ...page(() => import("./pages/Books").then((m) => m.BooksPage)) },

@@ -122,6 +122,17 @@ export interface MemoryRow {
 }
 
 /** AI 助教的一段对话：问的哪句（可带点的词）和来回的消息；AI 助教页列出历史 */
+/** 解题思路库：从解析的"信号"、Agent 的回答里收进来的，或者自己写的做题方法（2026-11-22） */
+export interface MethodRow {
+  id: string;
+  text: string;
+  kind?: string; // 题型：细节、推理、主旨、听力……没有就算"通用"
+  from: "explain" | "agent" | "mine";
+  source?: { paperId: string; paperTitle: string; questionId?: string; number?: number };
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChatRow {
   id: string; // 句子键 + 词
   ctx: { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
@@ -163,6 +174,7 @@ export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexed
   mastery: EntityTable<MasteryRow, "id">;
   memory: EntityTable<MemoryRow, "id">;
   chats: EntityTable<ChatRow, "id">;
+  methods: EntityTable<MethodRow, "id">;
 };
 
 db.version(1).stores({
@@ -188,6 +200,10 @@ db.version(4).stores({
 
 db.version(5).stores({
   chats: "id, updatedAt",
+});
+
+db.version(6).stores({
+  methods: "id, updatedAt, kind",
 });
 
 // Safari（iPhone/iPad）的老毛病：新开的页面里第一次打开 IndexedDB 可能一直不响应，页面就卡在"加载中"。
