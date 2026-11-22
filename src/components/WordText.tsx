@@ -42,6 +42,58 @@ interface WordCtx {
 
 const Ctx = createContext<WordCtx>({ marks: false });
 
+export type VocabMarks = { vocab: Set<string>; lemma: Record<string, string> };
+
+const normTok = (t: string) => t.toLowerCase().replace(/’/g, "'").replace(/^[^a-z']+|[^a-z']+$/g, "");
+const phraseIndex = new WeakMap<Set<string>, Map<string, string[][]>>();
+/** 生词本里的短语按第一个词归好：focus on → focus: [[focus, on]] */
+function phrasesOf(vocab: Set<string>) {
+  let idx = phraseIndex.get(vocab);
+  if (!idx) {
+    idx = new Map();
+    for (const v of vocab) {
+      const toks = v.split(/\s+/).map(normTok).filter(Boolean);
+      if (toks.length < 2) continue;
+      idx.set(toks[0], [...(idx.get(toks[0]) ?? []), toks]);
+    }
+    phraseIndex.set(vocab, idx);
+  }
+  return idx;
+}
+
+/**
+ * 一串词里哪些是生词本里的词或短语（词形变了也认：students、focused on）。
+ * hits：词的序号 → 是不是这个词/短语的最后一个（小标记画在最后）；keys：命中的生词本条目。
+ * sent：每个词在第几句，短语不跨句。
+ */
+export function vocabHits(tokens: string[], m: VocabMarks, sent?: number[]) {
+  const hits = new Map<number, boolean>();
+  const keys = new Set<string>();
+  if (!m.vocab.size) return { hits, keys };
+  const phrases = phrasesOf(m.vocab);
+  const forms = tokens.map((t) => {
+    const k = normTok(t);
+    return [k, m.lemma[k] ?? k];
+  });
+  forms.forEach(([k, base], i) => {
+    if (!k) return;
+    const word = m.vocab.has(k) ? k : m.vocab.has(base) ? base : null;
+    if (word) {
+      keys.add(word);
+      if (!hits.has(i)) hits.set(i, true);
+    }
+    for (const p of [...(phrases.get(k) ?? []), ...(base !== k ? (phrases.get(base) ?? []) : [])]) {
+      const end = i + p.length - 1;
+      if (end >= forms.length || (sent && sent[end] !== sent[i])) continue;
+      if (!p.every((t, j) => forms[i + j][0] === t || forms[i + j][1] === t)) continue;
+      keys.add(p.join(" "));
+      for (let j = i; j < end; j++) hits.set(j, hits.get(j) ?? false);
+      hits.set(end, true);
+    }
+  });
+  return { hits, keys };
+}
+
 /** 生词本里的词（原形）和词形还原表，用来在正文里标出生词 */
 export function useVocabMarks(enabled: boolean) {
   const words = useLiveQuery(() => (enabled ? db.vocab.toCollection().primaryKeys() : []), [enabled]);
@@ -59,7 +111,7 @@ export function useVocabMarks(enabled: boolean) {
   return useMemo(() => ({ vocab: new Set(words ?? []), lemma: lemma ?? {} }), [key, lemma]);
 }
 
-const MarksCtx = createContext<{ vocab: Set<string>; lemma: Record<string, string> }>({ vocab: new Set(), lemma: {} });
+const MarksCtx = createContext<VocabMarks>({ vocab: new Set(), lemma: {} });
 
 export function WordTextProvider({
   onWord,
@@ -158,6 +210,9 @@ export const WordText = memo(function WordText({
 
   const parts: ReactNode[] = [];
   let last = 0;
+  // 生词本里的词和短语：整段一起找（短语跨好几个词）
+  const marked = useMemo(() => (marks ? vocabHits([...text.matchAll(WORD_RE)].map((m) => m[0]), { vocab, lemma }).hits : null), [marks, text, vocab, lemma]);
+  let tok = 0;
   // 词之间的空格、数字也要跟着标（高亮连成一片）
   const gap = (t: string, at: number) => {
     const cls = ranges?.filter((r) => at >= r.a && at + t.length <= r.b).map((r) => r.cls);
@@ -168,10 +223,9 @@ export const WordText = memo(function WordText({
     for (const m of chunk.matchAll(WORD_RE)) {
       if (m.index! > i) parts.push(gap(chunk.slice(i, m.index), base + i));
       const w = m[0];
-      const lower = w.toLowerCase().replace(/’/g, "'");
-      const marked = marks && (vocab.has(lower) || vocab.has(lemma[lower] ?? ""));
+      const hit = marked?.get(tok++);
       parts.push(
-        <span key={base + m.index!} className={cn("w", marked && "is-vocab", ranges?.filter((r) => base + m.index! >= r.a && base + m.index! < r.b).map((r) => r.cls))} data-o={base + m.index!}>
+        <span key={base + m.index!} className={cn("w", hit != null && "is-vocab", hit && "is-vocab-end", ranges?.filter((r) => base + m.index! >= r.a && base + m.index! < r.b).map((r) => r.cls))} data-o={base + m.index!}>
           {w}
         </span>,
       );

@@ -98,6 +98,23 @@ button:disabled {
 .w.is-vocab {
   box-shadow: inset 0 -2px 0 var(--pixel-blue);
 }
+.w.is-vocab-end::after,
+.vocab-dot {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pixel-blue);
+}
+.w.is-vocab-end::after {
+  display: inline-block;
+  margin-left: 1px;
+  vertical-align: super;
+}
+.vocab-dot {
+  position: absolute;
+  z-index: 1;
+}
 .w.is-active {
   background: var(--blue-tint);
   box-shadow: 0 0 0 1px var(--blue);

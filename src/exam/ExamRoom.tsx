@@ -41,7 +41,7 @@ import { colorValue, COLORS, colorTool, markBounds, PEN_SIZES, useMarkHistory, w
 import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
 import { shortTitle, type AnswerSheet } from "@/lib/exportPdf";
 import { cn, formatDuration } from "@/lib/utils";
-import { useVocabMarks, WordTextProvider, type WordClick } from "@/components/WordText";
+import { useVocabMarks, vocabHits, WordTextProvider, type WordClick } from "@/components/WordText";
 import { markSeen } from "@/lib/learning";
 import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
@@ -490,12 +490,7 @@ export function ExamRoom({
   const seenVocab = useMemo(() => {
     if (!pages || !marksData.vocab.size) return [];
     const out = new Set<string>();
-    for (const p of pages)
-      for (const [t] of p.w) {
-        const l = t.toLowerCase();
-        const k = marksData.vocab.has(l) ? l : marksData.lemma[l];
-        if (k && marksData.vocab.has(k)) out.add(k);
-      }
+    for (const p of pages) for (const k of vocabHits(p.w.map((w) => w[0]), marksData, p.w.map((w) => w[5])).keys) out.add(k);
     return [...out];
   }, [pages, marksData]);
   useEffect(() => void markSeen(paper.id, seenVocab), [paper.id, seenVocab]);

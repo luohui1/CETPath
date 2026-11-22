@@ -6,7 +6,7 @@ import { wordAt, type MarkRow } from "@/lib/marks";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/report";
 import { Tip } from "@/components/overlay";
-import type { WordClick } from "@/components/WordText";
+import { vocabHits, type WordClick } from "@/components/WordText";
 import { InkLayer, type InkState } from "./InkLayer";
 import { gesture } from "./gesture";
 import { addSlot, gate, getThumb, onThumb, pump, saveThumb, thumbKey, type PageSlot } from "./pagePool";
@@ -488,19 +488,11 @@ const WordLayer = memo(function WordLayer({
     onWord({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(page, data, k, scale), page, index: k, nth: wordNth(data, k) });
   };
   // 生词本里的词：词表变了才重新找
-  const vocab = useMemo(() => {
-    if (!marks) return [];
-    const out: number[] = [];
-    data.w.forEach(([t], i) => {
-      const lower = t.toLowerCase();
-      if (marks.vocab.has(lower) || marks.vocab.has(marks.lemma[lower] ?? "")) out.push(i);
-    });
-    return out;
-  }, [data, marks]);
+  const vocab = useMemo(() => (marks ? vocabHits(data.w.map((w) => w[0]), marks, data.w.map((w) => w[5])).hits : new Map<number, boolean>()), [data, marks]);
   // 每个要画框的词：5 长难句，0 生词，4 长按出译文的那句，1 命中，2 当前命中，3 正在查（后面的盖前面的）
   const shown = new Map<number, number>();
   if (longs?.size) data.w.forEach((w, i) => longs.has(w[5]) && shown.set(i, 5));
-  for (const i of vocab) shown.set(i, 0);
+  for (const i of vocab.keys()) shown.set(i, 0);
   if (sentence != null) data.w.forEach((w, i) => w[5] === sentence && shown.set(i, 4));
   if (hits) for (const [a, b] of hits) for (let i = a; i <= b; i++) shown.set(i, 1);
   if (hitCur) for (let i = hitCur[0]; i <= hitCur[1]; i++) shown.set(i, 2);
@@ -517,6 +509,12 @@ const WordLayer = memo(function WordLayer({
       {heads.map((i) => {
         const [, x0, y0] = data.w[i];
         return <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 7, top: y0 * scale - 10 }}>析</span>;
+      })}
+      {/* 生词本里的词、短语：最后一个词右上角一个小点 */}
+      {[...vocab].map(([i, end]) => {
+        if (!end) return null;
+        const [, , y0, x1] = data.w[i];
+        return <span key={`v${i}`} className="vocab-dot pointer-events-none" style={{ left: x1 * scale, top: y0 * scale - 2 }} />;
       })}
       {[...shown].map(([i, kind]) => {
         const [, x0, y0, x1, y1] = data.w[i];
