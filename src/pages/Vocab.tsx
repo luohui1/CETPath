@@ -85,7 +85,7 @@ export function VocabPage() {
     if (!r) {
       // 离线词典没有的词和短语也加：在线查到释义就随词存下，查不到先只存词
       const key = w.toLowerCase().replace(/\s+/g, " ");
-      const online = await lookupOnline(w);
+      const online = (await lookupOnline(w))?.entry.t ? await lookupOnline(w) : null;
       await addToVocab(key, undefined, online?.entry);
       setAddMsg(online ? `已加入 ${key}` : `已加入 ${key}（没查到释义）`);
       setAdding("");
