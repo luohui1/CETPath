@@ -76,15 +76,16 @@ export function MethodsPage() {
     for (const r of rows ?? []) c.set(r.kind || GENERAL, (c.get(r.kind || GENERAL) ?? 0) + 1);
     return [...c].sort((a, b) => b[1] - a[1]);
   }, [rows]);
+  const shown = kinds.some(([k]) => k === filter) ? filter : "";
   const groups = useMemo(() => {
     const g = new Map<string, MethodRow[]>();
     for (const r of rows ?? []) {
       const k = r.kind || GENERAL;
-      if (filter && k !== filter) continue;
+      if (shown && k !== shown) continue;
       g.set(k, [...(g.get(k) ?? []), r]);
     }
     return [...g];
-  }, [rows, filter]);
+  }, [rows, shown]);
   const add = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft.trim()) return;
@@ -116,9 +117,9 @@ export function MethodsPage() {
         <>
           {kinds.length > 1 && (
             <div className="mb-4 flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => setFilter("")} className={cn("pill", !filter && "pill-on")}>全部 {rows.length}</button>
+              <button type="button" onClick={() => setFilter("")} className={cn("pill", !shown && "pill-on")}>全部 {rows.length}</button>
               {kinds.map(([k, n]) => (
-                <button key={k} type="button" onClick={() => setFilter(filter === k ? "" : k)} className={cn("pill", filter === k && "pill-on")}>
+                <button key={k} type="button" onClick={() => setFilter(shown === k ? "" : k)} className={cn("pill", shown === k && "pill-on")}>
                   {k} {n}
                 </button>
               ))}
