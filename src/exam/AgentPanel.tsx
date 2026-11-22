@@ -229,7 +229,7 @@ export function AgentPanel({
       void send(firstAsk(thread.ctx));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thread, enabled]);
+  }, [thread, enabled, noAutoAsk]);
 
   if (enabled === null)
     return (

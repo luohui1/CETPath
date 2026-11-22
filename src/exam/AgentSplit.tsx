@@ -49,6 +49,7 @@ export function AgentSplit({
   sentence,
   onClearSentence,
   onClose,
+  review = 0,
   env,
 }: {
   side: boolean;
@@ -60,6 +61,7 @@ export function AgentSplit({
   sentence: AgentThread | null;
   onClearSentence: () => void;
   onClose: () => void;
+  review?: number; // 交卷单上点了复盘：切回整卷会话，没聊过就自动问复盘
   env?: ToolEnv;
 }) {
   const self = useRef<HTMLElement>(null);
@@ -78,6 +80,9 @@ export function AgentSplit({
   useEffect(() => {
     if (sentence) setSid(null);
   }, [sentence]);
+  useEffect(() => {
+    if (review) setSid(null);
+  }, [review]);
   const prefix = paperThread.id;
   const picked = sid ? chats?.find((c) => c.id === sid) : undefined;
   // 当前会话：卷面上刚问的那句 > 列表里选的 > 这套卷最近的整卷会话 > 新的整卷会话
@@ -265,7 +270,7 @@ export function AgentSplit({
           key={thread.id}
           thread={thread}
           inDock
-          noAutoAsk={thread.id.startsWith("paper:") || thread.id.startsWith("article:")}
+          noAutoAsk={(thread.id.startsWith("paper:") && !review) || thread.id.startsWith("article:")}
         />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router";
-import { ArrowCounterClockwise, Lightbulb } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Lightbulb, Sparkle } from "@phosphor-icons/react";
 import type { AttemptMode, AttemptRow } from "@/lib/db";
 import type { Paper, Question, Section } from "@/lib/papers";
 import { buildReport, clock } from "@/lib/report";
@@ -28,6 +28,7 @@ export function ReportSheet({
   onExplain,
   onExplainQ,
   onRetry,
+  onAgent,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +41,7 @@ export function ReportSheet({
   onExplain: () => void;
   onExplainQ: (q: Question) => void; // 点了某道错题：考场打开这道题和它的解析
   onRetry: (ids: string[]) => void;
+  onAgent: () => void; // 收起交卷单，打开 Agent 直接复盘这次作答
 }) {
   const report = useMemo(() => buildReport(paper, attempt), [paper, attempt]);
   const { index } = usePaperIndex();
@@ -204,10 +206,13 @@ export function ReportSheet({
           </Button>
         )}
         {report.wrong.length > 0 && (
-          <Button variant="primary" onClick={() => onRetry(wrongIds)}>
+          <Button onClick={() => onRetry(wrongIds)}>
             <ArrowCounterClockwise className="size-[18px]" /> 重做错题（{report.wrong.length}）
           </Button>
         )}
+        <Button variant="primary" onClick={onAgent}>
+          <Sparkle className="size-[18px]" /> 找 Agent 复盘
+        </Button>
       </div>
     </PaperDialog>
   );

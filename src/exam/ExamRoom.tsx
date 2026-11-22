@@ -414,6 +414,8 @@ export function ExamRoom({
   const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
   // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
   const [agentOpen, setAgentOpen] = useState(false);
+  // 交卷单上点了"找 Agent 复盘"：打开整卷会话并自动问复盘（每点一次加一，关掉 Agent 归零）
+  const [reviewAsk, setReviewAsk] = useState(0);
   // 工具栏实际放不下（开笔后多出预设、颜色）时逐级收：1 按钮只留图标，2 再收起笔的预设；还放不下就这一行左右滑
   const [squeeze, setSqueeze] = useState(0);
   const [toolOver, setToolOver] = useState(false);
@@ -1872,7 +1874,11 @@ export function ExamRoom({
       paperThread={paperThread}
       sentence={agentThread}
       onClearSentence={() => setAgentThread(null)}
-      onClose={() => setAgentOpen(false)}
+      onClose={() => {
+        setAgentOpen(false);
+        setReviewAsk(0);
+      }}
+      review={reviewAsk}
       env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal, 4000), pages, where }}
     />
     </PaperLinkCtx.Provider>
@@ -2441,6 +2447,13 @@ export function ExamRoom({
             openTab("explain");
           }}
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
+          onAgent={() => {
+            setReport((r) => ({ ...r, open: false }));
+            setPanel(null);
+            setAgentThread(null);
+            setReviewAsk((n) => n + 1);
+            setAgentOpen(true);
+          }}
         />
       )}
       <ConfirmDialog
