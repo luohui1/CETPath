@@ -404,7 +404,20 @@ export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
     }
     out += `\n\n[第 ${i + 1} 页]`;
     p.s.forEach((raw, k) => {
-      const t = raw.replace(/\s+/g, " ").trim();
+      // 考研的"Text 1"常和上一句或文章第一句连成一句：拆出来当文章开头
+      const pieces = raw.replace(/\s+/g, " ").trim().split(/(?=\bText [1-4] )/);
+      pieces.forEach((piece, j) => {
+        const m = /^Text ([1-4]) (.*)$/.exec(piece);
+        if (m && (j > 0 || pieces.length > 1 || /^[A-Z]/.test(m[2]))) {
+          inPassage = true;
+          para = 0;
+          out += `\nText ${m[1]}`;
+          piece = m[2];
+        }
+        line(piece.trim(), j === 0 && !m && starts.has(k));
+      });
+    });
+    function line(t: string, indented: boolean) {
       if (!t) return;
       if (/are based on the (following )?(passage|recording|conversation)|^(Passage|Section|Part)\s/i.test(t)) {
         inPassage = /passage/i.test(t);
@@ -413,9 +426,9 @@ export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
         return;
       }
       if (/^\d{1,2}\s*[.．]\s*\S|^[A-D]\)\s/.test(t) && t.length < 300) inPassage = false; // 到题目了
-      if (inPassage && (starts.has(k) || para === 0)) out += `\n〔第 ${++para} 段〕`;
+      if (inPassage && (indented || para === 0)) out += `\n〔第 ${++para} 段〕`;
       out += "\n" + t;
-    });
+    }
   });
   out = out.trim();
   return out.length > max ? out.slice(0, max) + "\n（后面省略）" : out;
