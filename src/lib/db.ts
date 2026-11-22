@@ -3,6 +3,7 @@ import { IDBKeyRange as fakeIDBKeyRange, indexedDB as fakeIndexedDB } from "fake
 import type { State } from "ts-fsrs";
 import type { DictEntry } from "./dict";
 import type { SectionKind } from "./papers";
+import type { SyntaxEntry } from "./syntax";
 
 /** 生词本里一个词的出处：哪套试卷、哪句话 */
 export interface VocabSource {
@@ -135,6 +136,16 @@ export interface MethodRow {
   updatedAt: number;
 }
 
+/** Agent 在卷面上标的长难句：和长难句解析层一样的结构，卷面上这句划蓝虚线，点开底部条看解析 */
+export interface AiSyntaxRow {
+  id: string; // paperId:句子键
+  paperId: string;
+  key: string; // 句子键（同 lib/trans.ts 的 sentenceKey）
+  entry: SyntaxEntry;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChatRow {
   id: string; // 句子键 + 词
   ctx: { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
@@ -177,6 +188,7 @@ export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexed
   memory: EntityTable<MemoryRow, "id">;
   chats: EntityTable<ChatRow, "id">;
   methods: EntityTable<MethodRow, "id">;
+  aiSyntax: EntityTable<AiSyntaxRow, "id">;
 };
 
 db.version(1).stores({
@@ -206,6 +218,10 @@ db.version(5).stores({
 
 db.version(6).stores({
   methods: "id, updatedAt, kind",
+});
+
+db.version(7).stores({
+  aiSyntax: "id, paperId",
 });
 
 // Safari（iPhone/iPad）的老毛病：新开的页面里第一次打开 IndexedDB 可能一直不响应，页面就卡在"加载中"。

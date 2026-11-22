@@ -1476,15 +1476,25 @@ export function ExamRoom({
   }, [sideDock]);
   // 长难句在卷面上的位置：句子键 → 第几页、第几句、句首的 y；每页有哪几句。
   // 只认卷面上显示的页；专项练习不是仔细阅读时一句都没有（停靠区也不出"长难句"标签）
+  // Agent 在卷面上标的长难句并进来：和解析层一样划线、点开看结构（不限仔细阅读）
+  const aiSyntax = useLiveQuery(() => db.aiSyntax.where("paperId").equals(paper.id).toArray(), [paper.id]);
+  const synFile = useMemo<SyntaxFile | null>(() => {
+    if (!aiSyntax?.length) return syntaxFile;
+    const sentences = { ...syntaxFile?.sentences };
+    for (const r of aiSyntax) sentences[r.key] ??= r.entry;
+    return { id: paper.id, by: "ai", version: syntaxFile?.version ?? 1, sentences };
+  }, [syntaxFile, aiSyntax, paper.id]);
   const syntaxAt = useMemo(() => {
     const at = new Map<string, { page: number; sid: number; y: number }>();
     const byPage = new Map<number, Set<number>>();
-    if (!syntaxFile || !pages || (scope && scope.section.kind !== "reading")) return { at, byPage };
+    if (!synFile || !pages) return { at, byPage };
+    const readingOnly = !!scope && scope.section.kind !== "reading";
     pages.forEach((data, i) => {
       if (i + 1 < firstPage || i + 1 > lastPage) return;
       data.s.forEach((s, sid) => {
         const k = sentenceKey(s);
-        if (!syntaxFile.sentences[k] || at.has(k)) return;
+        const e = synFile.sentences[k];
+        if (!e || (readingOnly && e.group !== "ai") || at.has(k)) return;
         const w = data.w.find((x) => x[5] === sid);
         if (!w) return;
         at.set(k, { page: i + 1, sid, y: w[2] });
@@ -1492,8 +1502,8 @@ export function ExamRoom({
       });
     });
     return { at, byPage };
-  }, [syntaxFile, pages, scope, firstPage, lastPage]);
-  const synOf = useCallback((sentence: string) => (sentence && syntaxFile?.sentences[sentenceKey(sentence)]) || null, [syntaxFile]);
+  }, [synFile, pages, scope, firstPage, lastPage]);
+  const synOf = useCallback((sentence: string) => (sentence && synFile?.sentences[sentenceKey(sentence)]) || null, [synFile]);
   /** 打开一句长难句的解析：收起查词、选项条，卷面上这句淡黄底，底部条放解析；scroll 时把这句滚到卷面上三分之一处 */
   const openSyntax = useCallback(
     (key: string, scroll: boolean) => {
@@ -1605,12 +1615,12 @@ export function ExamRoom({
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
     const i = synOrder.indexOf(key);
-    if (i < 0 || !syntaxFile) return undefined;
-    const group = syntaxFile.sentences[key].group;
-    const groups = [...new Set(synOrder.map((k) => syntaxFile.sentences[k].group))];
-    const same = synOrder.filter((k) => syntaxFile.sentences[k].group === group);
+    if (i < 0 || !synFile) return undefined;
+    const group = synFile.sentences[key].group;
+    const groups = [...new Set(synOrder.map((k) => synFile.sentences[k].group).filter((g) => g !== "ai"))];
+    const same = synOrder.filter((k) => synFile.sentences[k].group === group);
     return {
-      pos: `${["第一篇", "第二篇", "第三篇"][groups.indexOf(group)] ?? group} ${same.indexOf(key) + 1}/${same.length}`,
+      pos: `${group === "ai" ? "AI 标的" : (["第一篇", "第二篇", "第三篇"][groups.indexOf(group)] ?? group)} ${same.indexOf(key) + 1}/${same.length}`,
       prev: i > 0 ? () => openSyntax(synOrder[i - 1], true) : undefined,
       next: i < synOrder.length - 1 ? () => openSyntax(synOrder[i + 1], true) : undefined,
     };
@@ -1630,7 +1640,7 @@ export function ExamRoom({
       ? // 练习模式还没作答的题：先不放解析
         { kind: "explain", q: curQ, id: openQ, cue, locked: practice && !submitted && !answers[curQ.id] }
       : sent
-        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)) }
+        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)), onRemove: aiSyntax?.some((r) => r.key === sentenceKey(sent.sentence) && !syntaxFile?.sentences[r.key]) ? () => void db.aiSyntax.delete(`${paper.id}:${sentenceKey(sent.sentence)}`).then(closeBar) : undefined }
         : null;
   // 竖屏底部抽屉开着时只有这一块底部区域：底部条的内容放进抽屉，当一个临时标签（新内容出来时切过去，收起时回到原来的标签）
   const barInDock = !!panel && !sideDock;
@@ -1832,12 +1842,12 @@ export function ExamRoom({
   // 底部条：卷面那一栏下面一条；竖屏底部抽屉开着时放进抽屉，当一个临时标签
   const sentKey = sent ? sentenceKey(sent.sentence) : null;
   const dockSyntax = useMemo<DockSyntax | null>(() => {
-    if (!syntaxFile || !syntaxAt.at.size) return null;
-    const titles: Record<string, string> = {};
+    if (!synFile || !syntaxAt.at.size) return null;
+    const titles: Record<string, string> = { ai: "AI 标的长难句" };
     for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
-    const sentences = Object.fromEntries(Object.entries(syntaxFile.sentences).filter(([k]) => syntaxAt.at.has(k)));
-    return { file: { ...syntaxFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
-  }, [syntaxFile, syntaxAt, paper.sections, sentKey, openSyntax]);
+    const sentences = Object.fromEntries(Object.entries(synFile.sentences).filter(([k]) => syntaxAt.at.has(k)));
+    return { file: { ...synFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
+  }, [synFile, syntaxAt, paper.sections, sentKey, openSyntax]);
   const barEl = (embedded: boolean) =>
     barContent && (
       <AnswerBar

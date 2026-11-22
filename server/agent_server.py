@@ -37,7 +37,7 @@ SESSION_DAYS = 180
 _auth_hits: dict[str, list[float]] = {}
 _reg_hits: dict[str, list[float]] = {}
 NAME_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fa5]{2,20}")
-SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "kv"}
+SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "aiSyntax", "kv"}
 
 
 def sdb() -> sqlite3.Connection:
@@ -153,11 +153,11 @@ SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉�
 - 复盘一套卷子（有作答数据时）：一句总评（得分、最弱题型、最拖时间的部分）→ 最多 3 条错因，写明题号 → 一条接下来最该练的。学习者追问某题再细讲。
 
 ## 工具
-你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线、标长难句并写释义；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；add_method 把一条做题方法收进学习者的解题思路库；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
+你能调用应用里的功能：lookup_word 查本机词典；add_to_vocab 加生词本；add_to_mistakes 把这套卷的题加进错题本；get_weak_points 看薄弱点；show_quiz 出能点选作答的练习题；update_profile 改写学习者档案；annotate_paper 在卷面上高亮、划线；mark_long_sentence 把长难句的结构标在卷面上；list_vocab 看生词本；remove_from_vocab 删词；mark_known 标已掌握；add_method 把一条做题方法收进学习者的解题思路库；show_sentence_map / show_steps / show_cards 在对话里画结构图、解题步骤、词汇卡。
 - 解析长难句时用 show_sentence_map；讲某道题怎么做时用 show_steps（定位 → 对照 → 排除）；讲到要记的词或短语时用 show_cards；学习者看不懂某题答案、问“为什么选这个”时用 show_answer_map。用了这些，正文就只写一两句要点，别把内容再写一遍。
 - 引用原文时用「」包住卷面原词原句（照抄，别改写），提到题目写成“第 N 题”：学习者点一下就会跳到卷面那里。
 - 学习者要“考考我的生词 / 复习今天的词”时：先 list_vocab（filter=due，没有就 recent），再用 show_quiz 出题，尽量用这套卷里的原句当例句。
-- 学习者让你“标出来 / 划一下 / 把长难句标上 / 写个释义”时用 annotate_paper，一处调用一次；标完用一句话说标了哪些。
+- 学习者让你“标出来 / 划一下 / 写个释义”时用 annotate_paper；“把长难句标上 / 标到卷子上”时用 mark_long_sentence。一处调用一次，原文一字不差照抄卷面；标完用一句话说标了哪些。
 - 学习者说“记住……”、告诉你考试目标、日期或讲解偏好时，用 update_profile 写进档案（传完整的新档案，保留原有内容）。
 - 学习者让你“记下 / 收藏 / 加进生词本 / 加进错题本”时直接调用工具，不要只口头答应。
 - 出同类练习：对话里还不清楚弱项时先调 get_weak_points，再用 show_quiz 出 3–5 道四六级/考研风格的单选题。题目、答案和解析都放在工具参数里，正文只用一句话说练什么，不要再把题目和答案写一遍。
@@ -397,14 +397,27 @@ TOOLS = [
     ),
     _fn(
         "annotate_paper",
-        "在学习者的卷面上做标注（会显示 AI 角标）：高亮、划线、标长难句，可以在旁边写一句释义。text 用卷面上的原文（原词原句，可以只给开头几个词）。",
+        "在学习者的卷面上高亮或划线（会显示 AI 角标），可以附一句释义（收在一个小便签图标里）。长难句不用它，用 mark_long_sentence。",
         {
-            "text": {"type": "string", "description": "要标的原文，照抄卷面；只给要标的那几个词（标短语就只给短语，标长难句才给整句）"},
-            "style": {"type": "string", "enum": ["highlight", "underline", "long_sentence"], "description": "highlight 高亮重点词句；underline 划线；long_sentence 标长难句"},
-            "note": {"type": "string", "description": "写在旁边的释义或要点，简短，可选"},
+            "text": {"type": "string", "description": "要标的原文，一字不差照抄卷面，只给要标的那几个词"},
+            "style": {"type": "string", "enum": ["highlight", "underline"], "description": "highlight 高亮重点词句；underline 划线"},
+            "note": {"type": "string", "description": "释义或要点，简短，可选"},
             "page": {"type": "integer", "description": "第几页，可选"},
         },
         ["text", "style"],
+    ),
+    _fn(
+        "mark_long_sentence",
+        "把一句长难句的结构标在卷面上：卷面上这句划蓝虚线，学习者点一下在底部看主干（按成分上色）、修饰成分、难点和译文，平时不占地方。学习者让你“标长难句 / 把这句标上 / 分析一下标到卷子上”时用，一句调用一次。",
+        {
+            "sentence": {"type": "string", "description": "卷面上的整句原文，一字不差照抄"},
+            "main": {"type": "array", "description": "主干，按句中先后", "items": {"type": "object", "properties": {"text": {"type": "string", "description": "原句里的原词，照抄"}, "role": {"type": "string", "description": "主语、谓语、宾语、表语、宾语补足语、形式主语、真正主语"}}, "required": ["text", "role"]}},
+            "parts": {"type": "array", "description": "从句、插入语、非谓语等修饰成分", "items": {"type": "object", "properties": {"text": {"type": "string", "description": "原句里的原文片段，照抄"}, "role": {"type": "string", "description": "如 定语从句、宾语从句、状语从句、插入语、非谓语作定语"}, "of": {"type": "string", "description": "修饰原句里的哪个词"}, "note": {"type": "string", "description": "一句中文要点，可选"}}, "required": ["text", "role"]}},
+            "points": {"type": "array", "items": {"type": "string"}, "description": "难点，1–3 条，每条一句"},
+            "translation": {"type": "string", "description": "按结构拆开的地道译文"},
+            "page": {"type": "integer", "description": "第几页，可选"},
+        },
+        ["sentence", "main", "translation"],
     ),
     _fn(
         "list_vocab",

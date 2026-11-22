@@ -14,7 +14,7 @@ import { SyntaxCard } from "./SyntaxCard";
  * 这句是仔细阅读里的长难句（syn）时直接放长难句解析（结构 + 译文），不用再点一下。
  * 查词 2026-11-12 起不在这里了：改成词旁边的小卡片（WordCard）
  */
-export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null; nav?: { pos: string; prev?: () => void; next?: () => void } };
+export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null; nav?: { pos: string; prev?: () => void; next?: () => void }; onRemove?: () => void };
 
 /** 竖屏底部抽屉开着时，底部条的内容变成抽屉里临时出现的标签：标签上写什么 */
 export function barLabel(c: BarContent) {
@@ -203,7 +203,7 @@ export function AnswerBar({
             </div>
           </div>
           <DrawerBody key={content.id}>
-            {content.syn ? <SyntaxCard e={content.syn} /> : <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />}
+            {content.syn ? <SyntaxCard e={content.syn} onRemove={content.onRemove} /> : <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />}
           </DrawerBody>
         </>
       )}

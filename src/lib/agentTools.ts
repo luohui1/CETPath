@@ -20,6 +20,8 @@ import { lookupOnline } from "./youdao";
 import { addMethod } from "./methods";
 import { KIND_NAMES, type Paper, type PdfWordsPage } from "./papers";
 import { newMark, wordRange } from "./marks";
+import { locate, type SyntaxPiece } from "./syntax";
+import { sentenceKey } from "./trans";
 import type { ToolCall } from "./agent";
 
 /** Agent 的工具在浏览器里执行：词典、生词本、错题本都在学习者本机。env 是做题页的上下文（AI 助教页没有试卷） */
@@ -270,11 +272,13 @@ ${(await getProfile()) || "（还没有）"}
             result: "当前不在做题页，没法标注",
           };
         const text = String(a.text ?? "").trim();
-        const style =
-          a.style === "underline" || a.style === "long_sentence"
-            ? a.style
-            : "highlight";
-        const hit = findText(env.pages, text, Number(a.page) || undefined);
+        if (a.style === "long_sentence")
+          return {
+            label: "标注：长难句改用结构卡片",
+            result: "长难句不要用 annotate_paper，改用 mark_long_sentence 把整句的主干、修饰成分和译文标在卷面上",
+          };
+        const style = a.style === "underline" ? "underline" : "highlight";
+        const hit = findSpan(env.pages, text, Number(a.page) || undefined);
         if (!hit)
           return {
             label: `标注：卷面上没找到“${text.slice(0, 30)}”`,
@@ -286,12 +290,7 @@ ${(await getProfile()) || "（还没有）"}
           hit.b,
         );
         const kind = style === "highlight" ? "highlight" : "underline";
-        const color =
-          style === "highlight"
-            ? "yellow"
-            : style === "long_sentence"
-              ? "blue"
-              : "red";
+        const color = style === "highlight" ? "yellow" : "red";
         const note =
           typeof a.note === "string" && a.note.trim()
             ? a.note.trim().slice(0, 200)
@@ -315,20 +314,66 @@ ${(await getProfile()) || "（还没有）"}
               kind: "note",
               color: "note",
               at: [Math.min(W - 12, last[2] + 8), last[1] + 2],
-              note: (style === "long_sentence" ? "长难句：" : "") + note,
+              note,
               ai: true,
             }),
           );
         await db.marks.bulkPut(marks);
-        const what =
-          style === "highlight"
-            ? "高亮"
-            : style === "long_sentence"
-              ? "标了长难句"
-              : "划线";
+        const what = style === "highlight" ? "高亮" : "划线";
         return {
           label: `第 ${hit.page} 页${what} · ${got.slice(0, 40)}${note ? `（${note.slice(0, 20)}）` : ""}`,
           result: `已在第 ${hit.page} 页${what}：${got}${note ? `，旁边写了：${note}` : ""}`,
+        };
+      }
+      case "mark_long_sentence": {
+        if (!env.paper || !env.pages)
+          return { label: "长难句：这里没有试卷", result: "当前不在做题页，没法标" };
+        const text = String(a.sentence ?? "").trim();
+        const hit = findSpan(env.pages, text, Number(a.page) || undefined);
+        if (!hit)
+          return {
+            label: `长难句：卷面上没找到“${text.slice(0, 30)}”`,
+            result: `卷面上没找到这句：${text.slice(0, 80)}。照抄卷面上的整句原文`,
+          };
+        const pg = env.pages[hit.page - 1];
+        const en = pg.s[pg.w[hit.a][5]];
+        if (!en) return { label: "长难句：没对上卷面的句子", result: "卷面上这里没有完整的句子，换一句" };
+        // 片段要在卷面这句里找得到（大小写、弯引号不计），找不到的丢掉
+        const pieces = (x: unknown): SyntaxPiece[] =>
+          (Array.isArray(x) ? x : [])
+            .map((p) => ({
+              t: String(p?.text ?? p?.t ?? "").trim(),
+              r: String(p?.role ?? p?.r ?? "").trim(),
+              ...(p?.of ? { of: String(p.of) } : {}),
+              ...(p?.note ? { note: String(p.note) } : {}),
+            }))
+            .filter((p) => p.t && p.r && locate(en, p.t));
+        const main = pieces(a.main);
+        if (!main.length)
+          return {
+            label: "长难句：主干没对上原句",
+            result: `主干片段在卷面原句里找不到。卷面上这句是：${en}。main 里的 text 要照抄这句里的原词`,
+          };
+        const key = sentenceKey(en);
+        const now = Date.now();
+        await db.aiSyntax.put({
+          id: `${env.paper.id}:${key}`,
+          paperId: env.paper.id,
+          key,
+          entry: {
+            group: "ai",
+            en,
+            main,
+            parts: pieces(a.parts),
+            points: (Array.isArray(a.points) ? a.points : []).map(String).filter(Boolean).slice(0, 4),
+            zh: String(a.translation ?? "").trim(),
+          },
+          createdAt: now,
+          updatedAt: now,
+        });
+        return {
+          label: `第 ${hit.page} 页标了长难句 · ${en.slice(0, 40)}`,
+          result: `已标在第 ${hit.page} 页：卷面上这句划了蓝虚线，学习者点一下就能看主干、修饰成分和译文。正文不用再把结构写一遍`,
         };
       }
       case "update_profile": {
@@ -421,6 +466,37 @@ export function quizOf(
 }
 
 /** 在卷面文字层里找一段原文（按词比，忽略大小写和标点）；找不到整段就用前几个词定位、按词数往后取 */
+/**
+ * Agent 要标的一段原文在卷面上的位置：整段一字不差最好；对不上时要开头 4 个词和结尾 3 个词都对得上、
+ * 中间隔的词数差不多，免得只凭开头几个词标到别处去
+ */
+export function findSpan(pages: PdfWordsPage[], text: string, page?: number): { page: number; a: number; b: number } | null {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = text.split(/\s+/).map(norm).filter(Boolean);
+  if (!want.length) return null;
+  const order = page && pages[page - 1] ? [page - 1, ...pages.map((_, i) => i).filter((i) => i !== page - 1)] : pages.map((_, i) => i);
+  const at = (w: string[], i: number, seq: string[]) => seq.every((x, k) => w[i + k] === x);
+  for (const pi of order) {
+    const w = pages[pi].w.map((x) => norm(x[0]));
+    for (let i = 0; i + want.length <= w.length; i++) if (at(w, i, want)) return { page: pi + 1, a: i, b: i + want.length - 1 };
+  }
+  if (want.length < 6) return null;
+  const head = want.slice(0, 4);
+  const tail = want.slice(-3);
+  const slack = Math.max(3, Math.round(want.length * 0.25));
+  for (const pi of order) {
+    const w = pages[pi].w.map((x) => norm(x[0]));
+    for (let i = 0; i < w.length; i++) {
+      if (!at(w, i, head)) continue;
+      for (let len = want.length - slack; len <= want.length + slack; len++) {
+        const j = i + len - tail.length;
+        if (j > i + head.length - 1 && j + tail.length <= w.length && at(w, j, tail)) return { page: pi + 1, a: i, b: j + tail.length - 1 };
+      }
+    }
+  }
+  return null;
+}
+
 export function findText(
   pages: PdfWordsPage[],
   text: string,

@@ -62,7 +62,8 @@ export function RoleTag({ r, part }: { r: string; part?: boolean }) {
   );
 }
 
-export function SyntaxCard({ e }: { e: SyntaxEntry }) {
+/** onRemove：Agent 标的长难句可以删 */
+export function SyntaxCard({ e, onRemove }: { e: SyntaxEntry; onRemove?: () => void }) {
   return (
     <div className="space-y-3">
       <figure className="rounded-[10px] bg-[var(--paper-50)] px-3.5 py-2 shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
@@ -117,6 +118,11 @@ export function SyntaxCard({ e }: { e: SyntaxEntry }) {
           </ol>
           </div>
         </details>
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="text-[13px] text-[var(--ink-500)] hover:text-[var(--danger)]">
+          删掉这条 AI 标的长难句
+        </button>
       )}
     </div>
   );
