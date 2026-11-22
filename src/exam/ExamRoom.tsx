@@ -913,6 +913,7 @@ export function ExamRoom({
       const w = pages?.[page - 1]?.w[range[0]];
       if (!w || !document.getElementById(`pdf-page-${page}`)) return;
       setTool("select");
+      leftView.current = true;
       scrollToY(topOf(page, w[2]) - (stage?.clientHeight ?? 600) / 3);
       setWordFlash({ page, range, n: Date.now() });
     },
@@ -1635,8 +1636,26 @@ export function ExamRoom({
   // 打开的那道题（题号和贴着它的选项条）要露在可见区域里：本来就看得见就不动，看不见只滚到刚好露出来。
   // 正在查的那个词：整个不在视野里就放到可见区域上部三分之一处，只差一点就挪一点。
   // 底部条、停靠区都排在卷面旁边（卷面那一栏跟着变窄变矮），画布的框就是可见区域；它们开关、换高度时再看一次
+  // 用户自己滚开了（滚轮、手指）或点了"在卷面上标出"跳去定位句：同一道题、同一个词就不再拉回来，换了题、换了词才重新管
+  const viewKey = useRef("");
+  const leftView = useRef(false);
+  useEffect(() => {
+    if (!stage) return;
+    const off = () => (leftView.current = true);
+    stage.addEventListener("wheel", off, { passive: true });
+    stage.addEventListener("touchmove", off, { passive: true });
+    return () => {
+      stage.removeEventListener("wheel", off);
+      stage.removeEventListener("touchmove", off);
+    };
+  }, [stage]);
   useEffect(() => {
     if (!stage || (!openQ && !hit)) return;
+    const key = `${openQ}|${hit?.page}|${hit?.index}`;
+    if (key !== viewKey.current) {
+      viewKey.current = key;
+      leftView.current = false;
+    } else if (leftView.current) return;
     const s = stage.getBoundingClientRect();
     const top = s.top + (compact && !barHidden ? 56 : 0) + 8;
     const bottom = s.bottom - 12;
