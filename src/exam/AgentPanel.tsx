@@ -94,6 +94,7 @@ export function AgentPanel({
   );
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [think, setThink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [noted, setNoted] = useState<string[]>([]);
   // 回答折叠：较早的长回答默认收起，点了展开；这里记手动切换过的
@@ -163,12 +164,14 @@ export function AgentPanel({
       // 模型要用工具：在本机执行，把结果接回去再问，最多 4 轮
       for (let step = 0; step < 4; step++) {
         const cur = list;
+        setThink("");
         const r = await streamChat(
           cur,
           live,
           (all) => put([...cur, { role: "assistant", content: all }]),
           ctl.signal,
           true,
+          setThink,
         );
         if (r.text) answer = r.text;
         list = [
@@ -210,6 +213,7 @@ export function AgentPanel({
         setError((e as Error).message || "出错了");
     } finally {
       setBusy(false);
+      setThink("");
       abort.current = null;
     }
   };
@@ -400,8 +404,14 @@ export function AgentPanel({
                 </div>
               ) : (
                 !m.calls?.length && (
-                  <span className="inline-flex items-center gap-2 text-[var(--ink-500)]">
-                    <Spinner /> 在想…
+                  <span className="flex min-w-0 items-center gap-2 text-[var(--ink-500)]">
+                    <Spinner />
+                    <span className="shrink-0">在想…</span>
+                    {streaming && think && (
+                      <span className="truncate text-[12px] text-[var(--ink-400)]">
+                        {think.slice(-60).replace(/\s+/g, " ")}
+                      </span>
+                    )}
                   </span>
                 )
               )}

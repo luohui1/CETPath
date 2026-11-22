@@ -165,6 +165,7 @@ export async function streamChat(
   onText: (all: string) => void,
   signal?: AbortSignal,
   tools = false,
+  onThink?: (all: string) => void,
 ): Promise<{ text: string; calls: ToolCall[] }> {
   const r = await fetch("/api/agent/chat", {
     method: "POST",
@@ -184,26 +185,45 @@ export async function streamChat(
   let buf = "";
   let all = "";
   let calls: ToolCall[] = [];
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i: number;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const line = buf.slice(0, i).trim();
-      buf = buf.slice(i + 2);
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (payload === "[DONE]") return { text: all, calls };
-      const d = JSON.parse(payload) as {
-        t?: string;
-        error?: string;
-        calls?: ToolCall[];
-      };
-      if (d.error) throw new Error(d.error);
-      if (d.t) onText((all += d.t));
-      if (d.calls) calls = d.calls;
+  let think = "";
+  // 模型那边断了流又不关连接时，别让学习者一直看着"在想…"
+  let stalled = false;
+  let timer = 0;
+  const arm = () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      stalled = true;
+      void reader.cancel();
+    }, 45_000);
+  };
+  try {
+    for (;;) {
+      arm();
+      const { value, done } = await reader.read();
+      if (stalled) throw new Error("模型那边 45 秒没动静，再发一次试试");
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i: number;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 2);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") return { text: all, calls };
+        const d = JSON.parse(payload) as {
+          t?: string;
+          think?: string;
+          error?: string;
+          calls?: ToolCall[];
+        };
+        if (d.error) throw new Error(d.error);
+        if (d.think) onThink?.((think += d.think));
+        if (d.t) onText((all += d.t));
+        if (d.calls) calls = d.calls;
+      }
     }
+  } finally {
+    clearTimeout(timer);
   }
   return { text: all, calls };
 }

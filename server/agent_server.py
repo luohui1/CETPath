@@ -589,6 +589,8 @@ def upstream(cfg: dict, messages: list[dict], stream: bool, max_tokens: int = 18
         body["stream_options"] = {"include_usage": True}
     if tools:
         body["tools"] = tools
+    if not cfg.get("thinking") and "deepseek" in body["model"].lower():
+        body["thinking"] = {"type": "disabled"}  # 开着思考要先想 7–15 秒才出字，还会吃掉 max_tokens
     t = cfg.get("temperature") if temperature is None else temperature
     if t is not None:
         body["temperature"] = t
@@ -960,7 +962,7 @@ class Handler(BaseHTTPRequestHandler):
         msgs = [{"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": png}}]}]
         vision = cfg.get("vision_model") or next((m for m in models(cfg) if "gemini" in m.lower()), None)
         try:
-            with upstream(cfg, msgs, False, 1200, 0, model=vision, kind="ink") as r:
+            with upstream(cfg, msgs, False, 3000, 0, model=vision, kind="ink") as r:
                 out = (json.load(r)["choices"][0]["message"]["content"] or "").strip()
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
@@ -987,7 +989,7 @@ class Handler(BaseHTTPRequestHandler):
             sys_msg += "\n\n" + ctx
         try:
             pick = data.get("model") if data.get("model") in models(cfg) else None
-            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, model=pick, tools=TOOLS if data.get("tools") else None)
+            r = upstream(cfg, [{"role": "system", "content": sys_msg}, *turns], True, 4000, model=pick, tools=TOOLS if data.get("tools") else None)
         except Exception as e:  # noqa: BLE001
             return self.send_json(502, {"error": upstream_error(e)})
         self.send_response(200)
@@ -1012,6 +1014,9 @@ class Handler(BaseHTTPRequestHandler):
                     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
                     delta = d.get("content")
+                    if d.get("reasoning_content"):  # 会思考的模型先想再答：把想的过程也传过去，前端不至于干等
+                        self.wfile.write(b"data: " + json.dumps({"think": d["reasoning_content"]}, ensure_ascii=False).encode() + b"\n\n")
+                        self.wfile.flush()
                     for tc in d.get("tool_calls") or []:
                         c = calls.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
                         f = tc.get("function") or {}
