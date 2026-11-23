@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { choiceStems, marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
 import { goBack } from "@/lib/nav";
 import { inkNotes } from "@/lib/ink";
 import type { AgentThread } from "./AgentPanel";
@@ -1605,7 +1605,7 @@ export function ExamRoom({
         sentence: "",
         reviewReady,
         review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers),
-        paperText: paperText(pages, undefined, allQuestions(paper)),
+        paperText: paperText(pages, undefined, choiceStems(paper)),
         marks: marksSummary(marksRaw),
       },
     }),
