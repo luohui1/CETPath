@@ -264,14 +264,17 @@ export function WordCard({
   const scrolled = useRef(false);
   // 同一个词摆在原文上面还是下面，定了就不轻易换：卷面滚动、内容变高时来回换边就是上下频闪
   const side = useRef<boolean | null>(null);
+  const scrollingUntil = useRef(0);
   useLayoutEffect(() => {
     scrolled.current = false;
   }, [hit, showTrans, more, phrases, pick, online]);
   useLayoutEffect(() => {
     side.current = null;
+    scrollingUntil.current = 0;
   }, [hit]);
   useLayoutEffect(() => {
     let raf = 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
     const run = () => {
       raf = 0;
       const el = self.current;
@@ -288,7 +291,7 @@ export function WordCard({
       let below: boolean;
       const kept = side.current;
       if (kept !== null && natural <= (kept ? roomBelow : roomAbove)) below = kept;
-      else if (scrolled.current && kept) below = true; // 正在把卷面往上滚、给下面腾地方
+      else if (kept && performance.now() < scrollingUntil.current) below = true; // 正在把卷面往上滚、给下面腾地方
       else if (natural <= roomBelow && natural <= roomAbove) below = word.top + word.height / 2 < b.top + b.height / 2;
       else if (natural <= roomBelow) below = true;
       else if (natural <= roomAbove) below = false;
@@ -301,6 +304,9 @@ export function WordCard({
           const delta = Math.min(need, can);
           if (delta > 8) {
             scrolled.current = true;
+            scrollingUntil.current = performance.now() + 700;
+            clearTimeout(settle);
+            settle = setTimeout(kick, 750); // 滚完（或滚到底也没腾够地方）再摆一次
             scroller.scrollBy({ top: delta, behavior: "smooth" });
             below = true;
           }
@@ -328,6 +334,7 @@ export function WordCard({
     if (body.current?.firstElementChild) ro.observe(body.current.firstElementChild);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(settle);
       removeEventListener("scroll", kick, true);
       removeEventListener("resize", kick);
       ro.disconnect();
