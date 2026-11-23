@@ -265,6 +265,7 @@ export function WordCard({
   // 同一个词摆在原文上面还是下面，定了就不轻易换：卷面滚动、内容变高时来回换边就是上下频闪
   const side = useRef<boolean | null>(null);
   const scrollingUntil = useRef(0);
+  const recent = useRef<{ key: string; maxH: number; t: number }[]>([]);
   useLayoutEffect(() => {
     scrolled.current = false;
   }, [hit, showTrans, more, phrases, pick, online]);
@@ -284,7 +285,9 @@ export function WordCard({
       const b = bounds();
       const { word, avoid } = at;
       const w = el.offsetWidth;
-      const natural = Math.min(content.scrollHeight, MAX_H);
+      // 向上取整：scrollHeight 舍掉的零点几像素会让里面多出滚动条、字换行变高，卡片就一帧高一帧矮地闪
+      const inner = content.firstElementChild?.getBoundingClientRect().height ?? 0;
+      const natural = Math.min(Math.max(content.scrollHeight, Math.ceil(inner)), MAX_H);
       const hidden = word.bottom < b.top || word.top > b.bottom || word.right < b.left || word.left > b.right;
       const roomBelow = b.bottom - avoid.bottom - GAP - EDGE;
       const roomAbove = avoid.top - b.top - GAP - EDGE;
@@ -320,6 +323,15 @@ export function WordCard({
       const cx = word.left + word.width / 2;
       const left = Math.max(b.left + EDGE, Math.min(cx - w / 2, b.right - EDGE - w));
       const arrow = Math.max(16, Math.min(cx - left, w - 16));
+      // 兜底：两种摆法一帧一帧来回换（高度互相影响），就停在高的那种，不再跟着换
+      const key = `${below}|${top}|${maxH}`;
+      const now = performance.now();
+      const hist = recent.current.filter((x) => now - x.t < 400);
+      if (hist.length >= 3 && hist[hist.length - 2].key === key && hist[hist.length - 1].key !== key) {
+        const other = hist[hist.length - 1];
+        if (other.maxH > maxH) return;
+      }
+      recent.current = [...hist.slice(-5), { key, maxH, t: now }];
       setPlace((p) =>
         p && p.left === left && p.top === top && p.maxH === maxH && p.below === below && p.arrow === arrow && p.hidden === hidden ? p : { left, top, maxH, below, arrow, hidden },
       );
@@ -400,7 +412,9 @@ export function WordCard({
           style={{ left: place.arrow - 6 }}
         />
       )}
-      <div ref={body} className="relative overflow-y-auto overscroll-contain rounded-[14px]" style={{ maxHeight: place?.maxH ?? MAX_H }}>
+      <div
+        ref={body}
+        className="relative overflow-y-auto overscroll-contain rounded-[14px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ maxHeight: place?.maxH ?? MAX_H }}>
         <div className="px-4 pt-2.5 pb-3.5">
           {/* 头一行：词、音标、发音、✕ */}
           <div className="flex min-h-11 items-center gap-1.5">
