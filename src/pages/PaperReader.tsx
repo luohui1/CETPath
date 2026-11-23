@@ -278,7 +278,7 @@ export function PaperReaderPage() {
       a.sectionSec = undefined;
       a.questionSec = undefined;
       a.startedAt = Date.now();
-    });
+    }, init);
     setSessionSec(0);
   };
 
