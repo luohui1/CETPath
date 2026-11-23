@@ -123,6 +123,8 @@ def main():
     if not RAW.exists():
         sys.exit(f"缺少 {RAW}（放 OpenEtymology 的 EPUB）")
     oe = parse()
+    if not oe:
+        sys.exit(f"{RAW} 里没解析出词条（要 OpenEtymology 的 EPUB），原来的 {OUT} 没动")
     dic = load_dict()
     books = {}
     for b in ("cet4", "cet6", "ky"):
