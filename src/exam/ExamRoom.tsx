@@ -470,11 +470,14 @@ export function ExamRoom({
     setSynOn(localStorage.getItem(`yz-syn-on:${paper.id}`) === "1");
   }, [paper.id]);
   const toggleSyn = useCallback(() => {
-    setSynOn((v) => {
-      localStorage.setItem(`yz-syn-on:${paper.id}`, v ? "0" : "1");
-      return !v;
-    });
-  }, [paper.id]);
+    const next = !synOn;
+    setSynOn(next);
+    try {
+      localStorage.setItem(`yz-syn-on:${paper.id}`, next ? "1" : "0");
+    } catch {
+      // 存储满了就只在这次打开时生效
+    }
+  }, [paper.id, synOn]);
   const [playing, setPlaying] = useState<{ seg: string | null; on: boolean }>({ seg: null, on: false });
   const [confirm, setConfirm] = useState<"submit" | "redo" | "clear" | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false); // 刚交卷：答题卡上的分数"盖"下去
