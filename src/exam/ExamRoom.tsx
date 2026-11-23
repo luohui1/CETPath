@@ -2546,6 +2546,7 @@ export function ExamRoom({
           // 手上这题的秒表、还没存的各部分用时都是重开前的，丢掉，不记进新的作答
           timer.discard();
           secBuf.current = {};
+          setOpenQ(null); // 收起开着的题：重开后点开哪题，就从那题重新计时
           await onRedo();
           stage?.scrollTo({ top: 0 });
         }}
