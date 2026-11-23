@@ -1,11 +1,12 @@
 import { Fragment } from "react";
 import { syntaxRuns, type SyntaxEntry } from "@/lib/syntax";
 import { cn } from "@/lib/utils";
-import { CardSection } from "./cardParts";
 
 /*
- * 一句长难句的解析：原句上直接画结构（主干加粗、按成分上色下划线；修饰成分用 [ ] 括起来，右上角编号），
- * 下面依次是主干一行、修饰成分（编号对得上原句里的括号）、难点、按结构拆开的译文。
+ * 一句长难句的解析，从骨架到细节：
+ * 1. 主干：主语 → 谓语 → 宾语/表语，一块块排开，下面写成分名；
+ * 2. 原句：主干的词按成分上色加粗，修饰成分保持原色、开头一个小编号（不用括号和底色，免得满屏符号）；
+ * 3. 译文；4. 修饰成分逐条（编号对得上原句）；5. 怎么拆（难点）。
  */
 
 const SUBJ = new Set(["主语", "形式主语", "真正主语"]);
@@ -20,110 +21,120 @@ const NUM = "①②③④⑤⑥⑦⑧";
 
 export function SyntaxSentence({ e, className }: { e: SyntaxEntry; className?: string }) {
   const runs = syntaxRuns(e);
-  const len = (k: number) => e.parts[k].t.length;
   return (
-    <p className={cn("serif text-[17px] leading-[2.1] text-[var(--ink)]", className)}>
+    <p className={cn("serif text-[17px] leading-[2] text-[var(--ink-700)]", className)}>
       {runs.map((r, i) => (
         <Fragment key={i}>
-          {[...r.opens]
-            .sort((a, b) => len(b) - len(a))
-            .map((k) => (
-              <span key={`o${k}`} className="font-sans text-[var(--star-ink)]">
-                [<span className="mr-0.5 align-[0.35em] text-[12px] leading-none font-semibold">{NUM[k] ?? k + 1}</span>
-              </span>
-            ))}
-          {r.main ? (
-            <b className="font-semibold underline decoration-2 underline-offset-[5px]" style={{ textDecorationColor: roleColor(r.main) }}>
-              {r.text}
-            </b>
-          ) : (
-            <span className={r.inParts.length ? "text-[var(--ink-700)]" : undefined}>{r.text}</span>
-          )}
-          {[...r.closes]
-            .sort((a, b) => len(a) - len(b))
-            .map((k) => (
-              <span key={`c${k}`} className="font-sans text-[var(--star-ink)]">
-                ]
-              </span>
-            ))}
+          {r.opens.map((k) => (
+            <sup key={k} className="mr-0.5 font-sans text-[11px] font-semibold text-[var(--mark-ink)]">
+              {NUM[k] ?? k + 1}
+            </sup>
+          ))}
+          <span
+            className={cn(r.main && "font-semibold underline decoration-[1.5px] underline-offset-[5px]")}
+            style={r.main ? { color: roleColor(r.main), textDecorationColor: `color-mix(in oklab, ${roleColor(r.main)} 45%, transparent)` } : undefined}
+          >
+            {r.text}
+          </span>
         </Fragment>
       ))}
     </p>
   );
 }
 
-/** 成分小章：主干成分按颜色分；修饰成分（从句、插入语……）一律和原句里的括号一个颜色 */
+/** 成分小章：主干成分按颜色分；修饰成分一律荧光笔的颜色 */
 export function RoleTag({ r, part }: { r: string; part?: boolean }) {
-  const c = part ? "var(--star-ink)" : roleColor(r);
+  const c = part ? "var(--mark-ink)" : roleColor(r);
   return (
-    <span className="inline-flex h-6 flex-none items-center rounded-full px-2 text-[12px] font-semibold" style={{ color: c, background: `color-mix(in oklab, ${c} 10%, transparent)` }}>
+    <span className="inline-flex h-5 flex-none items-center rounded-full px-1.5 text-[11px] font-semibold" style={{ color: c, background: `color-mix(in oklab, ${c} 9%, transparent)` }}>
       {r}
     </span>
   );
 }
 
+function Label({ children }: { children: React.ReactNode }) {
+  return <h4 className="mb-2 text-[12px] font-semibold tracking-[0.04em] text-[var(--ink-500)]">{children}</h4>;
+}
+
 /** onRemove：Agent 标的长难句可以删 */
 export function SyntaxCard({ e, onRemove }: { e: SyntaxEntry; onRemove?: () => void }) {
   return (
-    <div className="space-y-3">
-      <figure className="rounded-[10px] bg-[var(--paper-50)] px-3.5 py-2 shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
-        <SyntaxSentence e={e} />
-      </figure>
-      <CardSection label={<>译文<span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">AI 解析</span></>}>
-        <p className="text-[17px] leading-[1.7] text-[var(--ink)]">{e.zh}</p>
-      </CardSection>
-      <CardSection label="主干">
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-[15px] leading-[1.5]">
+    <div className="min-w-0 space-y-5 pb-1 [overflow-wrap:anywhere]">
+      {/* 主干：一句话的骨架 */}
+      <section>
+        <Label>主干</Label>
+        <div className="flex flex-wrap items-start gap-x-1 gap-y-2">
           {e.main.map((m, i) => (
-            <span key={i} className="inline-flex max-w-full items-center gap-1.5">
-              {i > 0 && <span className="text-[var(--ink-300)]">+</span>}
-              <RoleTag r={m.r} />
-              <span className="serif min-w-0 text-[var(--ink)]">{m.t}</span>
-            </span>
+            <Fragment key={i}>
+              {i > 0 && <span className="px-0.5 pt-1.5 text-[var(--ink-300)]">→</span>}
+              <span className="flex max-w-full min-w-0 flex-col rounded-[10px] px-2.5 py-1.5" style={{ background: `color-mix(in oklab, ${roleColor(m.r)} 7%, white)` }}>
+                <span className="serif text-[16px] leading-[1.35] font-semibold" style={{ color: roleColor(m.r) }}>
+                  {m.t}
+                </span>
+                <span className="text-[11px] text-[var(--ink-500)]">{m.r}</span>
+              </span>
+            </Fragment>
           ))}
         </div>
-      </CardSection>
-      <CardSection label="难点">
-        <ul className="space-y-1 text-[15px] leading-[1.6] text-[var(--ink-700)]">
+      </section>
+
+      {/* 原句：结构画在句子上 */}
+      <section>
+        <Label>原句</Label>
+        <SyntaxSentence e={e} />
+      </section>
+
+      <section>
+        <Label>译文</Label>
+        <p className="text-[16px] leading-[1.75] text-[var(--ink)]">{e.zh}</p>
+      </section>
+
+      {e.parts.length > 0 && (
+        <section>
+          <Label>修饰成分</Label>
+          <ol className="space-y-2.5">
+            {e.parts.map((p, k) => (
+              <li key={k} className="flex gap-2.5">
+                <span className="mt-[1px] flex size-5 flex-none items-center justify-center rounded-full bg-[var(--mark-tint)] text-[12px] font-semibold text-[var(--mark-ink)]">{k + 1}</span>
+                <div className="min-w-0 text-[14px] leading-[1.6]">
+                  <div>
+                    <span className="font-semibold text-[var(--ink)]">{p.r}</span>
+                    {p.of && (
+                      <span className="text-[var(--ink-500)]">
+                        {" "}
+                        · 修饰 <span className="serif text-[var(--ink-700)]">{p.of}</span>
+                      </span>
+                    )}
+                    {p.note && <span className="text-[var(--ink-500)]">（{p.note}）</span>}
+                  </div>
+                  <div className="serif text-[15px] text-[var(--ink-700)]">{p.t}</div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      <section>
+        <Label>怎么拆</Label>
+        <ul className="space-y-1.5">
           {e.points.map((x, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="mt-[0.7em] size-1 flex-none rounded-full bg-[var(--ink-300)]" />
+            <li key={i} className="flex gap-2 text-[14px] leading-[1.65] text-[var(--ink-700)]">
+              <span className="mt-[0.6em] size-1.5 flex-none rounded-full bg-[var(--blue-line)]" />
               {x}
             </li>
           ))}
         </ul>
-      </CardSection>
-      {e.parts.length > 0 && (
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]">
-            <span className="transition-transform group-open:rotate-90">›</span>修饰成分 <span className="num">{e.parts.length}</span> 处
-          </summary>
-          <div className="mt-2">
-          <ol className="space-y-2">
-            {e.parts.map((p, k) => (
-              <li key={k} className="flex gap-2 text-[15px] leading-[1.6]">
-                <span className="w-5 flex-none font-semibold text-[var(--star-ink)]">{NUM[k] ?? k + 1}</span>
-                <span className="min-w-0">
-                  <span className="font-semibold text-[var(--ink)]">{p.r}</span>
-                  {p.of && (
-                    <span className="text-[var(--ink-500)]">
-                      ，修饰 <span className="serif text-[var(--ink-700)]">{p.of}</span>
-                    </span>
-                  )}
-                  {p.note && <span className="text-[var(--ink-500)]">（{p.note}）</span>}
-                  <span className="serif block text-[var(--ink-700)]">{p.t}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          </div>
-        </details>
-      )}
-      {onRemove && (
-        <button type="button" onClick={onRemove} className="text-[13px] text-[var(--ink-500)] hover:text-[var(--danger)]">
-          删掉这条 AI 标的长难句
-        </button>
-      )}
+      </section>
+
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--line-soft)] pt-3 text-[12px] text-[var(--ink-500)]">
+        <span>AI 生成的解析，仅供参考</span>
+        {onRemove && (
+          <button type="button" onClick={onRemove} className="hover:text-[var(--danger)]">
+            删掉这条 AI 标的长难句
+          </button>
+        )}
+      </div>
     </div>
   );
 }

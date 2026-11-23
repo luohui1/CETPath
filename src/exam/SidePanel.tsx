@@ -692,7 +692,7 @@ function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-      <p className="px-2.5 pt-1.5 pb-2 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上带蓝色虚线的句子都有解析：点句子里的词或长按句子也能打开。</p>
+      <p className="px-2.5 pt-1.5 pb-2 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上句首带小蓝点、下面一道细线的句子都有结构解析，长按句子或在这里点开。</p>
       {[...groups].map(([g, list]) => (
         <section key={g} className="mb-2">
           <h4 className="px-2.5 pt-2 pb-1 text-[13px] font-semibold text-[var(--ink-500)]">{syntax.titles[g] ?? g}</h4>
