@@ -4,6 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, ArrowsClockwise, SpeakerHigh } from "@phosphor-icons/react";
 import type { Grade } from "ts-fsrs";
 import { db, type CardRow } from "@/lib/db";
+import { getRoots, type RootInfo } from "@/lib/roots";
+import { RootLine } from "@/components/RootLine";
 import { getEntry, loadBookMeta, phonetic, TAG_LABELS, translationLines, type BookInfo, type DictEntry } from "@/lib/dict";
 import { buildQueue, isMastered, pendingCounts, previewIntervals, Rating, reviewWord, State, type QueueItem } from "@/lib/learning";
 import { getSettings, setSetting, useSettings, type ReviewMode } from "@/lib/settings";
@@ -245,6 +247,7 @@ export function ReviewPage() {
   const [phase, setPhase] = useState<"front" | "back">("front");
   const [grade, setGrade] = useState<Grade | null>(null);
   const [entry, setEntry] = useState<DictEntry | null | undefined>(undefined);
+  const [roots, setRoots] = useState<RootInfo | null>(null);
   const [card, setCard] = useState<CardRow | undefined>(undefined);
   const [stats, setStats] = useState<SessionStats>({ done: 0, fresh: 0, again: 0 });
   const [extra, setExtra] = useState(0);
@@ -273,15 +276,20 @@ export function ReviewPage() {
     if (!item) return;
     let cancelled = false;
     setEntry(undefined);
-    Promise.all([getEntry(item.word), db.cards.get(item.word)]).then(([e, c]) => {
+    setRoots(null);
+    Promise.all([getEntry(item.word), db.cards.get(item.word), getRoots(item.word)]).then(([e, c, r]) => {
       if (cancelled) return;
       setEntry(e ?? null);
+      setRoots(r);
       setCard(c);
       // 拼写不自动读（读了就等于告诉你怎么拼）；听写由拼写卡自己读
       if (e && settings.autoSpeak && !spelling) speak(e.w);
     });
     const next = queue?.[idx + 1];
-    if (next) void getEntry(next.word);
+    if (next) {
+      void getEntry(next.word);
+      void getRoots(next.word);
+    }
     return () => {
       cancelled = true;
     };
@@ -412,6 +420,7 @@ export function ReviewPage() {
                   </div>
                 )}
                 <DefinitionLines lines={translationLines(entry)} />
+                {roots && <RootLine info={roots} />}
                 <Forms entry={entry} />
               </div>
             )}

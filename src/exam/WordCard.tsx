@@ -8,6 +8,8 @@ import { findPhrases, type PhraseHit } from "@/lib/phrases";
 import { speak } from "@/lib/speech";
 import { getSettings } from "@/lib/settings";
 import { lookupOnline, type OnlineResult } from "@/lib/youdao";
+import { getRoots, type RootInfo } from "@/lib/roots";
+import { RootLine } from "@/components/RootLine";
 import type { TransLookup } from "@/lib/trans";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui";
@@ -40,16 +42,21 @@ const MIN_H = 150; // 再矮就看不清了：宁可滚卷面
 /** 查词，查到了记一次、按设置自动发音；正在查的词（正文里的词元素）加个高亮 */
 function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
   const [result, setResult] = useState<LookupResult | null | undefined>(undefined);
+  const [roots, setRoots] = useState<RootInfo | null>(null);
   const looked = useRef(onLookedUp);
   looked.current = onLookedUp;
   useEffect(() => {
     let cancelled = false;
     setResult(undefined);
+    setRoots(null);
     hit.el?.classList.add("is-active");
+    // 词根和释义一起出来：分两次出来卡片要变两次高
     lookup(word).then(
       async (r) => {
+        const rt = r && !r.parts ? await getRoots(r.entry.w) : null;
         if (cancelled) return;
         setResult(r);
+        setRoots(rt);
         if (r) {
           looked.current();
           if ((await getSettings()).autoSpeak) speak(r.entry.w);
@@ -62,7 +69,7 @@ function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
       hit.el?.classList.remove("is-active");
     };
   }, [word, hit]);
-  return result;
+  return [result, roots] as const;
 }
 
 /** 在线兜底：need 为真才查（离线查不到、或者是连字符词）。undefined 还在查，null 没查到 */
@@ -169,7 +176,7 @@ export function WordCard({
   // "可能是 government"：点了就改查那个词
   const [alt, setAlt] = useState<string | null>(null);
   const word = alt ?? hit.word;
-  const result = useLookup(word, hit, onLookedUp);
+  const [result, roots] = useLookup(word, hit, onLookedUp);
   const online = useOnline(word, result === null || !!result?.parts);
   const [more, setMore] = useState(false);
   const [showTrans, setShowTrans] = useState(false);
@@ -513,6 +520,7 @@ export function WordCard({
               ) : (
                 <BriefSenses lines={lines} max={3} className="flex-col !items-start gap-y-0.5" />
               )}
+              {roots && !parts && <RootLine info={roots} onWord={setAlt} className="mt-2" />}
             </>
           )}
 

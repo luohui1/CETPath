@@ -232,7 +232,11 @@ export function SettingsPage() {
             <a className="text-primary hover:underline" href="https://github.com/skywind3000/ECDICT" target="_blank" rel="noreferrer">
               ECDICT
             </a>
-            （MIT 协议）；记忆算法使用 FSRS。
+            （MIT 协议）；词根词缀和词源来自{" "}
+            <a className="text-primary hover:underline" href="https://github.com/openetymology/OpenEtymology" target="_blank" rel="noreferrer">
+              OpenEtymology
+            </a>
+            （CC BY-SA 4.0）；记忆算法使用 FSRS。
           </p>
           <p>标"示例"的试卷是按真题题型原创的模拟题，只用于演示功能。</p>
         </div>
