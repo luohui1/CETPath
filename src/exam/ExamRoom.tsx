@@ -696,6 +696,8 @@ export function ExamRoom({
 
   // 矮屏并成一行的工具栏：卷面往下滚收起，往上滚、回到顶上或点顶上的小把手露出来
   const [barHidden, setBarHidden] = useState(false);
+  // 重开时要不要连卷面笔记一起清
+  const [redoNotes, setRedoNotes] = useState(false);
   useEffect(() => setBarHidden(false), [compact]);
   // 固定工具栏：往下滑也不收起
   const pinBar = settings.pinToolbar;
@@ -2203,6 +2205,7 @@ export function ExamRoom({
             {(close: () => void) => (
               <div className="py-0.5">
                 {moreItem("本卷笔记", () => (close(), togglePanel("notes")), marks.length ? <span className="num">{marks.length}</span> : undefined)}
+                {!submitted && moreItem("重开这套卷子", () => (close(), setConfirm("redo")))}
                 {moreItem("本卷生词", () => (close(), togglePanel("vocab")), vocabCount ? <span className="num">{vocabCount}</span> : undefined)}
                 {moreItem(
                   "在卷面查找",
@@ -2528,16 +2531,29 @@ export function ExamRoom({
       )}
       <ConfirmDialog
         open={confirm === "redo"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-        title={retry ? "再重做一次？" : "重做这套卷子？"}
-        description={retry ? "会清空这次重做的作答。错题本里的记录保留。" : "会清空本卷的作答记录和用时。卷面笔记和生词本都保留。"}
-        confirmText="清空并重做"
+        onOpenChange={(o) => {
+          if (o) return;
+          setConfirm(null);
+          setRedoNotes(false);
+        }}
+        title={retry ? "再重做一次？" : submitted ? "重做这套卷子？" : "重开这套卷子？"}
+        description={retry ? "会清空这次重做的作答。错题本里的记录保留。" : `会清空本卷的作答记录和用时。${redoNotes ? "卷面笔记也一起删掉，" : "卷面笔记、"}生词本和错题本都保留。`}
+        confirmText={submitted ? "清空并重做" : "清空并重开"}
         danger
         onConfirm={async () => {
+          if (redoNotes && marks.length) await history.remove(marks);
+          setRedoNotes(false);
           await onRedo();
           stage?.scrollTo({ top: 0 });
         }}
-      />
+      >
+        {!retry && marks.length > 0 && (
+          <label className="mt-4 flex min-h-10 items-center gap-2.5 text-[14px] text-[var(--ink-700)]">
+            <input type="checkbox" checked={redoNotes} onChange={(e) => setRedoNotes(e.target.checked)} className="size-4 accent-[var(--red)]" />
+            同时清空卷面笔记（{marks.length} 条高亮、下划线、便签和手写）
+          </label>
+        )}
+      </ConfirmDialog>
       <PaperDialog open={keysOpen} onClose={() => setKeysOpen(false)} title="快捷键" width={440}>
         <dl className="mt-4 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-[14px]">
           {KEYS.map(([keys, what]) => (
