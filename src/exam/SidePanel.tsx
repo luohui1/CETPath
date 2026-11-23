@@ -19,7 +19,6 @@ import { Button, EmptyState } from "@/components/ui";
 import { Tip } from "@/components/overlay";
 import { Explanation, ExplanationCard } from "./Explanation";
 import type { SyntaxFile } from "@/lib/syntax";
-import { RoleTag } from "./SyntaxCard";
 import type { Answers } from "./PaperPages";
 
 type Filter = "all" | "wrong" | "skipped" | "flagged";
@@ -677,6 +676,8 @@ export type DockView = DockTab | "temp";
 /** 停靠区"长难句"标签要的东西：长难句层、各篇的标题、点一句（跳到卷面那句，底部放它的解析）、正在看的那句 */
 export interface DockSyntax {
   file: SyntaxFile;
+  /** 卷面顺序（句子键可能是纯数字，不能靠对象键的顺序）；列表编号和卷面句首的号码按这个数 */
+  order: string[];
   titles: Record<string, string>;
   current: string | null;
   onOpen: (key: string) => void;
@@ -689,7 +690,8 @@ export interface DockSyntax {
 /** 长难句：按篇列出，每句一行（原句前半截 + 第一个难点），点了跳到卷面上那句、底部放解析 */
 function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
   const groups = new Map<string, [string, SyntaxFile["sentences"][string]][]>();
-  for (const [k, e] of Object.entries(syntax.file.sentences)) {
+  for (const k of syntax.order) {
+    const e = syntax.file.sentences[k];
     const list = groups.get(e.group) ?? [];
     list.push([k, e]);
     groups.set(e.group, list);
@@ -705,10 +707,10 @@ function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
           </button>
         </div>
       ) : (
-        <div className="flex items-start gap-2 px-2.5 pt-1.5 pb-2">
-          <p className="flex-1 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上句首带小蓝点、下面一道细线的句子都有结构解析，长按句子或在这里点开。</p>
+        <div className="flex items-center gap-2 px-2.5 pt-1 pb-1">
+          <p className="flex-1 text-[13px] text-[var(--ink-500)]">点句子看结构</p>
           {syntax.ready > 0 && (
-            <button type="button" onClick={syntax.onToggle} className="h-7 flex-none rounded-full px-2.5 text-[12px] font-medium text-[var(--ink-700)] ring-1 ring-[var(--line)] hover:bg-[var(--fill-quiet)]">
+            <button type="button" onClick={syntax.onToggle} className="h-7 flex-none rounded-full px-2 text-[13px] text-[var(--ink-500)] hover:bg-[var(--fill-quiet)] hover:text-[var(--ink)]">
               收起标记
             </button>
           )}
@@ -728,15 +730,8 @@ function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
                 syntax.current === k && "bg-[var(--blue-tint)] hover:bg-[var(--blue-tint)]",
               )}
             >
-              <span className="num w-5 flex-none pt-0.5 text-[13px] text-[var(--ink-500)]">{i + 1}</span>
-              <span className="min-w-0 flex-1">
-                <span className="serif line-clamp-2 text-[15px] leading-[1.5] text-[var(--ink)]">{e.en}</span>
-                <span className="mt-1 flex flex-wrap gap-1">
-                  {[...new Set(e.parts.map((p) => p.r))].slice(0, 3).map((r) => (
-                    <RoleTag key={r} r={r} part />
-                  ))}
-                </span>
-              </span>
+              <span className="num mt-[3px] grid h-[18px] min-w-[18px] flex-none place-items-center rounded-full bg-[var(--blue)] px-1 text-[11px] font-semibold text-white">{i + 1}</span>
+              <span className="serif line-clamp-2 min-w-0 flex-1 text-[15px] leading-[1.5] text-[var(--ink)]">{e.en}</span>
             </button>
           ))}
         </section>

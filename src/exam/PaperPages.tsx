@@ -65,7 +65,7 @@ export interface ExamPageProps {
   activeWord?: number | null; // 正在查的词（这一页的单词序号）
   activeWords?: number[] | null; // 查词卡片认出的短语里的词（整个短语标出来）
   sentence?: number | null; // 长按出译文的那一句（这一页的句子序号）：整句淡黄底
-  longs?: Set<number> | null; // 这一页上有长难句解析的句子（句子序号）：句下一道虚线
+  longs?: Map<number, number> | null; // 这一页上有长难句解析的句子：句子序号 → 它在这篇里的编号，句首标一个小号码
   hintId?: string | null; // 一道都没答时的第一题（题号或 `${id}@blank`）：它的空圈闪几下
   flags: Set<string>; // 标记待检查的题
   struck: Record<string, string[]>; // 各题划掉的选项
@@ -476,7 +476,7 @@ const WordLayer = memo(function WordLayer({
   active?: number | null;
   actives?: number[] | null;
   sentence?: number | null;
-  longs?: Set<number> | null;
+  longs?: Map<number, number> | null;
   onWord: (hit: WordClick | null) => void;
 }) {
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -491,14 +491,13 @@ const WordLayer = memo(function WordLayer({
   const vocab = useMemo(() => (marks ? vocabHits(data.w.map((w) => w[0]), marks, data.w.map((w) => w[5])).hits : new Map<number, boolean>()), [data, marks]);
   // 每个要画框的词：5 长难句，0 生词，4 长按出译文的那句，1 命中，2 当前命中，3 正在查（后面的盖前面的）
   const shown = new Map<number, number>();
-  if (longs?.size) data.w.forEach((w, i) => longs.has(w[5]) && shown.set(i, 5));
   for (const i of vocab.keys()) shown.set(i, 0);
   if (sentence != null) data.w.forEach((w, i) => w[5] === sentence && shown.set(i, 4));
   if (hits) for (const [a, b] of hits) for (let i = a; i <= b; i++) shown.set(i, 1);
   if (hitCur) for (let i = hitCur[0]; i <= hitCur[1]; i++) shown.set(i, 2);
   if (actives) for (const i of actives) if (i < data.w.length) shown.set(i, Math.max(shown.get(i) ?? 3, 3));
   if (active != null && active < data.w.length) shown.set(active, Math.max(shown.get(active) ?? 3, 3));
-  // 每句长难句句首一个小蓝点
+  // 每句长难句句首一个小号码，和右侧长难句列表的编号对得上
   const heads: number[] = [];
   if (longs?.size) {
     const seen = new Set<number>();
@@ -508,7 +507,11 @@ const WordLayer = memo(function WordLayer({
     <div className="absolute inset-0 z-[1] cursor-text" onClick={onClick}>
       {heads.map((i) => {
         const [, x0, y0] = data.w[i];
-        return <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 7, top: y0 * scale - 10 }} />;
+        return (
+          <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 6, top: y0 * scale - 9 }}>
+            {longs?.get(data.w[i][5])}
+          </span>
+        );
       })}
       {/* 生词本里的词、短语：最后一个词右上角一个小点 */}
       {[...vocab].map(([i, end]) => {

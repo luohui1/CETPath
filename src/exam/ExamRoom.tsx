@@ -1511,9 +1511,10 @@ export function ExamRoom({
   }, [baseSyn, syntaxFile, aiSyntax, paper.id]);
   const syntaxAt = useMemo(() => {
     const at = new Map<string, { page: number; sid: number; y: number }>();
-    const byPage = new Map<number, Set<number>>();
+    const byPage = new Map<number, Map<number, number>>();
     if (!synFile || !pages) return { at, byPage };
     const readingOnly = !!scope && scope.section.kind !== "reading";
+    const count = new Map<string, number>();
     pages.forEach((data, i) => {
       if (i + 1 < firstPage || i + 1 > lastPage) return;
       data.s.forEach((s, sid) => {
@@ -1523,7 +1524,9 @@ export function ExamRoom({
         const w = data.w.find((x) => x[5] === sid);
         if (!w) return;
         at.set(k, { page: i + 1, sid, y: w[2] });
-        byPage.set(i + 1, (byPage.get(i + 1) ?? new Set()).add(sid));
+        const n = (count.get(e.group) ?? 0) + 1;
+        count.set(e.group, n);
+        byPage.set(i + 1, (byPage.get(i + 1) ?? new Map()).set(sid, n));
       });
     });
     return { at, byPage };
@@ -1871,8 +1874,8 @@ export function ExamRoom({
     if (!synReady && !syntaxAt.at.size) return null;
     const titles: Record<string, string> = { ai: "AI 标的长难句" };
     for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
-    const sentences = Object.fromEntries(Object.entries(synFile?.sentences ?? {}).filter(([k]) => syntaxAt.at.has(k)));
-    return { file: { id: paper.id, by: "ai", version: 1, ...synFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true), ready: synReady, on: synOn, onToggle: toggleSyn };
+    const sentences = Object.fromEntries([...syntaxAt.at.keys()].map((k) => [k, synFile!.sentences[k]]));
+    return { file: { id: paper.id, by: "ai", version: 1, ...synFile, sentences }, order: [...syntaxAt.at.keys()], titles, current: sentKey, onOpen: (k) => openSyntax(k, true), ready: synReady, on: synOn, onToggle: toggleSyn };
   }, [synFile, syntaxAt, paper.sections, paper.id, sentKey, openSyntax, synReady, synOn, toggleSyn]);
   const barEl = (embedded: boolean) =>
     barContent && (
