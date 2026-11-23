@@ -28,6 +28,7 @@ import { Sparkle,
   MagnifyingGlassPlus,
   NoteBlank,
   Pen,
+  PushPin,
   SidebarSimple,
   TextUnderline,
   type Icon,
@@ -696,6 +697,13 @@ export function ExamRoom({
   // 矮屏并成一行的工具栏：卷面往下滚收起，往上滚、回到顶上或点顶上的小把手露出来
   const [barHidden, setBarHidden] = useState(false);
   useEffect(() => setBarHidden(false), [compact]);
+  // 固定工具栏：往下滑也不收起
+  const pinBar = settings.pinToolbar;
+  const pinRef = useRef(pinBar);
+  pinRef.current = pinBar;
+  useEffect(() => {
+    if (pinBar) setBarHidden(false);
+  }, [pinBar]);
   // 那一行有多高（触屏按钮 40px 时 48）：侧栏顶上让出这么多
   const [toolRow, setToolRow] = useState<HTMLDivElement | null>(null);
   const [toolH, setToolH] = useState(48);
@@ -764,7 +772,7 @@ export function ExamRoom({
       let p = partTops[0]?.id;
       for (const t of partTops) if (t.top <= y + h * 0.45) p = t.id;
       scrollStore.set({ page: cur, part: p });
-      if (!compact) return;
+      if (!compact || pinRef.current) return;
       if (y < 40) setBarHidden(false);
       else if (y - last > 8) setBarHidden(true);
       else if (last - y > 8) setBarHidden(false);
@@ -2019,7 +2027,12 @@ export function ExamRoom({
                   ],
                 ]
               : []),
-            [tool$(rail ? "收起缩略图" : "页面缩略图", <SidebarSimple className="size-[19px]" weight={rail ? "fill" : "duotone"} />, () => setRail(!rail), { active: rail, soft: true, kbd: "T" })],
+            [
+              tool$(rail ? "收起缩略图" : "页面缩略图", <SidebarSimple className="size-[19px]" weight={rail ? "fill" : "duotone"} />, () => setRail(!rail), { active: rail, soft: true, kbd: "T" }),
+              ...(compact
+                ? [tool$(pinBar ? "取消固定：往下滑时收起工具栏" : "固定工具栏：往下滑也不收起", <PushPin className="size-[19px]" weight={pinBar ? "fill" : "duotone"} />, () => void setSetting("pinToolbar", !pinBar), { active: pinBar, soft: true })]
+                : []),
+            ],
             toolGroup(0),
             toolGroup(1),
             toolGroup(2),

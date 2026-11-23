@@ -4,6 +4,7 @@ import { useCachedLiveQuery } from "./live";
 export interface Settings {
   activeBook: string | null; // 当前词书 id
   dailyNew: number; // 每天新词数
+  dailyPasses: number; // 每天背几轮：第一轮正式复习（FSRS 评分），之后每轮把今天的词快速过一遍
   autoSpeak: boolean; // 查词和背词时自动发音
   voiceURI: string | null; // 发音人（没有真人录音时用的系统语音）
   accent: "us" | "uk"; // 单词真人发音：美音 / 英音
@@ -16,7 +17,8 @@ export interface Settings {
   masteryBackfilled: boolean; // 旧的交卷记录已经补录进错题本
   badExplanations: string[]; // 用户标了"解析有问题"的题：`${paperId}#${questionId}`
   penPresets: PenPreset[]; // 手写笔的 3 个预设槽（长按保存）
-  twoUpPages: boolean; // 做题页双页视图（横屏、页面够窄时才生效）
+  twoUpPages: boolean;
+  pinToolbar: boolean; // 矮屏（平板横屏）做题页的工具栏固定显示，往下滑也不收起 // 做题页双页视图（横屏、页面够窄时才生效）
   reviewMode: ReviewMode; // 背单词怎么考：认读 / 拼写 / 听写
   lastExam: string | null; // 真题、专项页上次选的考试（ExamId）；首页推荐和倒计时默认跟它
   focusBand: FocusBand | null; // 本周重点：词书里的一个词频段，每日新词先从这里出
@@ -38,6 +40,7 @@ export interface FocusBand {
 export const DEFAULT_SETTINGS: Settings = {
   activeBook: null,
   dailyNew: 20,
+  dailyPasses: 3,
   autoSpeak: true,
   voiceURI: null,
   accent: "us",
@@ -55,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { color: "ink", size: 1.8 },
   ],
   twoUpPages: false,
+  pinToolbar: false,
   reviewMode: "recognize",
   focusBand: null,
   lastExam: null,
