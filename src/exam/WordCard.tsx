@@ -520,7 +520,7 @@ export function WordCard({
               ) : (
                 <BriefSenses lines={lines} max={3} className="flex-col !items-start gap-y-0.5" />
               )}
-              {roots && !parts && <RootLine info={roots} onWord={setAlt} className="mt-2" />}
+              {roots && !parts && <RootLine info={roots} className="mt-2" />}
             </>
           )}
 
