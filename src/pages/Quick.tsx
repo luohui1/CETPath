@@ -81,6 +81,7 @@ export function QuickPassPage() {
     const onKey = (e: KeyboardEvent) => {
       if (!word) return;
       if (e.key === " " || e.key === "Enter") {
+        if ((e.target as HTMLElement).closest("button, a, input, textarea, [contenteditable]")) return; // 焦点在按钮上就让按钮自己响应
         e.preventDefault();
         if (!shown) setShown(true);
         else judge(true);
