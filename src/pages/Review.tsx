@@ -333,6 +333,8 @@ export function ReviewPage() {
         if (e.key === "3") rate(Rating.Good);
         if (e.key === "4") rate(Rating.Easy);
       } else if (e.key === " " || e.key === "Enter") {
+        // 焦点在按钮上（比如"词源"）时，空格回车是按那个按钮
+        if (e.target instanceof HTMLButtonElement) return;
         e.preventDefault();
         void next();
       }
