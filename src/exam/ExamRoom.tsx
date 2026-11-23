@@ -2543,6 +2543,9 @@ export function ExamRoom({
         onConfirm={async () => {
           if (redoNotes && marks.length) await history.remove(marks);
           setRedoNotes(false);
+          // 手上这题的秒表、还没存的各部分用时都是重开前的，丢掉，不记进新的作答
+          timer.discard();
+          secBuf.current = {};
           await onRedo();
           stage?.scrollTo({ top: 0 });
         }}
