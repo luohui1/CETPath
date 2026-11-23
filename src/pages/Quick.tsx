@@ -263,22 +263,23 @@ export function DigestPage() {
     ) : (
       body
     );
-  const row = (w: string, mean: string, root?: string) => {
+  const row = (g: string, w: string, mean: string, root?: string) => {
     const r = roots.get(w);
+    const id = `${g}/${w}`;
     return (
-      <li key={w} className="grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-4 py-2">
+      <li key={id} className="grid min-h-12 grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-center gap-3 py-2 sm:gap-4">
         {cell(
-          w,
+          id,
           "en",
           <div className="flex min-w-0 items-center gap-2.5">
             <LevelDot m={memory?.get(w)} />
-            <button type="button" onClick={() => speak(w)} className="min-w-0 text-left">
-              <RootedWord w={w} root={root} className="text-[18px] font-semibold text-[var(--ink)]" />
-              {r?.m.length ? <span className="ml-2 text-[12px] text-[var(--ink-500)]">{r.m.map((p) => p[0]).join(" + ")}</span> : null}
+            <button type="button" onClick={() => speak(w)} className="min-w-0 text-left [overflow-wrap:anywhere]">
+              <RootedWord w={w} root={root} className="text-[18px] font-semibold whitespace-normal text-[var(--ink)]" />
+              {r?.m.length ? <span className="block text-[12px] leading-[1.4] text-[var(--ink-500)] sm:ml-2 sm:inline">{r.m.map((p) => p[0]).join(" + ")}</span> : null}
             </button>
           </div>,
         )}
-        {cell(w, "zh", <span className="text-[15px] text-[var(--ink-700)]">{mean}</span>)}
+        {cell(id, "zh", <span className="text-[15px] text-[var(--ink-700)]">{mean}</span>)}
       </li>
     );
   };
@@ -305,7 +306,7 @@ export function DigestPage() {
         <p className="well py-10 text-center text-[14px] text-[var(--ink-500)]">今天还没背过词</p>
       ) : (
         <div className="card px-5 py-4 lg:px-6">
-          {d.fams.map(({ f, words: ws }) => section(f.r, f.g, <ul className="divide-y divide-[var(--line-soft)]">{ws.map((w) => row(w, brief(entries.get(w)), f.r))}</ul>, familyKey(f)))}
+          {d.fams.map(({ f, words: ws }) => section(f.r, f.g, <ul className="divide-y divide-[var(--line-soft)]">{ws.map((w) => row(familyKey(f), w, brief(entries.get(w)), f.r))}</ul>, familyKey(f)))}
           {d.pairs.length > 0 &&
             section(
               "易混",
@@ -314,15 +315,15 @@ export function DigestPage() {
                 {d.pairs.map(({ a, b }) => (
                   <li key={a} className="border-b border-[var(--line-soft)] py-1 last:border-0">
                     <ul className="border-l-2 border-[var(--blue-line)] pl-3">
-                      {row(a, brief(entries.get(a)))}
-                      {row(b.word, b.brief)}
+                      {row(`pair:${a}`, a, brief(entries.get(a)))}
+                      {row(`pair:${a}`, b.word, b.brief)}
                     </ul>
                     {b.tip && <p className="serif pb-1.5 pl-3.5 text-[13px] text-[var(--ink-500)]">{b.tip.tip}</p>}
                   </li>
                 ))}
               </ul>,
             )}
-          {d.rules.map((g) => section(g.label, null, <ul className="divide-y divide-[var(--line-soft)]">{g.words.map((w) => row(w, brief(entries.get(w))))}</ul>))}
+          {d.rules.map((g) => section(g.label, null, <ul className="divide-y divide-[var(--line-soft)]">{g.words.map((w) => row(g.label, w, brief(entries.get(w))))}</ul>))}
         </div>
       )}
       {total > 0 && (

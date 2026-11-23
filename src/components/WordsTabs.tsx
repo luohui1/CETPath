@@ -17,14 +17,14 @@ export const MISTAKE_PAGES = [
 
 export function WordsTabs({ pages = WORD_PAGES, label = "单词" }: { pages?: readonly { to: string; label: string }[]; label?: string }) {
   return (
-    <nav className="mb-5 inline-flex rounded-[11px] bg-[var(--fill-quiet)] p-1" aria-label={label}>
+    <nav className="mb-5 inline-flex max-w-full overflow-x-auto rounded-[11px] bg-[var(--fill-quiet)] p-1" aria-label={label}>
       {pages.map((p) => (
         <NavLink
           key={p.to}
           to={p.to}
           className={({ isActive }) =>
             cn(
-              "h-9 rounded-[8px] px-4 text-[14px] leading-9 font-medium transition-colors",
+              "h-9 whitespace-nowrap rounded-[8px] px-3 text-[14px] leading-9 font-medium transition-colors sm:px-4",
               isActive ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)]" : "text-[var(--ink-500)] hover:text-[var(--ink)]",
             )
           }
