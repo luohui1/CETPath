@@ -38,15 +38,19 @@ export function RootsPage() {
     setParams(p, { replace: true });
   };
 
+  // 打开一个词（或词根）：当前这棵树里有就留在这棵树，没有就换到它最大的那棵；哪棵都没有只画短语、易混两根枝
+  const open = (w: string, here?: Family | null) => {
+    if (!families) return;
+    const hits = families.filter((f) => f.w.some((x) => x[0] === w));
+    const f = (here && hits.includes(here) ? here : hits.sort((a, b) => b.w.length - a.w.length)[0]) ?? families.find((f) => f.r === w);
+    if (!f) return setMiss(w);
+    setMiss("");
+    go({ v: "tree", r: familyKey(f), w: f.w.some((x) => x[0] === w) ? w : undefined });
+  };
   const search = (e: React.FormEvent) => {
     e.preventDefault();
     const w = q.trim().toLowerCase();
-    if (!w || !families) return;
-    const hits = families.filter((f) => f.w.some((x) => x[0] === w));
-    const f = hits.sort((a, b) => b.w.length - a.w.length)[0] ?? families.find((f) => f.r === w);
-    if (!f) return setMiss(w); // 没有词根的词：只画短语、易混两根枝
-    setMiss("");
-    go({ v: "tree", r: familyKey(f), w: f.w.some((x) => x[0] === w) ? w : undefined });
+    if (w) open(w);
   };
 
   if (!families || !memo) return <LoadingBlock />;
@@ -80,10 +84,12 @@ export function RootsPage() {
         </div>
       )}
       <Legend />
-      {view === "universe" ? (
+      {!families.length ? (
+        <p className="card p-5 text-[15px] text-[var(--ink-500)]">词根数据没加载出来，联网后刷新再试。</p>
+      ) : view === "universe" ? (
         <Universe families={families} memo={memo} selected={fam} onPick={(f) => go({ v: "tree", r: familyKey(f) })} />
       ) : (
-        <TreeView families={families} memo={memo} fam={fam} word={params.get("w")} onWord={(w) => go({ v: "tree", r: key ?? undefined, w })} onFamily={(f) => go({ v: "tree", r: familyKey(f) })} />
+        <TreeView families={families} memo={memo} fam={fam} word={params.get("w")} onWord={open} onFamily={(f) => go({ v: "tree", r: familyKey(f) })} />
       )}
     </div>
   );
@@ -210,7 +216,7 @@ function TreeView({
   memo: Map<string, Mem>;
   fam: Family | null;
   word: string | null;
-  onWord: (w: string) => void;
+  onWord: (w: string, here: Family) => void;
   onFamily: (f: Family) => void;
 }) {
   const f = fam ?? families.find((x) => owned(x, memo) > 0) ?? families.find((x) => x.r === "dict") ?? families[0];
@@ -311,7 +317,7 @@ function TreeView({
                   <button
                     key={w[0]}
                     type="button"
-                    onClick={() => onWord(w[0])}
+                    onClick={() => onWord(w[0], f)}
                     className={cn(
                       "absolute flex h-[38px] max-w-[calc(100%-372px)] -translate-y-1/2 items-center gap-2 rounded-[10px] bg-white px-3 shadow-[inset_0_0_0_1px_var(--line)] transition hover:shadow-[inset_0_0_0_1.5px_var(--blue)]",
                       word === w[0] && "shadow-[inset_0_0_0_2px_var(--blue)]",
@@ -333,7 +339,7 @@ function TreeView({
           </button>
         )}
       </div>
-      <WordPanel fam={f} w={sel ?? null} memory={memo} onWord={onWord} />
+      <WordPanel fam={f} w={sel ?? null} memory={memo} onWord={(w) => onWord(w, f)} />
     </div>
   );
 }
