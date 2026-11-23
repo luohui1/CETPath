@@ -11,8 +11,9 @@ export function RootLine({ info, onWord, className }: { info: RootInfo; onWord?:
   return (
     <div className={cn("rounded-[10px] bg-[var(--fill-quiet)] px-3 py-2", className)}>
       <div className="flex items-start gap-2">
-        <span className="mt-[3px] flex-none text-[12px] text-[var(--ink-500)]">词根</span>
-        <p className="min-w-0 flex-1 text-[15px] leading-[1.6] text-[var(--ink)]">
+        <span className="mt-[3px] flex-none text-[12px] text-[var(--ink-500)]">{info.m.length ? "词根" : "词源"}</span>
+        <p className={cn("min-w-0 flex-1 text-[15px] leading-[1.6] text-[var(--ink)]", !info.m.length && !open && "line-clamp-1")}>
+          {!info.m.length && !open && info.e}
           {info.m.map((x, i) => (
             <span key={i}>
               {i > 0 && <span className="mx-1 text-[var(--ink-500)]">+</span>}
