@@ -464,6 +464,17 @@ export function ExamRoom({
       live = false;
     };
   }, [paper.id]);
+  // 预先生成的长难句解析默认不上卷面，让人自己找；停靠区"长难句"里一键标出（每套卷子各记各的）
+  const [synOn, setSynOn] = useState(false);
+  useEffect(() => {
+    setSynOn(localStorage.getItem(`yz-syn-on:${paper.id}`) === "1");
+  }, [paper.id]);
+  const toggleSyn = useCallback(() => {
+    setSynOn((v) => {
+      localStorage.setItem(`yz-syn-on:${paper.id}`, v ? "0" : "1");
+      return !v;
+    });
+  }, [paper.id]);
   const [playing, setPlaying] = useState<{ seg: string | null; on: boolean }>({ seg: null, on: false });
   const [confirm, setConfirm] = useState<"submit" | "redo" | "clear" | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false); // 刚交卷：答题卡上的分数"盖"下去
@@ -1488,12 +1499,13 @@ export function ExamRoom({
   // 只认卷面上显示的页；专项练习不是仔细阅读时一句都没有（停靠区也不出"长难句"标签）
   // Agent 在卷面上标的长难句并进来：和解析层一样划线、点开看结构（不限仔细阅读）
   const aiSyntax = useLiveQuery(() => db.aiSyntax.where("paperId").equals(paper.id).toArray(), [paper.id]);
+  const baseSyn = synOn ? syntaxFile : null;
   const synFile = useMemo<SyntaxFile | null>(() => {
-    if (!aiSyntax?.length) return syntaxFile;
-    const sentences = { ...syntaxFile?.sentences };
+    if (!aiSyntax?.length) return baseSyn;
+    const sentences = { ...baseSyn?.sentences };
     for (const r of aiSyntax) sentences[r.key] ??= r.entry;
     return { id: paper.id, by: "ai", version: syntaxFile?.version ?? 1, sentences };
-  }, [syntaxFile, aiSyntax, paper.id]);
+  }, [baseSyn, syntaxFile, aiSyntax, paper.id]);
   const syntaxAt = useMemo(() => {
     const at = new Map<string, { page: number; sid: number; y: number }>();
     const byPage = new Map<number, Set<number>>();
@@ -1650,7 +1662,7 @@ export function ExamRoom({
       ? // 练习模式还没作答的题：先不放解析
         { kind: "explain", q: curQ, id: openQ, cue, locked: practice && !submitted && !answers[curQ.id] }
       : sent
-        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)), onRemove: aiSyntax?.some((r) => r.key === sentenceKey(sent.sentence) && !syntaxFile?.sentences[r.key]) ? () => void db.aiSyntax.delete(`${paper.id}:${sentenceKey(sent.sentence)}`).then(closeBar) : undefined }
+        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)), onRemove: aiSyntax?.some((r) => r.key === sentenceKey(sent.sentence) && !baseSyn?.sentences[r.key]) ? () => void db.aiSyntax.delete(`${paper.id}:${sentenceKey(sent.sentence)}`).then(closeBar) : undefined }
         : null;
   // 竖屏底部抽屉开着时只有这一块底部区域：底部条的内容放进抽屉，当一个临时标签（新内容出来时切过去，收起时回到原来的标签）
   const barInDock = !!panel && !sideDock;
@@ -1851,13 +1863,14 @@ export function ExamRoom({
 
   // 底部条：卷面那一栏下面一条；竖屏底部抽屉开着时放进抽屉，当一个临时标签
   const sentKey = sent ? sentenceKey(sent.sentence) : null;
+  const synReady = syntaxFile && !(scope && scope.section.kind !== "reading") ? Object.keys(syntaxFile.sentences).length : 0;
   const dockSyntax = useMemo<DockSyntax | null>(() => {
-    if (!synFile || !syntaxAt.at.size) return null;
+    if (!synReady && !syntaxAt.at.size) return null;
     const titles: Record<string, string> = { ai: "AI 标的长难句" };
     for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
-    const sentences = Object.fromEntries(Object.entries(synFile.sentences).filter(([k]) => syntaxAt.at.has(k)));
-    return { file: { ...synFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
-  }, [synFile, syntaxAt, paper.sections, sentKey, openSyntax]);
+    const sentences = Object.fromEntries(Object.entries(synFile?.sentences ?? {}).filter(([k]) => syntaxAt.at.has(k)));
+    return { file: { id: paper.id, by: "ai", version: 1, ...synFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true), ready: synReady, on: synOn, onToggle: toggleSyn };
+  }, [synFile, syntaxAt, paper.sections, paper.id, sentKey, openSyntax, synReady, synOn, toggleSyn]);
   const barEl = (embedded: boolean) =>
     barContent && (
       <AnswerBar

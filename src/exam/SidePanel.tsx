@@ -680,6 +680,10 @@ export interface DockSyntax {
   titles: Record<string, string>;
   current: string | null;
   onOpen: (key: string) => void;
+  /** 这套卷子预先解析好的句数；on：是否已经标到卷面上 */
+  ready: number;
+  on: boolean;
+  onToggle: () => void;
 }
 
 /** 长难句：按篇列出，每句一行（原句前半截 + 第一个难点），点了跳到卷面上那句、底部放解析 */
@@ -692,7 +696,24 @@ function SyntaxPanel({ syntax }: { syntax: DockSyntax }) {
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-      <p className="px-2.5 pt-1.5 pb-2 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上句首带小蓝点、下面一道细线的句子都有结构解析，长按句子或在这里点开。</p>
+      {syntax.ready > 0 && !syntax.on ? (
+        <div className="m-1 rounded-[12px] bg-[var(--paper-100)] px-3.5 py-3">
+          <p className="text-[14px] font-semibold text-[var(--ink)]">先自己找长难句</p>
+          <p className="mt-1 text-[13px] leading-[1.6] text-[var(--ink-500)]">这套卷子仔细阅读有 {syntax.ready} 句解析好的长难句。想对照时一键标到卷面上，每句都能点开看结构。</p>
+          <button type="button" onClick={syntax.onToggle} className="mt-2.5 h-9 rounded-full bg-[var(--blue)] px-4 text-[14px] font-semibold text-white hover:opacity-90">
+            一键解析 {syntax.ready} 句
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 px-2.5 pt-1.5 pb-2">
+          <p className="flex-1 text-[13px] leading-[1.6] text-[var(--ink-500)]">卷面上句首带小蓝点、下面一道细线的句子都有结构解析，长按句子或在这里点开。</p>
+          {syntax.ready > 0 && (
+            <button type="button" onClick={syntax.onToggle} className="h-7 flex-none rounded-full px-2.5 text-[12px] font-medium text-[var(--ink-700)] ring-1 ring-[var(--line)] hover:bg-[var(--fill-quiet)]">
+              收起标记
+            </button>
+          )}
+        </div>
+      )}
       {[...groups].map(([g, list]) => (
         <section key={g} className="mb-2">
           <h4 className="px-2.5 pt-2 pb-1 text-[13px] font-semibold text-[var(--ink-500)]">{syntax.titles[g] ?? g}</h4>
@@ -830,7 +851,7 @@ export function Dock({
   const tabs = [
     { value: "sheet", label: "答题卡" },
     ...(paper.audio ? [{ value: "listen", label: "原文" }] : []),
-    ...(syntax ? [{ value: "syntax", label: `长难句 ${Object.keys(syntax.file.sentences).length}` }] : []),
+    ...(syntax ? [{ value: "syntax", label: Object.keys(syntax.file.sentences).length ? `长难句 ${Object.keys(syntax.file.sentences).length}` : "长难句" }] : []),
     ...(agent ? [{ value: "ask", label: "问 AI" }] : []),
     ...(canExplain ? [{ value: "explain", label: "解析" }] : []),
     ...(hasWrites && (showWrite || !hasChoice || shown === "write") ? [{ value: "write", label: "作答" }] : []),
