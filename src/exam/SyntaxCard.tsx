@@ -65,7 +65,12 @@ export function SyntaxSentence({ e, className }: { e: SyntaxEntry; className?: s
                 role="button"
                 tabIndex={0}
                 onClick={() => setOn(on === i ? null : i)}
-                onKeyDown={(ev) => (ev.key === "Enter" || ev.key === " ") && setOn(on === i ? null : i)}
+                onKeyDown={(ev) => {
+                  if (ev.key !== "Enter" && ev.key !== " ") return;
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  setOn(on === i ? null : i);
+                }}
                 className={cn(
                   "cursor-pointer rounded-[5px] px-[3px] py-[2px] [box-decoration-break:clone] [-webkit-box-decoration-break:clone]",
                   KIND[b.kind].block,
