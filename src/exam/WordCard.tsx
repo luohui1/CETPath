@@ -262,9 +262,14 @@ export function WordCard({
   const body = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<Place | null>(null);
   const scrolled = useRef(false);
-  useEffect(() => {
+  // 同一个词摆在原文上面还是下面，定了就不轻易换：卷面滚动、内容变高时来回换边就是上下频闪
+  const side = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
     scrolled.current = false;
   }, [hit, showTrans, more, phrases, pick, online]);
+  useLayoutEffect(() => {
+    side.current = null;
+  }, [hit]);
   useLayoutEffect(() => {
     let raf = 0;
     const run = () => {
@@ -281,11 +286,14 @@ export function WordCard({
       const roomBelow = b.bottom - avoid.bottom - GAP - EDGE;
       const roomAbove = avoid.top - b.top - GAP - EDGE;
       let below: boolean;
-      if (natural <= roomBelow && natural <= roomAbove) below = word.top + word.height / 2 < b.top + b.height / 2;
+      const kept = side.current;
+      if (kept !== null && natural <= (kept ? roomBelow : roomAbove)) below = kept;
+      else if (scrolled.current && kept) below = true; // 正在把卷面往上滚、给下面腾地方
+      else if (natural <= roomBelow && natural <= roomAbove) below = word.top + word.height / 2 < b.top + b.height / 2;
       else if (natural <= roomBelow) below = true;
       else if (natural <= roomAbove) below = false;
       else {
-        below = roomBelow >= roomAbove;
+        below = kept !== null && Math.abs(roomBelow - roomAbove) < 48 ? kept : roomBelow >= roomAbove;
         // 两边都放不下：把卷面滚一下，让原文往上走、下面腾出地方（原文不滚出可见区域顶上）
         if (scroller && !scrolled.current && !hidden) {
           const need = natural - roomBelow;
@@ -298,6 +306,7 @@ export function WordCard({
           }
         }
       }
+      side.current = below;
       const room = below ? roomBelow : roomAbove;
       const maxH = Math.max(MIN_H, Math.min(natural, room));
       const h = Math.min(natural, maxH);
