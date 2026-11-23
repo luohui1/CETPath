@@ -167,11 +167,8 @@ def main():
     for w, v in entries.items():
         if "b" in v:
             continue
-        sib = []
-        for k in root_keys(v["m"]):
-            for x in sorted(by_root.get(k, []), key=lambda x: books[x]):
-                if x != w and x not in sib and not x.startswith(w) and not w.startswith(x):
-                    sib.append(x)
+        sib = {x for k in root_keys(v["m"]) for x in by_root.get(k, []) if x != w and not x.startswith(w) and not w.startswith(x)}
+        sib = sorted(sib, key=lambda x: (books[x], x))
         if sib:
             v["s"] = [[x, brief(dic[x])] for x in sib[:4]]
 
