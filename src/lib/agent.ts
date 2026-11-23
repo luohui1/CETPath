@@ -385,7 +385,11 @@ export function useAgentModels(): Models | null {
  * 整套卷的原文（按页，从卷面文字层取），让 Agent 问到哪题都看得到题目和文章。
  * 每句一行；正文按卷面缩进分段，标〔第 N 段〕（每篇文章从 1 数，跨页接着数），Agent 说"第几段第几句"才不会数错
  */
-export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
+export function paperText(
+  pages: PdfWordsPage[] | null,
+  max = 40000,
+  qs: { number: number; page?: number; box?: [number, number, number, number] }[] = [],
+): string {
   if (!pages) return "";
   let out = "";
   let para = 0; // 这篇文章数到第几段；0 = 不在文章正文里（题目、说明）
@@ -403,7 +407,9 @@ export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
       prevK = w[5];
     }
     out += `\n\n[第 ${i + 1} 页]`;
-    p.s.forEach((raw, k) => {
+    const cuts = questionCuts(p, qs.filter((q) => q.page === i + 1 && q.box && q.number > 0));
+    p.s.forEach((sent, k) => {
+      const [raw, ...rest] = cuts.get(k)?.(sent) ?? [sent];
       // 考研的"Text 1"常和上一句或文章第一句连成一句：拆出来当文章开头
       const pieces = raw.replace(/\s+/g, " ").trim().split(/(?=\bText [1-4] )/);
       pieces.forEach((piece, j) => {
@@ -416,6 +422,7 @@ export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
         }
         line(piece.trim(), j === 0 && !m && starts.has(k));
       });
+      for (const t of rest) line(t.replace(/\s+/g, " ").trim(), false);
     });
     function line(t: string, indented: boolean) {
       if (!t) return;
@@ -432,6 +439,61 @@ export function paperText(pages: PdfWordsPage[] | null, max = 40000): string {
   });
   out = out.trim();
   return out.length > max ? out.slice(0, max) + "\n（后面省略）" : out;
+}
+
+/**
+ * 扫描卷的文字层常把题号认丢、认错，或把下一题题干并进上一题的选项里，Agent 就会把 48 当成 47。
+ * 按试卷数据里每题题号的位置，在那一句里从题干第一个词断开，换上正确的"N. "
+ */
+function questionCuts(p: PdfWordsPage, qs: { number: number; box?: [number, number, number, number] }[]) {
+  const cuts = new Map<number, { word: number; n: number }[]>();
+  for (const q of qs) {
+    const [x0, y0, x1] = q.box!;
+    let best = -1;
+    p.w.forEach((w, idx) => {
+      if (Math.abs(w[2] - y0) > 3 || w[1] < x0 - 1 || w[1] > x1 + 40 || /^[\d.．]+$/.test(w[0])) return;
+      if (best < 0 || w[1] < p.w[best][1]) best = idx;
+    });
+    if (best < 0) continue;
+    const k = p.w[best][5];
+    const word = p.w.slice(0, best).filter((w) => w[5] === k).length;
+    cuts.set(k, [...(cuts.get(k) ?? []), { word, n: q.number }]);
+  }
+  const out = new Map<number, (sent: string) => string[]>();
+  for (const [k, list] of cuts) {
+    const words = p.w.filter((w) => w[5] === k).map((w) => w[0]);
+    out.set(k, (sent) => {
+      // 按词在句子里依次找到每个断点的字符位置；对不上就不拆
+      const at: number[] = [];
+      let pos = 0;
+      for (let j = 0; j < words.length; j++) {
+        const f = sent.indexOf(words[j], pos);
+        if (f < 0) return [sent];
+        at.push(f);
+        pos = f + words[j].length;
+      }
+      const sorted = [...list].sort((a, b) => a.word - b.word);
+      const parts: string[] = [];
+      let from = 0;
+      let label = "";
+      for (const c of sorted) {
+        const cut = at[c.word];
+        const before = sent.slice(from, cut);
+        // 题号后面先是"A)"（听力选项和题号同一行）：不拆，只把题号换成对的
+        if (/^\s*(\d{1,2}\s*[.．]?)?\s*([A-D]\s*\)?)?\s*$/.test(before)) {
+          label = `${c.n}. `;
+          from += before.length - before.replace(/^\s*\d{1,2}\s*[.．]?\s*/, "").length;
+          continue;
+        }
+        parts.push(label + before.replace(/\b\d{1,2}\s*[.．]?\s*$/, ""));
+        label = `${c.n}. `;
+        from = cut;
+      }
+      parts.push(label + sent.slice(from));
+      return parts.filter((t) => t.replace(/^\d+\. /, "").trim());
+    });
+  }
+  return out;
 }
 
 /** 学习者在卷面上的标注：高亮、划线的原文和批注，便签内容（手写笔迹没有文字，只计数） */

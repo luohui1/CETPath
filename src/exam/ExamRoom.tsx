@@ -1605,7 +1605,7 @@ export function ExamRoom({
         sentence: "",
         reviewReady,
         review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers),
-        paperText: paperText(pages),
+        paperText: paperText(pages, undefined, allQuestions(paper)),
         marks: marksSummary(marksRaw),
       },
     }),
