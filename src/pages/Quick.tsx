@@ -12,7 +12,7 @@ import { useEntries } from "@/lib/useEntries";
 import { speak } from "@/lib/speech";
 import { cn } from "@/lib/utils";
 import { WordsTabs } from "@/components/WordsTabs";
-import { Button, LoadingBlock, PageHeader, ProgressBar } from "@/components/ui";
+import { Button, LoadingBlock, PageHeader, ProgressBar, Segmented } from "@/components/ui";
 import { Formula, LevelDot, RootedWord } from "@/components/MemoryTree";
 
 // 每个词只留最核心的意思：第一个义项的前两个词
@@ -195,10 +195,20 @@ interface Digest {
 }
 
 /** 晚上的单词速览：今天的词按结构排成一页——同根的成组、易混的对照、其余按后缀规则，每个词只留最核心的意思 */
+type Hide = "none" | "zh" | "en";
+const HIDES: { value: Hide; label: string }[] = [
+  { value: "none", label: "不遮" },
+  { value: "zh", label: "遮中文" },
+  { value: "en", label: "遮英文" },
+];
+
 export function DigestPage() {
   const { words, roots, entries } = useToday();
   const memory = useMemory();
   const [d, setD] = useState<Digest | null>(null);
+  const [hide, setHide] = useState<Hide>("none");
+  const [peek, setPeek] = useState<Set<string>>(new Set());
+  useEffect(() => setPeek(new Set()), [hide]);
   useEffect(() => {
     if (!words) return;
     (async () => {
@@ -245,78 +255,83 @@ export function DigestPage() {
   }, [words]);
 
   if (!words || !d) return <LoadingBlock text="正在整理今天的词…" />;
-  const Row = ({ w, root }: { w: string; root?: string }) => {
+  const covered = (id: string, side: "en" | "zh") => hide === side && !peek.has(`${side}:${id}`);
+  // 遮住的一格：一条灰块，点一下只翻开这一格
+  const cell = (id: string, side: "en" | "zh", body: React.ReactNode) =>
+    covered(id, side) ? (
+      <button type="button" aria-label="点开看" onClick={() => setPeek(new Set(peek).add(`${side}:${id}`))} className="h-7 w-full max-w-[11rem] rounded-[7px] bg-[var(--paper-200)] hover:bg-[var(--paper-300)]" />
+    ) : (
+      body
+    );
+  const row = (w: string, mean: string, root?: string) => {
     const r = roots.get(w);
     return (
-      <li className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
-        <LevelDot m={memory?.get(w)} />
-        <button type="button" onClick={() => speak(w)} className="text-left">
-          <RootedWord w={w} root={root} className="text-[17px] font-semibold text-[var(--ink)]" />
-        </button>
-        {r?.m.length ? <span className="text-[13px] text-[var(--ink-500)]">{r.m.map((p) => p[0]).join(" + ")}</span> : null}
-        <span className="ml-auto text-[14px] text-[var(--ink-700)]">{brief(entries.get(w))}</span>
+      <li key={w} className="grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-4 py-2">
+        {cell(
+          w,
+          "en",
+          <div className="flex min-w-0 items-center gap-2.5">
+            <LevelDot m={memory?.get(w)} />
+            <button type="button" onClick={() => speak(w)} className="min-w-0 text-left">
+              <RootedWord w={w} root={root} className="text-[18px] font-semibold text-[var(--ink)]" />
+              {r?.m.length ? <span className="ml-2 text-[12px] text-[var(--ink-500)]">{r.m.map((p) => p[0]).join(" + ")}</span> : null}
+            </button>
+          </div>,
+        )}
+        {cell(w, "zh", <span className="text-[15px] text-[var(--ink-700)]">{mean}</span>)}
       </li>
     );
   };
+  const section = (title: string, sub: string | null, body: React.ReactNode, key = title) => (
+    <section key={key} className="pt-4 first:pt-0">
+      <h2 className="flex items-baseline gap-2 border-b border-[var(--line)] pb-1.5 text-[13px] font-semibold text-[var(--ink-500)]">
+        {title}
+        {sub && <span className="font-normal">{sub}</span>}
+      </h2>
+      {body}
+    </section>
+  );
+  const total = words.length;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <WordsTabs />
-      <PageHeader title="单词速览" desc={`今天背的 ${words.length} 个词，按结构排好：同根的放一组，易混的放一起对照，其余按后缀规则分组。睡前过一遍。`} />
-      {!words.length && <p className="well py-10 text-center text-[14px] text-[var(--ink-500)]">今天还没背过词</p>}
-      {d.fams.length > 0 && (
-        <section className="card p-5">
-          <h2 className="t-h2 mb-3">同根</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {d.fams.map(({ f, words: ws }) => (
-              <div key={familyKey(f)} className="rounded-[12px] bg-[var(--fill-quiet)] p-3.5">
-                <div className="mb-1 flex items-baseline gap-2">
-                  <span className="serif text-[20px] font-semibold text-[var(--blue)]">{f.r}</span>
-                  <span className="text-[14px] text-[var(--ink-700)]">{f.g}</span>
-                </div>
-                <ul className="relative pl-4 before:absolute before:top-2 before:bottom-3 before:left-[4px] before:w-px before:bg-[var(--line-control)]">
-                  {ws.map((w) => (
-                    <Row key={w} w={w} root={f.r} />
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
+      <PageHeader
+        title="单词速览"
+        desc={`今天背的 ${total} 个词。左边单词，右边意思；遮住一边自己回想，点灰块翻开。`}
+        actions={<Segmented label="遮住" value={hide} options={HIDES} onChange={(v) => setHide(v as Hide)} />}
+      />
+      {!total ? (
+        <p className="well py-10 text-center text-[14px] text-[var(--ink-500)]">今天还没背过词</p>
+      ) : (
+        <div className="card px-5 py-4 lg:px-6">
+          {d.fams.map(({ f, words: ws }) => section(f.r, f.g, <ul className="divide-y divide-[var(--line-soft)]">{ws.map((w) => row(w, brief(entries.get(w)), f.r))}</ul>, familyKey(f)))}
+          {d.pairs.length > 0 &&
+            section(
+              "易混",
+              null,
+              <ul>
+                {d.pairs.map(({ a, b }) => (
+                  <li key={a} className="border-b border-[var(--line-soft)] py-1 last:border-0">
+                    <ul className="border-l-2 border-[var(--blue-line)] pl-3">
+                      {row(a, brief(entries.get(a)))}
+                      {row(b.word, b.brief)}
+                    </ul>
+                    {b.tip && <p className="serif pb-1.5 pl-3.5 text-[13px] text-[var(--ink-500)]">{b.tip.tip}</p>}
+                  </li>
+                ))}
+              </ul>,
+            )}
+          {d.rules.map((g) => section(g.label, null, <ul className="divide-y divide-[var(--line-soft)]">{g.words.map((w) => row(w, brief(entries.get(w))))}</ul>))}
+        </div>
       )}
-      {d.pairs.length > 0 && (
-        <section className="card p-5">
-          <h2 className="t-h2 mb-3">易混对照</h2>
-          <ul className="divide-y divide-[var(--line-soft)]">
-            {d.pairs.map(({ a, b }) => (
-              <li key={a} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-2.5">
-                <div>
-                  <div className="serif text-[17px] font-semibold">{a}</div>
-                  <div className="text-[13px] text-[var(--ink-700)]">{brief(entries.get(a))}</div>
-                </div>
-                <span className="text-[var(--ink-300)]">↔</span>
-                <div>
-                  <div className="serif text-[17px] font-semibold">{b.word}</div>
-                  <div className="text-[13px] text-[var(--ink-700)]">{b.brief}</div>
-                </div>
-                {b.tip && <p className="serif col-span-3 text-[13px] text-[var(--ink-500)]">{b.tip.tip}</p>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {d.rules.map((g) => (
-        <section key={g.label} className="card p-5">
-          <h2 className="mb-1 text-[15px] font-semibold">{g.label}</h2>
-          <ul className="divide-y divide-[var(--line-soft)]">
-            {g.words.map((w) => (
-              <Row key={w} w={w} />
-            ))}
-          </ul>
-        </section>
-      ))}
-      {words.length > 0 && (
-        <div className="flex justify-center pb-6">
+      {total > 0 && (
+        <div className="flex justify-center gap-2 pb-6">
+          {peek.size > 0 && (
+            <Button variant="ghost" onClick={() => setPeek(new Set())}>
+              全部遮回去
+            </Button>
+          )}
           <Link to="/review/quick">
             <Button variant="primary">再快速过一遍</Button>
           </Link>

@@ -8,7 +8,7 @@ import { getRoots, type RootInfo } from "@/lib/roots";
 import { RootLine } from "@/components/RootLine";
 import { getEntry, loadBookMeta, phonetic, TAG_LABELS, translationLines, type BookInfo, type DictEntry } from "@/lib/dict";
 import { buildQueue, LEVELS, memoryLevel, pendingCounts, previewIntervals, Rating, retrievability, reviewWord, State, type QueueItem } from "@/lib/learning";
-import { familyKey, loadFamilies, mine, useMemory, type Family } from "@/lib/rootFamilies";
+import { useMemory } from "@/lib/rootFamilies";
 import { phrasesOf } from "@/lib/phrases";
 import { passesDone, passNames, todayWords } from "@/lib/passes";
 import { LevelMeter, MemoryTree } from "@/components/MemoryTree";
@@ -22,8 +22,7 @@ import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
 import { Tip } from "@/components/overlay";
 import { PixelIcon } from "@/components/PixelIcon";
-import { Bubbles, Stamp } from "@/components/paper-ui";
-import { DayColumns } from "@/components/viz";
+import { Stamp } from "@/components/paper-ui";
 import { SpellCard } from "@/review/SpellCard";
 import { WordContext } from "@/review/WordContext";
 
@@ -76,9 +75,6 @@ interface SessionStats {
   again: number;
 }
 
-const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
-
-/** 开始页：今天的任务做成一张答题卡（三行小泡），旁边是记忆状态；下面是未来 7 天的复习量和最近复习的词 */
 function StartScreen({ onStart }: { onStart: () => void }) {
   const settings = useSettings();
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
@@ -94,48 +90,41 @@ function StartScreen({ onStart }: { onStart: () => void }) {
   const doneToday = counts.today.reviews;
   const noSource = !settings.activeBook && !vocabCount;
   const book = books.find((b) => b.id === settings.activeBook);
-
-  // 未来 7 天每天到期的词（过期的算今天）
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const forecast = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return { label: i === 0 ? "今天" : `周${WEEKDAYS[d.getDay()]}`, value: 0 };
-  });
-  for (const c of cards) {
-    if (c.state === State.New) continue;
-    const i = Math.max(0, Math.floor((c.due - today.getTime()) / 86_400_000));
-    if (i < 7) forecast[i].value++;
-  }
-  // 记忆等级分布、平均记得的把握、快忘的词
-  const learned = cards.filter((c) => c.state !== State.New);
-  const levels = [5, 4, 3, 2, 1].map((lv) => ({ lv, n: learned.filter((c) => memoryLevel(c) === lv).length }));
-  const maxLv = Math.max(1, ...levels.map((l) => l.n));
-  const rs = learned.map((c) => retrievability(c));
-  const avgR = rs.length ? Math.round((rs.reduce((a, b) => a + b, 0) / rs.length) * 100) : 0;
-  const fading = rs.filter((r) => r < 0.85).length;
+  const source = book ? book.name : vocabCount ? "生词本" : "";
 
   return (
     <div className="space-y-5">
       <WordsTabs />
-      <PageHeader title="背单词" desc="按遗忘曲线（FSRS 算法）安排复习：快忘的时候再出现，记得牢的间隔越来越长。" />
-
-      <div className="grid gap-5 lg:grid-cols-3">
-        {/* 今天的任务：一张答题卡 */}
-        <div className="card card-raised flex flex-col px-5 pt-3 pb-5 lg:col-span-2 lg:px-7 lg:pb-6">
-          <h2 className="t-h2 mt-2">今天的任务</h2>
-          <div className="mt-3 flex items-end gap-2">
+      <PageHeader
+        title="背单词"
+        actions={
+          <>
+            <Link to="/roots">
+              <Button variant="ghost">记忆树</Button>
+            </Link>
+            <Link to="/books">
+              <Button variant="ghost">换词书</Button>
+            </Link>
+          </>
+        }
+      />
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="card card-raised p-5 lg:p-7">
+          <div className="flex items-end gap-2">
             <span className="num text-[56px] leading-[0.9] tracking-[-0.02em]">{total}</span>
             <span className="mb-1 text-[15px] text-[var(--ink-700)]">个词要背</span>
           </div>
-          {/* 进行中的才画泡：今天已经复习的涂黑 */}
-          {doneToday > 0 && total > 0 && <Bubbles total={doneToday + total} done={doneToday} max={24} className="mt-4" />}
-          <p className="mt-3 text-[14px] text-[var(--ink-500)]">
-            到期复习 <span className="num text-[var(--ink-700)]">{counts.dueReviews}</span> · 新词 <span className="num text-[var(--ink-700)]">{counts.newLeft}</span>
-            {book ? `（${book.name}）` : vocabCount ? "（生词本）" : ""} · 今天已复习 <span className="num text-[var(--ink-700)]">{doneToday}</span>
+          <p className="mt-2 text-[14px] text-[var(--ink-500)]">
+            复习 <span className="num text-[var(--ink-700)]">{counts.dueReviews}</span> · 新词 <span className="num text-[var(--ink-700)]">{counts.newLeft}</span>
+            {source && ` · ${source}`}
+            {doneToday > 0 && (
+              <>
+                {" "}
+                · 今天已背 <span className="num text-[var(--ink-700)]">{doneToday}</span>
+              </>
+            )}
           </p>
-          <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-3 pt-6">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             {noSource ? (
               <Link to="/books">
                 <Button variant="primary" size="lg">
@@ -143,172 +132,121 @@ function StartScreen({ onStart }: { onStart: () => void }) {
                 </Button>
               </Link>
             ) : (
-              <Tip label={settings.reviewMode === "recognize" ? "快捷键：1 不认识 · 2 模糊 · 3 认识 · 空格 下一个 · V 发音" : "回车核对 · 一次拼对算认识，错过算模糊，看答案算不认识"} side="top">
-                <Button variant="primary" size="lg" onClick={onStart} disabled={total === 0}>
-                  {total === 0 ? "今天的任务完成了" : `开始（${total} 个）`}
-                </Button>
-              </Tip>
+              <>
+                <Tip label={settings.reviewMode === "recognize" ? "快捷键：1 不认识 · 2 模糊 · 3 认识 · 空格 下一个 · V 发音" : "回车核对 · 一次拼对算认识，错过算模糊，看答案算不认识"} side="top">
+                  <Button variant="primary" size="lg" onClick={onStart} disabled={total === 0}>
+                    {total === 0 ? "今天的任务完成了" : `开始背（${total}）`}
+                  </Button>
+                </Tip>
+                <Segmented label="复习方式" value={settings.reviewMode} options={MODES} onChange={(v) => void setSetting("reviewMode", v)} />
+              </>
             )}
-            {/* 怎么考：认读看英文自评，拼写看中文拼英文，听写听发音拼英文 */}
-            {!noSource && <Segmented label="复习方式" value={settings.reviewMode} options={MODES} onChange={(v) => void setSetting("reviewMode", v)} />}
-            <Link to="/books" className="ml-auto">
-              <Button variant="ghost">换词书</Button>
-            </Link>
           </div>
+          <Passes />
         </div>
-
-        <div className="card p-5 lg:p-6">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="t-h2">记忆等级</h2>
-            <span className="text-[13px] text-[var(--ink-500)]">{learned.length} 个词背过</span>
-          </div>
-          {learned.length ? (
-            <>
-              <div className="mt-4 flex items-end gap-5">
-                <div>
-                  <div className="num text-[40px] leading-[44px]">
-                    {avgR}
-                    <span className="text-[18px]">%</span>
-                  </div>
-                  <div className="text-[13px] text-[var(--ink-500)]">现在平均还记得</div>
-                </div>
-                {fading > 0 && (
-                  <div>
-                    <div className="num text-[28px] leading-[32px] text-[var(--red)]">{fading}</div>
-                    <div className="text-[13px] text-[var(--ink-500)]">个快忘了</div>
-                  </div>
-                )}
-              </div>
-              <ul className="mt-5 space-y-2">
-                {levels.map(({ lv, n }) => (
-                  <li key={lv} className="flex items-center gap-2.5 text-[13px]" title={LEVELS[lv].hint}>
-                    <LevelMeter lv={lv} />
-                    <span className="w-9 text-[var(--ink-700)]">{LEVELS[lv].label}</span>
-                    <span className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--paper-200)]">
-                      <span className="block h-full rounded-full bg-[var(--blue)]" style={{ width: `${(n / maxLv) * 100}%`, opacity: 0.35 + lv * 0.13 }} />
-                    </span>
-                    <span className="num w-8 text-right text-[15px]">{n}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-4 text-[12px] leading-[1.6] text-[var(--ink-500)]">等级按 FSRS 估计的"不复习能记多久"分：每答对一次，间隔拉长，等级往上走。</p>
-            </>
-          ) : (
-            <p className="well mt-4 py-8 text-center text-[13px] text-[var(--ink-500)]">开始背词后，这里显示每个词记得多牢</p>
-          )}
-        </div>
-      </div>
-
-      <Passes />
-
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="card p-5 lg:col-span-2 lg:p-6">
-          <h2 className="t-h2 mb-5" title="已经过期没复习的算在今天">
-            未来 7 天复习
-          </h2>
-          <DayColumns data={forecast} unit=" 个" />
-        </div>
-        <RootProgress />
+        <MemoryCard cards={cards} />
       </div>
     </div>
   );
 }
 
-/** 一天背几轮：第一轮正式复习，之后每轮把今天的词快速过一遍，晚上看一遍按结构排好的速览 */
+/** 记忆：平均还记得多少、快忘的词、五级分布一条，明天要复习几个 */
+function MemoryCard({ cards }: { cards: CardRow[] }) {
+  const learned = cards.filter((c) => c.state !== State.New);
+  const levels = [1, 2, 3, 4, 5].map((lv) => ({ lv, n: learned.filter((c) => memoryLevel(c) === lv).length }));
+  const rs = learned.map((c) => retrievability(c));
+  const avgR = rs.length ? Math.round((rs.reduce((a, b) => a + b, 0) / rs.length) * 100) : 0;
+  const fading = rs.filter((r) => r < 0.85).length;
+  const start = new Date();
+  start.setHours(24, 0, 0, 0);
+  const tomorrow = learned.filter((c) => c.due >= start.getTime() && c.due < start.getTime() + 86_400_000).length;
+  return (
+    <div className="card p-5 lg:p-6">
+      <h2 className="t-h2">记忆</h2>
+      {learned.length ? (
+        <>
+          <div className="mt-3 flex items-end gap-6">
+            <div>
+              <div className="num text-[40px] leading-[44px]">
+                {avgR}
+                <span className="text-[18px]">%</span>
+              </div>
+              <div className="text-[13px] text-[var(--ink-500)]">平均还记得</div>
+            </div>
+            {fading > 0 && (
+              <div>
+                <div className="num text-[28px] leading-[32px] text-[var(--red)]">{fading}</div>
+                <div className="text-[13px] text-[var(--ink-500)]">个快忘了</div>
+              </div>
+            )}
+          </div>
+          <div className="mt-5 flex h-2.5 gap-[2px] overflow-hidden rounded-full">
+            {levels.map(({ lv, n }) => n > 0 && <span key={lv} className="h-full bg-[var(--blue)]" style={{ flexGrow: n, opacity: 0.25 + lv * 0.15 }} />)}
+          </div>
+          <ul className="mt-2.5 grid grid-cols-5 text-center">
+            {levels.map(({ lv, n }) => (
+              <li key={lv} title={LEVELS[lv].hint}>
+                <div className="num text-[15px]">{n}</div>
+                <div className="text-[12px] text-[var(--ink-500)]">{LEVELS[lv].label}</div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 border-t border-[var(--line-soft)] pt-3 text-[13px] text-[var(--ink-500)]">
+            明天要复习 <span className="num text-[var(--ink-700)]">{tomorrow}</span> 个 · 一共背过 <span className="num text-[var(--ink-700)]">{learned.length}</span> 个
+          </p>
+        </>
+      ) : (
+        <p className="well mt-4 py-8 text-center text-[13px] text-[var(--ink-500)]">开始背词后，这里显示记得多牢</p>
+      )}
+    </div>
+  );
+}
+
+/** 一天背几轮：第一轮正式复习，之后每轮把今天的词快速过一遍，晚上看一遍速览 */
 function Passes() {
   const settings = useSettings();
   const done = useCachedLiveQuery("passes-done", () => passesDone()) ?? 0;
   const count = useCachedLiveQuery("today-words", async () => (await todayWords()).length) ?? 0;
   const names = passNames(settings.dailyPasses);
   return (
-    <div className="card flex flex-wrap items-center gap-x-6 gap-y-4 p-5 lg:px-6">
-      <div className="min-w-0">
-        <h2 className="t-h2">今天背 {names.length} 轮</h2>
-        <p className="mt-1 text-[13px] text-[var(--ink-500)]">第一轮正式复习，之后每轮把今天的 {count} 个词快速过一遍，多刺激几次记得牢。</p>
-      </div>
-      <ol className="flex items-center gap-1.5">
-        {names.map((n, i) => (
-          <li
-            key={i}
-            className={cn(
-              "flex h-9 min-w-11 items-center justify-center rounded-full px-3 text-[13px]",
-              i < done ? "bg-[var(--blue)] text-white" : i === done ? "text-[var(--blue)] shadow-[inset_0_0_0_1.5px_var(--blue)]" : "text-[var(--ink-500)] shadow-[inset_0_0_0_1px_var(--line-control)]",
-            )}
-          >
-            {i < done ? "✓ " : ""}
-            {n}
-          </li>
-        ))}
-      </ol>
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <Link to="/review/quick">
-          <Button variant={done >= 1 && done < names.length ? "primary" : "secondary"} disabled={!count}>
-            快速过一遍
-          </Button>
-        </Link>
-        <Link to="/review/digest">
-          <Button disabled={!count}>单词速览</Button>
-        </Link>
-        <label className="flex items-center gap-1.5 text-[13px] text-[var(--ink-500)]">
-          每天
-          <select value={settings.dailyPasses} onChange={(e) => void setSetting("dailyPasses", Number(e.target.value))} className="h-9 rounded-[8px] bg-white px-2 text-[14px] text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line-control)]">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {n} 轮
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </div>
-  );
-}
-
-/** 词根进度：自己的词最多的几个词根，点进记忆树 */
-function RootProgress() {
-  const memory = useMemory();
-  const [fams, setFams] = useState<Family[] | null>(null);
-  useEffect(() => {
-    loadFamilies().then(setFams, () => setFams([]));
-  }, []);
-  const top = useMemo(() => {
-    if (!fams || !memory) return [];
-    return fams
-      .map((f) => ({ f, n: f.w.filter((x) => mine(memory.get(x[0]))).length, done: f.w.filter((x) => (memory.get(x[0])?.lv ?? 0) >= 4).length }))
-      .filter((x) => x.n > 0)
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 5);
-  }, [fams, memory]);
-  return (
-    <div className="card p-5 lg:p-6">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="t-h2">记忆树</h2>
-        <Link to="/roots" className="text-[13px] text-[var(--blue)] hover:underline">
-          全部
-        </Link>
-      </div>
-      {!top.length ? (
-        <p className="well py-10 text-center text-[13px] text-[var(--ink-500)]">背过的词会按词根长成树</p>
-      ) : (
-        <ul className="space-y-1">
-          {top.map(({ f, n, done }) => (
-            <li key={familyKey(f)}>
-              <Link to={`/roots?r=${encodeURIComponent(familyKey(f))}`} className="flex min-h-11 items-center gap-3 rounded-[10px] px-2 hover:bg-[var(--paper-100)]">
-                <span className="serif w-16 truncate text-[17px] font-semibold text-[var(--blue)]">{f.r}</span>
-                <span className="w-12 truncate text-[13px] text-[var(--ink-700)]">{f.g}</span>
-                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--paper-200)]">
-                  <span className="block h-full bg-[var(--blue-line)]" style={{ width: `${(n / f.w.length) * 100}%` }}>
-                    <span className="block h-full bg-[var(--blue)]" style={{ width: `${n ? (done / n) * 100 : 0}%` }} />
-                  </span>
-                </span>
-                <span className="num w-12 text-right text-[13px] text-[var(--ink-500)]">
-                  {n}/{f.w.length}
-                </span>
-              </Link>
+    <div className="mt-7 border-t border-[var(--line-soft)] pt-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <ol className="flex items-center gap-1.5">
+          {names.map((n, i) => (
+            <li
+              key={i}
+              className={cn(
+                "flex h-8 min-w-10 items-center justify-center rounded-full px-3 text-[13px]",
+                i < done ? "bg-[var(--blue)] text-white" : i === done ? "text-[var(--blue)] shadow-[inset_0_0_0_1.5px_var(--blue)]" : "text-[var(--ink-500)] shadow-[inset_0_0_0_1px_var(--line-control)]",
+              )}
+            >
+              {i < done ? "✓ " : ""}
+              {n}
             </li>
           ))}
-        </ul>
-      )}
+        </ol>
+        <div className="ml-auto flex items-center gap-2">
+          <Link to="/review/quick">
+            <Button variant={done >= 1 && done < names.length ? "primary" : "secondary"} disabled={!count}>
+              快速过一遍
+            </Button>
+          </Link>
+          <Link to="/review/digest">
+            <Button disabled={!count}>单词速览</Button>
+          </Link>
+        </div>
+      </div>
+      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--ink-500)]">
+        每天
+        <select value={settings.dailyPasses} onChange={(e) => void setSetting("dailyPasses", Number(e.target.value))} aria-label="每天几轮" className="h-7 rounded-[7px] bg-white px-1.5 text-[13px] text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line-control)]">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n} 轮
+            </option>
+          ))}
+        </select>
+        ：第一轮正式复习，之后把今天的 {count} 个词快速过一遍。
+      </p>
     </div>
   );
 }
