@@ -97,6 +97,8 @@ export interface DayRow {
   lookups: number;
   questions: number;
   correct: number;
+  /** 正式复习以外，今天又快速过了几遍 */
+  passes?: number;
 }
 
 /** 卷面笔记：手写笔迹、高亮、下划线、便签。坐标都是 PDF 点，原点在页面左上角 */
@@ -250,7 +252,7 @@ export async function bumpDay(patch: Partial<Omit<DayRow, "day">>, when: Date | 
   const day = dayKey(when);
   await db.transaction("rw", db.days, async () => {
     const row = (await db.days.get(day)) ?? { day, reviews: 0, newWords: 0, lookups: 0, questions: 0, correct: 0 };
-    for (const [k, v] of Object.entries(patch) as [keyof Omit<DayRow, "day">, number][]) row[k] += v;
+    for (const [k, v] of Object.entries(patch) as [keyof Omit<DayRow, "day">, number][]) row[k] = (row[k] ?? 0) + v;
     await db.days.put(row);
   });
 }

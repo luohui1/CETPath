@@ -148,16 +148,23 @@ def main():
             head[v["m"][0][0].lower()] += 1
             tail[v["m"][-1][0].lower()] += 1
 
-    def root_keys(m):
+    # 拉丁前缀的同化写法、常见的连接成分：单词本有时把它们写在词中间，不当词根归组
+    NOT_FAMILY = set("co con com col cor sym syn ab abs ad ac af ag al an ap ar as at ex e ef de di dis per pro trans ob oc of op en em se sus suc sup sur intel inter ific ify ize ise ate".split())
+
+    def root_at(m):
+        """词根在第几个语素、按什么归组：[(i, "dict|说")]"""
         keys = []
         for i, x in enumerate(m):
             part, mean = x[0].lower(), x[1]
-            if len(m) < 2 or len(part) < 3 or NOT_ROOT.search(mean):
+            if len(m) < 2 or len(part) < 3 or part in NOT_FAMILY or NOT_ROOT.search(mean):
                 continue
             if (i == 0 and (part in PREFIXES or head[part] >= 10)) or (i == len(m) - 1 and tail[part] >= 10):
                 continue
-            keys.append(part + "|" + re.split(r"[；;，,/ ]", mean)[0])
+            keys.append((i, part + "|" + re.split(r"[；;，,/ ]", mean)[0]))
         return keys
+
+    def root_keys(m):
+        return [k for _, k in root_at(m)]
 
     by_root = defaultdict(list)
     for w, v in entries.items():
@@ -172,16 +179,36 @@ def main():
         if sib:
             v["s"] = [[x, brief(dic[x])] for x in sib[:4]]
 
+    # 词根家族（记忆树、单词宇宙用）：至少 2 个词、至少 1 个在词书里
+    # 每个词 [词, 简义, 词根前的语素 [[写法, 含义]], 词根后的写法 "ion", 词书词频（不在词书是 0）]
+    fam = defaultdict(list)
+    for w, v in entries.items():
+        if "b" in v:
+            continue
+        for i, k in root_at(v["m"]):
+            pre = [[x[0], x[1]] for x in v["m"][:i]]
+            post = "-".join(x[0] for x in v["m"][i + 1 :])
+            fam[k].append([w, brief(dic[w]), pre, post, books.get(w, 0)])
+    families = []
+    for k, ws in fam.items():
+        if len(ws) < 2 or not any(x[4] for x in ws):
+            continue
+        part, mean = k.split("|", 1)
+        ws.sort(key=lambda x: (not x[4], x[4] or 0, x[0]))
+        families.append({"r": part, "g": mean, "w": ws})
+    families.sort(key=lambda f: -len(f["w"]))
+
     OUT.mkdir(parents=True, exist_ok=True)
     shards = defaultdict(dict)
     for w, v in entries.items():
         if not v["e"]:
             del v["e"]
         shards[w[0] if "a" <= w[0] <= "z" else "_"][w] = v
-    for f in OUT.glob("*.json"):
+    for f in OUT.glob("*.json"):  # 含 families.json
         f.unlink()
     for s, d in shards.items():
         (OUT / f"{s}.json").write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")), "utf8")
+    (OUT / "families.json").write_text(json.dumps(families, ensure_ascii=False, separators=(",", ":")), "utf8")
     cov = sum(1 for w in books if w in entries)
     print(f"OpenEtymology {len(oe)} 条，收进 {len(entries)} 条（派生补 {derived}）；词书 {len(books)} 词覆盖 {cov}（{cov / len(books):.0%}）")
 

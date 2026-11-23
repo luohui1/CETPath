@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils";
 /** 单词：背单词、词书、生词本三页共用的顶部切换（侧边栏只有一个"单词"入口） */
 export const WORD_PAGES = [
   { to: "/review", label: "背单词" },
-  { to: "/books", label: "词书" },
   { to: "/vocab", label: "生词本" },
+  { to: "/roots", label: "记忆树" },
+  { to: "/books", label: "词书" },
 ] as const;
 
 /** 错题本、解题思路库共用的顶部切换 */

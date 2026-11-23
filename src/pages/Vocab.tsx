@@ -4,7 +4,9 @@ import { Link, useSearchParams } from "react-router";
 import { BookBookmark, Brain, CaretDown, DownloadSimple, MagnifyingGlass, Plus, Printer, SpeakerHigh, Trash } from "@phosphor-icons/react";
 import { db, type CardRow, type VocabItem } from "@/lib/db";
 import { lookup, phonetic, shortTranslation, translationLines } from "@/lib/dict";
-import { addToVocab, isMastered, removeFromVocab, setVocabMeaning, State, STATE_LABELS } from "@/lib/learning";
+import { addToVocab, isMastered, LEVELS, memoryLevel, removeFromVocab, setVocabMeaning, State, STATE_LABELS } from "@/lib/learning";
+import { LevelMeter, MemoryTree } from "@/components/MemoryTree";
+import { useMemory } from "@/lib/rootFamilies";
 import { useEntries } from "@/lib/useEntries";
 import { lookupOnline } from "@/lib/youdao";
 import { speak } from "@/lib/speech";
@@ -22,10 +24,14 @@ type Sort = "recent" | "alpha" | "due" | "seen";
 /** 记忆状态的小标签：纸底墨字；已掌握墨底白字，待复习荧光黄 */
 function StatusBadge({ card }: { card?: CardRow }) {
   if (!card) return null;
-  if (isMastered(card)) return <span className="tag-paper bg-[var(--ink)] text-white">已掌握</span>;
-  if (card.state === State.New) return <span className="tag-paper">未学</span>;
-  const due = card.due <= Date.now();
-  return <span className={cn("tag-paper", due && "bg-[var(--mark)] text-[var(--ink)]")}>{due ? "待复习" : `${STATE_LABELS[card.state]} · ${fromNow(card.due)}`}</span>;
+  const lv = memoryLevel(card);
+  const due = card.state !== State.New && card.due <= Date.now();
+  return (
+    <span className="inline-flex items-center gap-2 text-[13px] text-[var(--ink-500)]">
+      <LevelMeter lv={lv} />
+      <span className={cn(due && "rounded-[4px] bg-[var(--mark)] px-1 text-[var(--ink)]")}>{card.state === State.New ? "还没背" : due ? "该复习了" : `${LEVELS[lv].label} · ${fromNow(card.due)}复习`}</span>
+    </span>
+  );
 }
 
 /** 概况里的一格：标签、衬线大数字、一句说明 */
@@ -57,6 +63,7 @@ export function VocabPage() {
   const [adding, setAdding] = useState("");
   const [addMsg, setAddMsg] = useState<string | null>(null);
   const paperFilter = params.get("paper") ?? "";
+  const memory = useMemory();
 
   const papers = useMemo(() => {
     const m = new Map<string, string>();
@@ -296,6 +303,10 @@ export function VocabPage() {
                         </button>
                       </div>
                     )}
+                    <div className="no-print rounded-[12px] bg-white px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--line-soft)]">
+                      <div className="mb-2 text-[12px] font-medium text-[var(--ink-500)]">记忆树</div>
+                      <MemoryTree word={it.word} memory={memory} compact onWord={(w) => setQuery(w)} />
+                    </div>
                     {it.sources.length > 0 && (
                       <div className="space-y-2">
                         <div className="tag-paper">真题出处</div>

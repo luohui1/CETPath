@@ -7,10 +7,14 @@ import { db, type CardRow } from "@/lib/db";
 import { getRoots, type RootInfo } from "@/lib/roots";
 import { RootLine } from "@/components/RootLine";
 import { getEntry, loadBookMeta, phonetic, TAG_LABELS, translationLines, type BookInfo, type DictEntry } from "@/lib/dict";
-import { buildQueue, isMastered, pendingCounts, previewIntervals, Rating, reviewWord, State, type QueueItem } from "@/lib/learning";
+import { buildQueue, LEVELS, memoryLevel, pendingCounts, previewIntervals, Rating, retrievability, reviewWord, State, type QueueItem } from "@/lib/learning";
+import { familyKey, loadFamilies, mine, useMemory, type Family } from "@/lib/rootFamilies";
+import { phrasesOf } from "@/lib/phrases";
+import { passesDone, passNames, todayWords } from "@/lib/passes";
+import { LevelMeter, MemoryTree } from "@/components/MemoryTree";
 import { getSettings, setSetting, useSettings, type ReviewMode } from "@/lib/settings";
 import { speak } from "@/lib/speech";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { WordsTabs } from "@/components/WordsTabs";
 import { Button, LoadingBlock, PageHeader, ProgressBar, Segmented } from "@/components/ui";
@@ -19,7 +23,7 @@ import { HighlightSentence } from "@/components/HighlightSentence";
 import { Tip } from "@/components/overlay";
 import { PixelIcon } from "@/components/PixelIcon";
 import { Bubbles, Stamp } from "@/components/paper-ui";
-import { DayColumns, MemoryStrip } from "@/components/viz";
+import { DayColumns } from "@/components/viz";
 import { SpellCard } from "@/review/SpellCard";
 import { WordContext } from "@/review/WordContext";
 
@@ -72,12 +76,6 @@ interface SessionStats {
   again: number;
 }
 
-const RATING_NAMES: Record<number, { label: string; tone: string }> = {
-  1: { label: "不认识", tone: "font-semibold text-[var(--ink)]" },
-  2: { label: "模糊", tone: "text-[var(--ink-700)]" },
-  3: { label: "认识", tone: "text-[var(--ink-500)]" },
-  4: { label: "简单", tone: "text-[var(--ink-500)]" },
-};
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 /** 开始页：今天的任务做成一张答题卡（三行小泡），旁边是记忆状态；下面是未来 7 天的复习量和最近复习的词 */
@@ -86,7 +84,6 @@ function StartScreen({ onStart }: { onStart: () => void }) {
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
   const cards = useCachedLiveQuery("cards", () => db.cards.toArray());
-  const recent = useCachedLiveQuery("recent-logs", () => db.logs.orderBy("reviewedAt").reverse().limit(8).toArray());
   const [books, setBooks] = useState<BookInfo[]>([]);
   useEffect(() => {
     loadBookMeta().then(setBooks, () => {});
@@ -111,13 +108,13 @@ function StartScreen({ onStart }: { onStart: () => void }) {
     const i = Math.max(0, Math.floor((c.due - today.getTime()) / 86_400_000));
     if (i < 7) forecast[i].value++;
   }
-  const memory = [
-    { label: "已掌握", value: cards.filter(isMastered).length },
-    { label: "复习中", value: cards.filter((c) => c.state === State.Review && !isMastered(c)).length },
-    { label: "学习中", value: cards.filter((c) => c.state === State.Learning || c.state === State.Relearning).length },
-    { label: "未学", value: cards.filter((c) => c.state === State.New).length },
-  ].filter((m) => m.value);
-
+  // 记忆等级分布、平均记得的把握、快忘的词
+  const learned = cards.filter((c) => c.state !== State.New);
+  const levels = [5, 4, 3, 2, 1].map((lv) => ({ lv, n: learned.filter((c) => memoryLevel(c) === lv).length }));
+  const maxLv = Math.max(1, ...levels.map((l) => l.n));
+  const rs = learned.map((c) => retrievability(c));
+  const avgR = rs.length ? Math.round((rs.reduce((a, b) => a + b, 0) / rs.length) * 100) : 0;
+  const fading = rs.filter((r) => r < 0.85).length;
 
   return (
     <div className="space-y-5">
@@ -161,16 +158,48 @@ function StartScreen({ onStart }: { onStart: () => void }) {
         </div>
 
         <div className="card p-5 lg:p-6">
-          <h2 className="t-h2" title="已掌握：记得牢、间隔超过 3 周">
-            记忆状态
-          </h2>
-          <div className="num mt-4 text-[40px] leading-[44px]">
-            {cards.length}
-            <span className="ml-1 font-[family-name:var(--font-sans)] text-[13px] font-normal text-[var(--ink-500)]">个单词</span>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="t-h2">记忆等级</h2>
+            <span className="text-[13px] text-[var(--ink-500)]">{learned.length} 个词背过</span>
           </div>
-          <div className="mt-4">{memory.length ? <MemoryStrip memory={memory} total={cards.length} /> : <p className="well py-8 text-center text-[13px] text-[var(--ink-500)]">开始背词后，这里显示记忆状态</p>}</div>
+          {learned.length ? (
+            <>
+              <div className="mt-4 flex items-end gap-5">
+                <div>
+                  <div className="num text-[40px] leading-[44px]">
+                    {avgR}
+                    <span className="text-[18px]">%</span>
+                  </div>
+                  <div className="text-[13px] text-[var(--ink-500)]">现在平均还记得</div>
+                </div>
+                {fading > 0 && (
+                  <div>
+                    <div className="num text-[28px] leading-[32px] text-[var(--red)]">{fading}</div>
+                    <div className="text-[13px] text-[var(--ink-500)]">个快忘了</div>
+                  </div>
+                )}
+              </div>
+              <ul className="mt-5 space-y-2">
+                {levels.map(({ lv, n }) => (
+                  <li key={lv} className="flex items-center gap-2.5 text-[13px]" title={LEVELS[lv].hint}>
+                    <LevelMeter lv={lv} />
+                    <span className="w-9 text-[var(--ink-700)]">{LEVELS[lv].label}</span>
+                    <span className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--paper-200)]">
+                      <span className="block h-full rounded-full bg-[var(--blue)]" style={{ width: `${(n / maxLv) * 100}%`, opacity: 0.35 + lv * 0.13 }} />
+                    </span>
+                    <span className="num w-8 text-right text-[15px]">{n}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-4 text-[12px] leading-[1.6] text-[var(--ink-500)]">等级按 FSRS 估计的"不复习能记多久"分：每答对一次，间隔拉长，等级往上走。</p>
+            </>
+          ) : (
+            <p className="well mt-4 py-8 text-center text-[13px] text-[var(--ink-500)]">开始背词后，这里显示每个词记得多牢</p>
+          )}
         </div>
       </div>
+
+      <Passes />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="card p-5 lg:col-span-2 lg:p-6">
@@ -179,25 +208,155 @@ function StartScreen({ onStart }: { onStart: () => void }) {
           </h2>
           <DayColumns data={forecast} unit=" 个" />
         </div>
-        <div className="card p-5 lg:p-6">
-          <h2 className="t-h2 mb-2">最近复习</h2>
-          {!recent?.length ? (
-            <p className="well py-10 text-center text-[13px] text-[var(--ink-500)]">还没有复习记录</p>
-          ) : (
-            <ul className="divide-y divide-dashed divide-[var(--line-control)]">
-              {recent.slice(0, 5).map((l) => (
-                <li key={l.id} className="flex min-h-10 items-center gap-2 py-1.5 text-[13px]">
-                  <button type="button" onClick={() => speak(l.word)} className="serif truncate text-[16px] hover:text-[var(--blue)]" title="发音">
-                    {l.word}
-                  </button>
-                  <span className={cn("ml-auto flex-none", RATING_NAMES[l.rating]?.tone)}>{RATING_NAMES[l.rating]?.label}</span>
-                  <span className="w-16 flex-none text-right text-[13px] text-[var(--ink-500)]">{timeAgo(l.reviewedAt)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <RootProgress />
       </div>
+    </div>
+  );
+}
+
+/** 一天背几轮：第一轮正式复习，之后每轮把今天的词快速过一遍，晚上看一遍按结构排好的速览 */
+function Passes() {
+  const settings = useSettings();
+  const done = useCachedLiveQuery("passes-done", () => passesDone()) ?? 0;
+  const count = useCachedLiveQuery("today-words", async () => (await todayWords()).length) ?? 0;
+  const names = passNames(settings.dailyPasses);
+  return (
+    <div className="card flex flex-wrap items-center gap-x-6 gap-y-4 p-5 lg:px-6">
+      <div className="min-w-0">
+        <h2 className="t-h2">今天背 {names.length} 轮</h2>
+        <p className="mt-1 text-[13px] text-[var(--ink-500)]">第一轮正式复习，之后每轮把今天的 {count} 个词快速过一遍，多刺激几次记得牢。</p>
+      </div>
+      <ol className="flex items-center gap-1.5">
+        {names.map((n, i) => (
+          <li
+            key={i}
+            className={cn(
+              "flex h-9 min-w-11 items-center justify-center rounded-full px-3 text-[13px]",
+              i < done ? "bg-[var(--blue)] text-white" : i === done ? "text-[var(--blue)] shadow-[inset_0_0_0_1.5px_var(--blue)]" : "text-[var(--ink-500)] shadow-[inset_0_0_0_1px_var(--line-control)]",
+            )}
+          >
+            {i < done ? "✓ " : ""}
+            {n}
+          </li>
+        ))}
+      </ol>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Link to="/review/quick">
+          <Button variant={done >= 1 && done < names.length ? "primary" : "secondary"} disabled={!count}>
+            快速过一遍
+          </Button>
+        </Link>
+        <Link to="/review/digest">
+          <Button disabled={!count}>单词速览</Button>
+        </Link>
+        <label className="flex items-center gap-1.5 text-[13px] text-[var(--ink-500)]">
+          每天
+          <select value={settings.dailyPasses} onChange={(e) => void setSetting("dailyPasses", Number(e.target.value))} className="h-9 rounded-[8px] bg-white px-2 text-[14px] text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line-control)]">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n} 轮
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/** 词根进度：自己的词最多的几个词根，点进记忆树 */
+function RootProgress() {
+  const memory = useMemory();
+  const [fams, setFams] = useState<Family[] | null>(null);
+  useEffect(() => {
+    loadFamilies().then(setFams, () => setFams([]));
+  }, []);
+  const top = useMemo(() => {
+    if (!fams || !memory) return [];
+    return fams
+      .map((f) => ({ f, n: f.w.filter((x) => mine(memory.get(x[0]))).length, done: f.w.filter((x) => (memory.get(x[0])?.lv ?? 0) >= 4).length }))
+      .filter((x) => x.n > 0)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 5);
+  }, [fams, memory]);
+  return (
+    <div className="card p-5 lg:p-6">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="t-h2">记忆树</h2>
+        <Link to="/roots" className="text-[13px] text-[var(--blue)] hover:underline">
+          全部
+        </Link>
+      </div>
+      {!top.length ? (
+        <p className="well py-10 text-center text-[13px] text-[var(--ink-500)]">背过的词会按词根长成树</p>
+      ) : (
+        <ul className="space-y-1">
+          {top.map(({ f, n, done }) => (
+            <li key={familyKey(f)}>
+              <Link to={`/roots?r=${encodeURIComponent(familyKey(f))}`} className="flex min-h-11 items-center gap-3 rounded-[10px] px-2 hover:bg-[var(--paper-100)]">
+                <span className="serif w-16 truncate text-[17px] font-semibold text-[var(--blue)]">{f.r}</span>
+                <span className="w-12 truncate text-[13px] text-[var(--ink-700)]">{f.g}</span>
+                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--paper-200)]">
+                  <span className="block h-full bg-[var(--blue-line)]" style={{ width: `${(n / f.w.length) * 100}%` }}>
+                    <span className="block h-full bg-[var(--blue)]" style={{ width: `${n ? (done / n) * 100 : 0}%` }} />
+                  </span>
+                </span>
+                <span className="num w-12 text-right text-[13px] text-[var(--ink-500)]">
+                  {n}/{f.w.length}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** 正面想不起来时一级级给提示：先给拆法或一个短语，再给每块的意思；不直接给词义 */
+function Hint({ roots, phrase, step, onMore }: { roots: RootInfo | null; phrase: string | null; step: number; onMore: () => void }) {
+  const parts = roots?.m ?? [];
+  const max = parts.length ? 2 : phrase ? 1 : 0;
+  if (!max) return null;
+  return (
+    <div className="mt-4 flex min-h-10 flex-col items-center gap-2">
+      {step > 0 &&
+        (parts.length ? (
+          <div className="flex flex-wrap justify-center gap-1.5">
+            {parts.map((p, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-[var(--ink-300)]">+</span>}
+                <span className="rounded-[9px] bg-[var(--fill-quiet)] px-2.5 py-1 shadow-[inset_0_0_0_1px_var(--line)]">
+                  <span className="serif block text-[16px] leading-tight font-semibold">{p[0]}</span>
+                  {step > 1 && <span className="animate-pop block text-[12px] text-[var(--ink-700)]">{p[1]}</span>}
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="serif text-[17px] text-[var(--ink-700)]">{phrase}</span>
+        ))}
+      {step < max && (
+        <button type="button" onClick={onMore} className="h-8 rounded-full px-3 text-[13px] text-[var(--blue)] hover:bg-[var(--blue-tint)]">
+          {step === 0 ? (parts.length ? "提示：看看怎么拆" : "提示：看一个短语") : "再提示：每块什么意思"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 背面一行：现在的记忆等级、FSRS 估计还记得的把握、这次评完多久后再见 */
+function MemoryLine({ card, next }: { card: CardRow | undefined; next: number | null }) {
+  const lv = memoryLevel(card);
+  const r = card && card.state !== State.New ? Math.round(retrievability(card) * 100) : null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] bg-[var(--fill-quiet)] px-3 py-2 text-[13px] text-[var(--ink-700)]">
+      <LevelMeter lv={lv} />
+      <span>
+        记忆 <b className="font-semibold text-[var(--ink)]">{LEVELS[lv].label}</b>
+      </span>
+      {r !== null && <span>刚才记得的把握约 {r}%</span>}
+      {next && <span className="ml-auto text-[var(--ink-500)]">这次评完，{formatInterval(next - Date.now())}后再见</span>}
     </div>
   );
 }
@@ -248,6 +407,10 @@ export function ReviewPage() {
   const [grade, setGrade] = useState<Grade | null>(null);
   const [entry, setEntry] = useState<DictEntry | null | undefined>(undefined);
   const [roots, setRoots] = useState<RootInfo | null>(null);
+  const [phrase, setPhrase] = useState<string | null>(null);
+  // 提示阶梯：0 没提示；1 给拆法（pre · dict）或一个短语；2 再给每块的意思
+  const [hint, setHint] = useState(0);
+  const memory = useMemory();
   const [card, setCard] = useState<CardRow | undefined>(undefined);
   const [stats, setStats] = useState<SessionStats>({ done: 0, fresh: 0, again: 0 });
   const [extra, setExtra] = useState(0);
@@ -277,10 +440,13 @@ export function ReviewPage() {
     let cancelled = false;
     setEntry(undefined);
     setRoots(null);
-    Promise.all([getEntry(item.word), db.cards.get(item.word), getRoots(item.word)]).then(([e, c, r]) => {
+    setPhrase(null);
+    setHint(0);
+    Promise.all([getEntry(item.word), db.cards.get(item.word), getRoots(item.word), phrasesOf(item.word, 1).catch(() => [])]).then(([e, c, r, ph]) => {
       if (cancelled) return;
       setEntry(e ?? null);
       setRoots(r);
+      setPhrase(ph[0]?.phrase ?? null);
       setCard(c);
       // 拼写不自动读（读了就等于告诉你怎么拼）；听写由拼写卡自己读
       if (e && settings.autoSpeak && !spelling) speak(e.w);
@@ -326,6 +492,7 @@ export function ReviewPage() {
     const onKey = (e: KeyboardEvent) => {
       if (!item || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "v" || e.key === "V") speak(item.word);
+      if ((e.key === "h" || e.key === "H") && phase === "front" && !spelling) setHint((h) => Math.min(2, h + 1));
       if (phase === "front" && spelling) return; // 拼写、听写靠拼对拼错评分
       if (phase === "front") {
         if (e.key === "1") rate(Rating.Again);
@@ -396,6 +563,7 @@ export function ReviewPage() {
               {entry && phonetic(entry) && <span className="font-[family-name:var(--font-mono)] text-[14px]">{phonetic(entry)}</span>}
               <SpeakerHigh className="size-5" />
             </button>
+            {phase === "front" && <Hint roots={roots} phrase={phrase} step={hint} onMore={() => setHint((h) => Math.min(2, h + 1))} />}
           </div>
         )}
 
@@ -422,7 +590,9 @@ export function ReviewPage() {
                   </div>
                 )}
                 <DefinitionLines lines={translationLines(entry)} />
+                <MemoryLine card={card} next={grade !== null && intervals ? intervals[grade] : null} />
                 {roots && <RootLine info={roots} />}
+                <MemoryTree word={item.word} memory={memory} compact hideFormula />
                 <Forms entry={entry} />
               </div>
             )}

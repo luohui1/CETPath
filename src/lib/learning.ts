@@ -227,6 +227,31 @@ export const STATE_LABELS: Record<State, string> = {
   [State.Relearning]: "重学中",
 };
 
+/** FSRS 估计的现在还记得的概率（0–1）；没学过的是 0 */
+export function retrievability(row: CardRow, now = new Date()) {
+  if (row.state === State.New) return 0;
+  return scheduler.get_retrievability(toCard(row), now, false);
+}
+
+/**
+ * 记忆等级 0–5：按 FSRS 的稳定度（不复习也能记住约多少天）分。
+ * 0 没学；1 不到 1 天；2 不到 1 周；3 不到 3 周；4 不到 3 个月（已掌握）；5 三个月以上
+ */
+export const LEVELS = [
+  { label: "没学", hint: "还没开始背" },
+  { label: "刚学", hint: "记不过 1 天" },
+  { label: "短期", hint: "能记几天" },
+  { label: "中期", hint: "能记 1–3 周" },
+  { label: "长期", hint: "能记 3 周以上" },
+  { label: "牢固", hint: "能记 3 个月以上" },
+] as const;
+
+export function memoryLevel(row: CardRow | undefined) {
+  if (!row || row.state === State.New) return 0;
+  const s = row.stability;
+  return s < 1 ? 1 : s < 7 ? 2 : s < 21 ? 3 : s < 90 ? 4 : 5;
+}
+
 /** 稳定度超过 21 天视为已掌握 */
 export function isMastered(row: CardRow) {
   return row.state === State.Review && row.stability >= 21;
