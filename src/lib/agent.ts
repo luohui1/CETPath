@@ -461,7 +461,7 @@ function questionCuts(p: PdfWordsPage, qs: { number: number; box?: [number, numb
     const [x0, y0, x1] = q.box!;
     const row = p.w.filter((w) => Math.abs(w[2] - y0) <= 3 && w[1] >= x0 - 1);
     // 题号框里的字就是题号本身（不管认成了什么），框后第一个词才是题干开头
-    const inBox = (w: (typeof row)[number]) => /^[\d.．]+$/.test(w[0]) || (w[3] <= x1 + 2 && /^[\dlIO|]{1,3}[.．]?$/.test(w[0]));
+    const inBox = (w: (typeof row)[number]) => w[1] < x1 - 1 && /^[\dlI|.．]{1,4}$/.test(w[0]);
     let best: (typeof row)[number] | undefined;
     for (const w of row) if (!inBox(w) && w[1] <= x1 + 40 && (!best || w[1] < best[1])) best = w;
     if (!best) continue;
