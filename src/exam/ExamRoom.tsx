@@ -1755,6 +1755,11 @@ export function ExamRoom({
     },
     [lowerDrawer],
   );
+  /** "看解析"：在卷子下面打开第一道错题（没错题就第一题）的解析，上一题/下一题接着翻 */
+  const explainFirst = () => {
+    const q = order.find((q) => answers[q.id] !== q.answer) ?? order[0];
+    if (q) explainQ(q);
+  };
   // 新手：一道都没答、也没交卷时，第一题的空圈闪几下，状态栏写一句点哪儿
   const fresh = !submitted && !Object.keys(answers).length && order.length > 0;
   const firstHint = fresh ? idAt(0) : null;
@@ -1987,6 +1992,7 @@ export function ExamRoom({
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
+      onExplain={explainFirst}
       onWriteFocus={(q) => timeStart(q.id)}
       attempt={attempt}
       answers={answers}
@@ -2534,10 +2540,7 @@ export function ExamRoom({
           retired={report.retired}
           back={back}
           onExplainQ={explainQ}
-          onExplain={() => {
-            setReport((r) => ({ ...r, open: false }));
-            openTab("explain");
-          }}
+          onExplain={explainFirst}
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
           onAgent={() => {
             setReport((r) => ({ ...r, open: false }));

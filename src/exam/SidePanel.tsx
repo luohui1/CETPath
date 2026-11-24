@@ -783,6 +783,7 @@ export function Dock({
   onSubmit,
   onRedo,
   onReport,
+  onExplain,
   onWriteFocus,
   mode,
   attemptKey,
@@ -822,6 +823,7 @@ export function Dock({
   onSubmit: () => void;
   onRedo: () => void;
   onReport: () => void;
+  onExplain: () => void; // 答题卡上的"看解析"：在卷子下面打开第一道错题的解析
   onWriteFocus: (q: Question) => void;
   mode: AttemptMode;
   attemptKey: string;
@@ -962,7 +964,7 @@ export function Dock({
           onJump={onJump}
           onSubmit={onSubmit}
           onRedo={onRedo}
-          onExplain={() => onView("explain")}
+          onExplain={onExplain}
           onReport={onReport}
         />
       )}
