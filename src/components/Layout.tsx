@@ -8,6 +8,7 @@ import { useSettings } from "@/lib/settings";
 import { cn, daysUntil } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { PixelIcon, type PixelName } from "./PixelIcon";
+import { LogoMark } from "./Logo";
 import { MISTAKE_PAGES, WORD_PAGES } from "./WordsTabs";
 import { ARTICLES_ON } from "@/lib/articles";
 
@@ -166,8 +167,7 @@ export function Layout() {
         style={{ width }}
       >
         <NavLink to="/" className={cn("mb-7 flex items-center gap-2.5", collapsed ? "justify-center" : "px-2")} title="英语之道">
-          {/* 一枚小方章做标志 */}
-          <span className="stamp stamp-flat grid size-8 flex-none place-items-center rounded-[7px] p-0 text-[15px] leading-none tracking-normal">道</span>
+          <LogoMark className="flex-none" />
           {!collapsed && <span className="text-[17px] leading-none font-semibold tracking-[0.04em] whitespace-nowrap">英语之道</span>}
         </NavLink>
 
