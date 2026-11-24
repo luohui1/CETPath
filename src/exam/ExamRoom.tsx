@@ -2462,7 +2462,7 @@ export function ExamRoom({
                       onWrite={onWrite}
                     />
                   ))}
-                  <p className={cn("pt-1 text-center text-[11px] text-subtle", twoUp && "col-span-2")}>{paper.note}</p>
+                  <p className={cn("pt-1 text-center text-[11px] text-subtle", twoUp && "col-span-2 w-0 min-w-full")}>{paper.note}</p>
                 </div>
               )}
             </div>
