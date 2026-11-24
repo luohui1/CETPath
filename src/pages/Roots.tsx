@@ -65,7 +65,7 @@ export function RootsPage() {
         actions={<Segmented label="看法" value={view} options={VIEWS} onChange={(v) => go({ v, r: key ?? undefined })} />}
       />
       <form onSubmit={search} className="flex max-w-md items-center gap-2">
-        <label className="flex h-11 flex-1 items-center gap-2 rounded-[11px] bg-white px-3 shadow-[inset_0_0_0_1px_var(--line-control)]">
+        <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-[11px] bg-white px-3 shadow-[inset_0_0_0_1px_var(--line-control)]">
           <MagnifyingGlass className="size-4 text-[var(--ink-500)]" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入单词或词根，比如 predict、spect" className="min-w-0 flex-1 bg-transparent text-[15px] outline-none" />
         </label>
@@ -267,7 +267,7 @@ function TreeView({
   const siblings = families.filter((x) => x !== f && x.r === f.r);
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="card p-5">
         <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="t-h2">

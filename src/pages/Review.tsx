@@ -494,9 +494,15 @@ export function ReviewPage() {
           />
         ) : (
           /* 单词卡：一张抬起的白纸，大字衬线英文 + 音标 + 发音 */
-          <div className="card card-raised relative px-6 pt-8 pb-7 text-center">
+          <div className="card card-raised relative px-6 pt-8 pb-7 text-center [container-type:inline-size]">
             {item.isNew && <span className="tag-paper absolute top-4 left-4">新词</span>}
-            <h1 className="serif text-[56px] leading-[1.05] font-semibold tracking-[-0.02em] break-words">{entry?.w ?? item.word}</h1>
+            {/* 长词按屏宽缩字号，手机上也不在词中间断行 */}
+            <h1
+              className="serif leading-[1.05] font-semibold tracking-[-0.02em] break-words"
+              style={{ fontSize: `clamp(24px, calc(100cqw / ${((entry?.w ?? item.word).length * 0.62).toFixed(2)}), 56px)` }}
+            >
+              {entry?.w ?? item.word}
+            </h1>
             <button type="button" onClick={() => speak(item.word)} className="mt-3 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[var(--ink-500)] transition hover:bg-[var(--paper-100)] hover:text-[var(--ink)]">
               {entry && phonetic(entry) && <span className="font-[family-name:var(--font-mono)] text-[14px]">{phonetic(entry)}</span>}
               <SpeakerHigh className="size-5" />
