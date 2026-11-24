@@ -11,6 +11,8 @@
 
 React · TypeScript · Vite · PWA · IndexedDB · PDF.js · FSRS
 
+[功能](#功能) · [快速开始](#快速开始) · [技术架构](#技术架构) · [数据来源与版权](#数据来源与版权)
+
 </div>
 
 <p align="center">
@@ -23,8 +25,14 @@ React · TypeScript · Vite · PWA · IndexedDB · PDF.js · FSRS
 
 英语之道只围绕一套真题转：
 
-```
-选卷 → 在原卷上做题 → 交卷看分和解析 → 找 AI 助教复盘 → 错题和生词入库 → 按遗忘曲线再练
+```mermaid
+flowchart LR
+  A[选卷] --> B[在原卷上做题]
+  B --> C[交卷看分和解析]
+  C --> D[找 AI 助教复盘]
+  D --> E[错题和生词入库]
+  E --> F[按遗忘曲线再练]
+  F -.下一套.-> A
 ```
 
 - **原卷就是界面**：每套卷子都按原版 PDF 显示，不改写成网页题目。点词查词、点题号选答案、用笔在卷面上写。
@@ -103,6 +111,10 @@ React · TypeScript · Vite · PWA · IndexedDB · PDF.js · FSRS
 另外还有错题本、学习统计（打卡热力图、正确率、复习量）和设置（发音、倒计时、数据备份）。
 
 ## 适配
+
+<p align="center">
+  <img src="docs/images/devices.webp" alt="平板竖屏做题、手机背词卡片和手机单词速览" width="100%">
+</p>
 
 - **平板优先**：主要按平板横屏手写做题设计，竖屏和手机也能用。
 - **PWA**：可以安装到桌面或手机主屏；应用和词典数据离线缓存，没网也能做已打开过的卷子、背词。
