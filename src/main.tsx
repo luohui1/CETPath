@@ -17,7 +17,7 @@ import type { ComponentType } from "react";
 import { Layout } from "./components/Layout";
 import { loadMe } from "./lib/auth";
 import { HomePage } from "./pages/Home";
-import { IS_PREVIEW, installPreview } from "./lib/preview";
+import { IS_PREVIEW, installOwnModel, installPreview } from "./lib/preview";
 import { NotFoundPage } from "./pages/NotFound";
 
 /*
@@ -33,6 +33,7 @@ const page = (load: () => Promise<ComponentType>) => {
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
 
 if (IS_PREVIEW) installPreview();
+else installOwnModel(); // 正式版：学习者在设置里填了自己的模型，选它时浏览器直接调
 void loadMe(); // 从哪个页面打开都先查登录、开始同步
 
 const router = createBrowserRouter([

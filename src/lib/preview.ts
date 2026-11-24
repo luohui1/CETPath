@@ -8,6 +8,9 @@ export const IS_PREVIEW = import.meta.env.VITE_PREVIEW === "1";
 export type PreviewModel = { base_url: string; api_key: string; model: string };
 const CFG_KEY = "yz-preview-model";
 export const DEMO_MODEL = "演示回答";
+/** 正式版模型下拉里"自己的模型"那一项 */
+export const ownModelName = (c: PreviewModel) => `自定义 · ${c.model}`;
+const PICK_KEY = "yz-agent-model"; // 和 agent.ts 的 MODEL_KEY 一致
 
 export function previewModel(): PreviewModel | null {
   try {
@@ -297,5 +300,52 @@ export function installPreview() {
       /* 不是 JSON */
     }
     return handle(u.pathname, body, init?.signal);
+  };
+}
+
+/**
+ * 正式版：学习者在设置里填了自己的 OpenAI 兼容接口时，模型下拉多一项"自定义 · 模型名"。
+ * 选了它（或服务器没开 Agent、要激活码）就在浏览器里直接调他自己的接口；否则照旧走服务器。
+ */
+export function installOwnModel() {
+  const orig = window.fetch.bind(window);
+  let server: Promise<boolean> | null = null;
+  const probe = (init?: RequestInit) =>
+    (server ??= orig("/api/agent/status", { headers: init?.headers })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: { enabled?: boolean; locked?: boolean; activated?: boolean }) => !!d.enabled && !(d.locked && !d.activated))
+      .catch(() => false));
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const c = previewModel();
+    const u = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
+    if (!c || u.origin !== location.origin || !u.pathname.startsWith("/api/agent/")) return orig(input, init);
+    const own = ownModelName(c);
+    switch (u.pathname) {
+      case "/api/agent/status":
+        server = null;
+        await probe(init);
+        return json(200, { enabled: true, locked: false, activated: true });
+      case "/api/agent/models": {
+        if (!(await probe(init))) return json(200, { models: [own], default: own });
+        type M = { models?: string[]; default?: string };
+        const d: M = await orig(input, init)
+          .then((r) => (r.ok ? (r.json() as Promise<M>) : {}))
+          .catch(() => ({}));
+        const list = (d.models?.length ? d.models : d.default ? [d.default] : []).filter((m) => m !== own);
+        return json(200, { models: [...list, own], default: d.default || list[0] || own });
+      }
+      case "/api/agent/chat":
+      case "/api/agent/remember":
+      case "/api/agent/sent": {
+        let body: Ctx = {};
+        try {
+          body = init?.body && typeof init.body === "string" ? (JSON.parse(init.body) as Ctx) : {};
+        } catch {
+          /* 不是 JSON */
+        }
+        if (localStorage.getItem(PICK_KEY) === own || !(await probe(init))) return handle(u.pathname, body, init?.signal);
+      }
+    }
+    return orig(input, init);
   };
 }

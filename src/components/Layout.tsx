@@ -1,7 +1,7 @@
 import { AuthGate } from "./AuthGate";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigation } from "react-router";
-import { SidebarSimple } from "@phosphor-icons/react";
+import { GithubLogo, SidebarSimple } from "@phosphor-icons/react";
 import { pendingCounts } from "@/lib/learning";
 import { backfillMastery, usePendingMistakes } from "@/lib/mistakes";
 import { useSettings } from "@/lib/settings";
@@ -183,6 +183,16 @@ export function Layout() {
           <nav className="flex flex-col gap-0.5" aria-label="更多">
             <Quiet to="/stats" label="学习统计" icon="graph" collapsed={collapsed} />
             <Quiet to="/settings" label="设置" icon="ruler" collapsed={collapsed} />
+            <a
+              href="https://github.com/luohui1/CETPath"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="GitHub 开源仓库 CETPath"
+              className={cn("flex min-h-10 items-center rounded-[10px] text-[13px] text-[var(--ink-500)] transition-colors hover:bg-white/70 hover:text-[var(--ink)]", collapsed ? "flex-col justify-center gap-1 py-1.5" : "gap-3 px-3 py-2")}
+            >
+              <GithubLogo className="size-[18px]" weight="fill" />
+              {collapsed ? <span className="text-[11px] leading-none">GitHub</span> : "GitHub 开源"}
+            </a>
           </nav>
           <button
             type="button"

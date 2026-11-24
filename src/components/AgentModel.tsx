@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { resetAgentStatus } from "@/lib/agent";
+import { pickedModel, resetAgentStatus, setPickedModel } from "@/lib/agent";
 import { Button } from "@/components/ui";
-import { IS_PREVIEW, previewModel, savePreviewModel, testPreviewModel } from "@/lib/preview";
+import { IS_PREVIEW, ownModelName, previewModel, savePreviewModel, testPreviewModel } from "@/lib/preview";
 
 type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; models?: string[]; access_code?: string; error?: string; reply?: string; ms?: number };
 
@@ -38,9 +38,12 @@ function PreviewAgentModel() {
   const ok = !!(f.base_url.trim() && f.model.trim() && f.api_key.trim());
   const clean = () => ({ base_url: f.base_url.trim(), model: f.model.trim(), api_key: f.api_key.trim() });
   const save = () => {
-    savePreviewModel(clean());
+    const c = clean();
+    if (saved && pickedModel() === ownModelName(saved)) localStorage.removeItem("yz-agent-model");
+    savePreviewModel(c);
+    if (!IS_PREVIEW) setPickedModel(ownModelName(c));
     resetAgentStatus();
-    setMsg({ ok: true, text: "已保存。AI 助教现在用这个模型回答" });
+    setMsg({ ok: true, text: IS_PREVIEW ? "已保存。AI 助教现在用这个模型回答" : `已保存，并切到「${ownModelName(c)}」。在 AI 助教输入框下面的模型下拉里可以随时换回服务器的模型` });
   };
   const test = async () => {
     setBusy(true);
@@ -55,15 +58,18 @@ function PreviewAgentModel() {
     setBusy(false);
   };
   const clear = () => {
+    if (saved && pickedModel() === ownModelName(saved)) localStorage.removeItem("yz-agent-model");
     savePreviewModel(null);
     setF({ base_url: "", model: "", api_key: "" });
     resetAgentStatus();
-    setMsg({ ok: true, text: "已清除，AI 助教改回演示回答" });
+    setMsg({ ok: true, text: IS_PREVIEW ? "已清除，AI 助教改回演示回答" : "已清除，AI 助教改回服务器的模型" });
   };
   return (
     <div className="space-y-3 px-5 py-4">
       <p className="text-[13px] leading-[21px] text-[var(--ink-700)]">
-        预览版没有后台。填上你自己的 OpenAI 兼容接口，AI 助教就用它回答；API Key 只存在这台设备的浏览器里，由浏览器直接发给你填的接口。不填时 AI 助教只回一段演示说明。
+        {IS_PREVIEW
+          ? "预览版没有后台。填上你自己的 OpenAI 兼容接口，AI 助教就用它回答；API Key 只存在这台设备的浏览器里，由浏览器直接发给你填的接口。不填时 AI 助教只回一段演示说明。"
+          : "想用自己的模型：填上 OpenAI 兼容接口，模型下拉里会多一项「自定义 · 模型名」。API Key 只存在这台设备的浏览器里，由浏览器直接发给你填的接口，不经过本站服务器；接口要允许浏览器跨域调用。"}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (
@@ -96,7 +102,7 @@ function PreviewAgentModel() {
         <Button onClick={() => void test()} loading={busy} disabled={!ok}>
           测试连接
         </Button>
-        {saved && <Button onClick={clear}>清除，改回演示</Button>}
+        {saved && <Button onClick={clear}>{IS_PREVIEW ? "清除，改回演示" : "清除"}</Button>}
       </div>
       {msg && <p className={`text-[13px] leading-5 ${msg.ok ? "text-[var(--green,#16a34a)]" : "text-[var(--red,#dc2626)]"}`}>{msg.text}</p>}
     </div>
@@ -105,7 +111,16 @@ function PreviewAgentModel() {
 
 /** 设置页的 Agent 模型：OpenAI 兼容接口的地址、模型名、密钥。存在服务器上，改之前要输后台密码 */
 export function AgentModel() {
-  return IS_PREVIEW ? <PreviewAgentModel /> : <ServerAgentModel />;
+  if (IS_PREVIEW) return <PreviewAgentModel />;
+  return (
+    <>
+      <PreviewAgentModel />
+      <details className="group border-t border-[var(--line-soft)]">
+        <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]">站点管理员：服务器默认模型</summary>
+        <ServerAgentModel />
+      </details>
+    </>
+  );
 }
 
 function ServerAgentModel() {
