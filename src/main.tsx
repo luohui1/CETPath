@@ -17,6 +17,7 @@ import type { ComponentType } from "react";
 import { Layout } from "./components/Layout";
 import { loadMe } from "./lib/auth";
 import { HomePage } from "./pages/Home";
+import { IS_PREVIEW, installPreview } from "./lib/preview";
 import { NotFoundPage } from "./pages/NotFound";
 
 /*
@@ -31,6 +32,7 @@ const page = (load: () => Promise<ComponentType>) => {
 };
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
 
+if (IS_PREVIEW) installPreview();
 void loadMe(); // 从哪个页面打开都先查登录、开始同步
 
 const router = createBrowserRouter([
@@ -131,13 +133,26 @@ function MemoryDbNotice() {
   );
 }
 
+/** 预览版：顶部一行说明这是预览版、少了什么 */
+function PreviewNotice() {
+  return (
+    <div role="status" className="no-print fixed inset-x-0 top-0 z-[100] flex h-8 items-center justify-center gap-2 overflow-hidden bg-[var(--star-tint)] px-4 text-center text-[13px] whitespace-nowrap text-[var(--ink-700)] shadow-[inset_0_-1px_0_var(--line)]">
+      <span className="rounded-full bg-[var(--blue)] px-2 py-px text-[11px] leading-4 font-semibold text-white">预览版</span>
+      <span className="hidden sm:inline">只带四级、六级、考研各一套卷子，没有账号和同步。AI 助教可以在</span>
+      <a href="/settings#agent" className="font-medium text-[var(--blue)] underline-offset-2 hover:underline">
+        设置里接自己的模型
+      </a>
+    </div>
+  );
+}
+
 // 先把常用数据读好再画第一帧（最多等 600ms），首页不会先空着再一块块跳出来
 const render = () =>
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       {/* 通用界面图标统一用 Phosphor 的双色（duotone） */}
       <IconContext.Provider value={{ weight: "duotone" }}>
-        {memoryDb && <MemoryDbNotice />}
+        {IS_PREVIEW ? <PreviewNotice /> : memoryDb && <MemoryDbNotice />}
         <RouterProvider router={router} />
       </IconContext.Provider>
     </StrictMode>,

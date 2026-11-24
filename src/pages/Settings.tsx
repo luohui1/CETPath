@@ -8,6 +8,7 @@ import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
 import { downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
 import { AgentModel } from "@/components/AgentModel";
+import { IS_PREVIEW } from "@/lib/preview";
 import { Link } from "react-router";
 import { signOut, useMe } from "@/lib/auth";
 import { syncNow, syncState } from "@/lib/sync";
@@ -69,6 +70,10 @@ export function SettingsPage() {
   const voices = useEnglishVoices();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // 从别处链接到某一组（如 /settings#agent）：页面是按需加载的，画好后再滚过去
+  useEffect(() => {
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  }, []);
 
   const doExport = async () => {
     const data = await exportBackup();
@@ -97,7 +102,7 @@ export function SettingsPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader title="设置" />
-      <Account />
+      {!IS_PREVIEW && <Account />}
 
       <Group title="做题">
         <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
