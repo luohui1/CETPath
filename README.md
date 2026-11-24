@@ -1,23 +1,86 @@
-<div align="center">
+<div align="center"><a name="readme-top"></a>
 
-<img src="public/favicon.svg" width="72" alt="英语之道">
+<img src="public/favicon.svg" width="96" alt="英语之道 Logo">
 
 # 英语之道
 
 **把真题做透，把生词记牢。**
 
-在原卷上做题、查词、写笔记；交卷后让 AI 助教看着你的作答复盘；<br>
-卷子里碰到的生词带着原句进生词本，按遗忘曲线和词根结构背。
+面向大学英语四六级和考研英语的备考应用：在原卷上做题、查词、写笔记，<br>
+交卷后让 AI 助教看着你的作答复盘，卷子里碰到的生词带着原句进生词本。
 
-React · TypeScript · Vite · PWA · IndexedDB · PDF.js · FSRS
+[功能](#功能) · [快速开始](#快速开始) · [准备数据](#准备数据) · [技术架构](#技术架构) · [常见问题](#常见问题) · [数据来源与版权](#数据来源与版权)
 
-[功能](#功能) · [快速开始](#快速开始) · [技术架构](#技术架构) · [数据来源与版权](#数据来源与版权)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/)
 
 </div>
 
 <p align="center">
   <img src="docs/images/promo-hero.webp" alt="英语之道：AI 助教在卷子旁边画句子结构图，右下是记忆树" width="100%">
 </p>
+
+## 亮点
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🤖 看着卷子讲题的 AI 助教**<br>
+读题 → 定位 → 定位句 → 解题排除，回答里直接嵌结构图、步骤卡和词卡；能读写生词本、错题本，有长期记忆。
+
+</td>
+<td width="33%" valign="top">
+
+**📄 原卷做题**<br>
+原版 PDF 加文字层：点词出卡片，手写笔圈画，荧光笔高亮，每题自带解析，听力原文逐句同步。
+
+</td>
+<td width="33%" valign="top">
+
+**🌳 记忆树背单词**<br>
+生词本就是词书。同根、短语、易混三根枝串起来背，FSRS 安排复习，一天多轮，晚上一张速览表。
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🎯 专项训练**<br>
+从任意一套真题里只练听力、阅读、翻译或写作，单独计分，错题自动进错题本。
+
+</td>
+<td valign="top">
+
+**🧩 长难句一键解析**<br>
+默认不标，留给自己找；想对照时一键标出，主干、从句、修饰成分分色拆开。
+
+</td>
+<td valign="top">
+
+**📴 本地优先、离线可用**<br>
+作答、笔记、生词和复习进度存在浏览器里；装成 PWA，没网也能做打开过的卷子。
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>目录</b></summary>
+
+- [为什么做这个](#为什么做这个)
+- [功能](#功能)
+  - [AI 助教](#ai-助教) · [原卷做题](#原卷做题) · [听力](#听力) · [专项训练和错题本](#专项训练和错题本) · [长难句结构解析](#长难句结构解析) · [背单词：记忆树](#背单词记忆树) · [更多页面](#更多页面)
+- [适配](#适配)
+- [技术架构](#技术架构)
+- [快速开始](#快速开始)
+  - [准备数据](#准备数据) · [常用命令](#常用命令) · [部署 AI 助教（可选）](#部署-ai-助教可选)
+- [目录结构](#目录结构)
+- [常见问题](#常见问题)
+- [参与贡献](#参与贡献)
+- [数据来源与版权](#数据来源与版权)
+- [致谢](#致谢)
+
+</details>
 
 ## 为什么做这个
 
@@ -120,11 +183,15 @@ flowchart LR
 
 首页推荐下一套卷子和今天要做的事；真题列表按考试和年份排；学习统计看每天背词、做题和真题成绩；AI 助教也能单独打开，直接贴一句英文问。
 
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
+
 ## 适配
 
 - **平板优先**：按平板横屏手写做题设计。
 - **PWA**：可以安装到桌面；应用和词典数据离线缓存，没网也能做已打开过的卷子、背词。
 - **手指和笔分开**：手指滑动翻页，手写笔才落墨，不会滑一下就画一道。
+
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
 
 ## 技术架构
 
@@ -143,6 +210,8 @@ flowchart LR
 ```
 
 不配服务器也能用全部做题和背词功能，只是没有 AI 助教。
+
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
 
 ## 快速开始
 
@@ -199,7 +268,9 @@ python3 server/agent_server.py serve          # 只听 127.0.0.1:8787
 > [!WARNING]
 > 没设激活码时，任何能打开网站的人都能用 AI 助教，费用记在你的接口账户上。公开部署时，请在 `/admin` 里设一个激活码（学习者在设备上输一次即可），或者在 nginx 上限制访问。
 
-## 目录
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
+
+## 目录结构
 
 ```
 src/
@@ -214,6 +285,57 @@ scripts/        数据导入、生成和校验脚本
 deploy/         nginx 和 systemd 示例配置
 docs/           设计文档、试卷数据格式、截图
 ```
+
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
+
+## 常见问题
+
+<details>
+<summary><b>clone 下来为什么没有卷子？</b></summary>
+
+真题、听力和解析有版权，仓库只放源码。按 [准备数据](#准备数据) 导入你有权使用的资料即可。
+
+</details>
+
+<details>
+<summary><b>不配 AI 后端能用吗？</b></summary>
+
+能。做题、查词、笔记、解析、听力、背词都在浏览器里完成，只有 AI 助教和长难句的现场分析需要后端。
+
+</details>
+
+<details>
+<summary><b>支持哪些模型？</b></summary>
+
+任何 OpenAI 兼容接口都行，比如 DeepSeek、Gemini。在 `/admin` 里填接口地址、模型名和密钥，密钥只存在服务器上。
+
+</details>
+
+<details>
+<summary><b>数据存在哪？换设备怎么办？</b></summary>
+
+默认存在浏览器的 IndexedDB 里。设置页可以导出、导入备份；部署了后端的话，登录账号后会自动同步。
+
+</details>
+
+<details>
+<summary><b>手机能用吗？</b></summary>
+
+能打开，但界面按平板横屏手写做题设计，手机上更适合背单词和看速览。
+
+</details>
+
+## 参与贡献
+
+欢迎提 Issue 和 Pull Request。提交前请跑一遍：
+
+```bash
+npx tsc -b && npm run build
+```
+
+- 界面组件用 `src/grasso/` 里的设计系统，不另起一套样式。
+- 新的数据脚本放在 `scripts/`，生成的数据不要提交（`public/papers/`、`public/audio/`、`public/dict/` 都在 `.gitignore` 里）。
+- 不要提交任何真题 PDF、音频或从题库网站下载的资料。
 
 ## 数据来源与版权
 
@@ -230,6 +352,16 @@ docs/           设计文档、试卷数据格式、截图
 - AI 生成的解析经过格式校验和抽查，但没有逐句人工核对，可能有错。
 - 单词真人发音脚本使用的是非官方接口，只适合个人开发；对外发布前要换成有授权的来源。
 
+## 致谢
+
+- [ECDICT](https://github.com/skywind3000/ECDICT)：英汉词典数据
+- [OpenEtymology](https://github.com/openetymology/OpenEtymology)：词根词缀和词源
+- [Lexkite confused-words-dataset](https://github.com/lexkiteapp/confused-words-dataset)：易混词辨析
+- [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)：FSRS 间隔重复算法
+- [PDF.js](https://github.com/mozilla/pdf.js)、[Dexie.js](https://github.com/dexie/Dexie.js)、[Workbox](https://github.com/GoogleChrome/workbox)
+
 ## 截图说明
 
 README 里的界面都是真实截图，卷面是 2023 年 12 月大学英语六级第 1 套；生词、记忆进度等学习数据是演示用的示例数据；AI 助教的回答是线上模型（deepseek-v4.1-flash）当场生成的，没有改动。宣传图的浅色背景由图像模型生成，界面部分没有用生图改动。
+
+<div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
