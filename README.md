@@ -9,9 +9,9 @@
 面向大学英语四六级和考研英语的备考应用：在原卷上做题、查词、写笔记，<br>
 交卷后让 AI 助教看着你的作答复盘，卷子里碰到的生词带着原句进生词本。
 
-[功能](#功能) · [快速开始](#快速开始) · [准备数据](#准备数据) · [技术架构](#技术架构) · [常见问题](#常见问题) · [数据来源与版权](#数据来源与版权)
+[在线预览](https://yingyu-preview.vercel.app) · [功能](#功能) · [快速开始](#快速开始) · [准备数据](#准备数据) · [技术架构](#技术架构) · [常见问题](#常见问题) · [数据来源与版权](#数据来源与版权)
 
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![LINUX DO](https://img.shields.io/badge/LINUX_DO-社区-1a1a1a)](https://linux.do)
 
 </div>
 
@@ -218,8 +218,8 @@ flowchart LR
 需要 Node.js 20 以上。
 
 ```bash
-git clone https://github.com/luohui1/yingyu-zhidao.git
-cd yingyu-zhidao
+git clone https://github.com/luohui1/CETPath.git
+cd CETPath
 npm install
 npm run dev
 ```
@@ -354,11 +354,16 @@ npx tsc -b && npm run build
 
 ## 致谢
 
+- [LINUX DO](https://linux.do)：新的理想型社区
 - [ECDICT](https://github.com/skywind3000/ECDICT)：英汉词典数据
 - [OpenEtymology](https://github.com/openetymology/OpenEtymology)：词根词缀和词源
 - [Lexkite confused-words-dataset](https://github.com/lexkiteapp/confused-words-dataset)：易混词辨析
 - [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)：FSRS 间隔重复算法
 - [PDF.js](https://github.com/mozilla/pdf.js)、[Dexie.js](https://github.com/dexie/Dexie.js)、[Workbox](https://github.com/GoogleChrome/workbox)
+
+## 开源协议
+
+本仓库源码采用 [MIT License](LICENSE) 开源（不含第三方词典与真题版权素材，详见上文「数据来源与版权」）。
 
 ## 截图说明
 
