@@ -178,6 +178,9 @@ python3 server/agent_server.py serve          # 只听 127.0.0.1:8787
 
 用 nginx 把 `/api/agent/`、`/api/admin/`、`/admin` 转发到这个端口，然后打开 `/admin` 填接口地址、模型名和密钥。示例配置在 [`deploy/nginx.conf`](deploy/nginx.conf) 和 [`deploy/yingyu-agent.service`](deploy/yingyu-agent.service)。配置文件路径由环境变量 `YZ_AGENT_CONFIG` 指定。
 
+> [!WARNING]
+> 没设激活码时，任何能打开网站的人都能用 AI 助教，费用记在你的接口账户上。公开部署时，请在 `/admin` 里设一个激活码（学习者在设备上输一次即可），或者在 nginx 上限制访问。
+
 ## 目录
 
 ```
