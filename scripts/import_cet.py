@@ -971,8 +971,8 @@ def import_set(info, ffmpeg=True, ocr=True, dry=False):
 
 
 def remove_outputs(sid):
-    """跳过的套：把以前导入留下的文件清掉，免得目录里留着旧的、不对的试卷"""
-    for f in (PAPERS / f"{sid}.json", PDF_DIR / f"{sid}.pdf", PDF_DIR / f"{sid}.words.json", AUDIO_DIR / f"{sid}.mp3"):
+    """跳过的套：把以前导入留下的文件清掉，免得目录里留着旧的、不对的试卷。原卷 PDF 已提交进仓库，不删"""
+    for f in (PAPERS / f"{sid}.json", PDF_DIR / f"{sid}.words.json", AUDIO_DIR / f"{sid}.mp3"):
         if f.exists():
             f.unlink()
 

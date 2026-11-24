@@ -225,7 +225,7 @@ npm run dev
 ```
 
 > [!IMPORTANT]
-> 仓库里**只有应用源码**，不含试卷、音频和词典数据（`public/papers/`、`public/audio/`、`public/dict/` 都在 `.gitignore` 里）。clone 下来能跑起界面，但没有卷子可做。要用完整功能，需要自己准备数据，见下一节。
+> 仓库里有应用源码和**四六级真题原卷 PDF**（`public/papers/pdf/cet4-*.pdf`、`cet6-*.pdf`），不含试卷数据 JSON（题目、单词坐标、解析）、听力音频和词典（`public/papers/` 的其余部分、`public/audio/`、`public/dict/` 都在 `.gitignore` 里）。clone 下来能跑起界面，但要先用导入脚本生成试卷数据才有卷子可做，见下一节。
 
 ### 准备数据
 
@@ -233,7 +233,7 @@ npm run dev
 | --- | --- | --- |
 | 词典 | `public/dict/` | 下载 [ECDICT](https://github.com/skywind3000/ECDICT) 的 `ecdict.csv` 放到 `data/raw/ecdict/`，运行 `npm run build:dict` |
 | 词根词缀 | `public/dict/roots/` | 把 [OpenEtymology](https://github.com/openetymology/OpenEtymology) 的 5 本 EPUB 放到 `data/raw/openetymology/`，运行 `npm run build:roots` |
-| 试卷 | `public/papers/` | 用导入脚本把你**有权使用**的真题 PDF 转成原卷数据，见下表；格式见 [docs/试卷数据格式.md](docs/试卷数据格式.md) |
+| 试卷 | `public/papers/` | 四六级原卷 PDF 已在 `public/papers/pdf/`；用导入脚本把真题 PDF 转成原卷数据，见下表；格式见 [docs/试卷数据格式.md](docs/试卷数据格式.md) |
 | 听力与发音 | `public/audio/` | 四六级听力 MP3 由 `npm run import:cet` 随试卷一起导入；单词发音见 `npm run fetch:word-audio` |
 
 ### 常用命令
@@ -334,7 +334,7 @@ npx tsc -b && npm run build
 ```
 
 - 界面组件用 `src/grasso/` 里的设计系统，不另起一套样式。
-- 新的数据脚本放在 `scripts/`，生成的数据不要提交（`public/papers/`、`public/audio/`、`public/dict/` 都在 `.gitignore` 里）。
+- 新的数据脚本放在 `scripts/`，生成的数据不要提交（除四六级原卷 PDF 外，`public/papers/`、`public/audio/`、`public/dict/` 都在 `.gitignore` 里）。
 - 不要提交任何真题 PDF、音频或从题库网站下载的资料。
 
 ## 数据来源与版权
@@ -347,7 +347,7 @@ npx tsc -b && npm run build
 | 形近词（约 750 对） | 从词书按拼写差异自动挑出 | — |
 | 长难句解析、部分题目解析 | 大模型生成，界面上标注「AI 生成，仅供参考」 | — |
 
-- **真题有版权**。仓库不分发任何试卷、音频或解析；请只导入你有权使用的资料，公开部署前需要取得授权。
+- **真题有版权**。仓库里的四六级原卷 PDF 仅供学习参考，版权归原权利人所有；仓库不分发音频和解析。公开部署前需要取得授权。
 - **不要**使用从其他题库网站抓取或下载的题库、PDF、音频和解析。
 - AI 生成的解析经过格式校验和抽查，但没有逐句人工核对，可能有错。
 - 单词真人发音脚本使用的是非官方接口，只适合个人开发；对外发布前要换成有授权的来源。
