@@ -138,7 +138,7 @@ function PreviewNotice() {
   return (
     <div role="status" className="no-print fixed inset-x-0 top-0 z-[100] flex h-8 items-center justify-center gap-2.5 overflow-hidden bg-[var(--star-tint)] px-3 text-center text-[13px] whitespace-nowrap text-[var(--ink-700)] shadow-[inset_0_-1px_0_var(--line)]">
       <span className="rounded-full bg-[var(--blue)] px-2 py-px text-[11px] leading-4 font-semibold text-white">预览版</span>
-      <span className="hidden md:inline">含四级、六级、考研各一套卷子，AI 助教可在</span>
+      <span className="hidden md:inline">含 21 套四六级与考研真题（2 套带听力），AI 助教可在</span>
       <a href="/settings#agent" className="font-medium text-[var(--blue)] underline-offset-2 hover:underline">
         设置里接自己的模型
       </a>
