@@ -9,7 +9,11 @@ data/raw
 真题/
 
 # 学习资料及其导入中间文件留在本机
-/public/papers/
+/public/papers/*
+!/public/papers/pdf/
+/public/papers/pdf/*
+!/public/papers/pdf/cet4-*.pdf
+!/public/papers/pdf/cet6-*.pdf
 /public/audio/
 /public/dict/
 /data/cache/
