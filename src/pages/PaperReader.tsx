@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft } from "@phosphor-icons/react";
 import { bumpDay, db, type AttemptMode } from "@/lib/db";
 import { attemptKey, attemptMode, emptyAttempt, retryKey, updateAttempt } from "@/lib/attempts";
 import { choiceQuestions, KIND_NAMES, loadPaper, sectionRange, type Paper, type Question } from "@/lib/papers";
 import { recordMastery, retryRounds, scoredQuestions } from "@/lib/mistakes";
 import { setSetting, useSettings } from "@/lib/settings";
-import { cn } from "@/lib/utils";
 import { ExamRoom } from "@/exam/ExamRoom";
 import { Button, EmptyState, LoadingBlock } from "@/components/ui";
-import { PaperThumb } from "@/components/paper-ui";
 
 /** 只留下这几道题（重做错题）：其余题目、空了的题组和部分都去掉，卷面上就只有这几道的题号 */
 function onlyQuestions(paper: Paper, ids: Set<string>): Paper {
@@ -24,60 +21,6 @@ function onlyQuestions(paper: Paper, ids: Set<string>): Paper {
 
 const sameSet = (a: string[] = [], b: string[]) => a.length === b.length && b.every((x) => a.includes(x));
 
-/** 开始一套整卷前选做题方式：普通做题（默认，没有总计时）或全真模拟（按考试时长倒计时） */
-function StartSheet({ paper, onStart }: { paper: Paper; onStart: (mode: "exam" | "free") => void }) {
-  const settings = useSettings();
-  const [mode, setMode] = useState<"exam" | "free">(settings.examMode);
-  const count = paper.sections.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.questions.length, 0), 0);
-  const options = [
-    { value: "free" as const, title: "普通做题", desc: "不计总时，工具栏有单题秒表，随时交卷" },
-    { value: "exam" as const, title: "全真模拟", desc: paper.durationMinutes ? `按 ${paper.durationMinutes} 分钟倒计时，交卷前不看解析` : "按考试时长倒计时，交卷前不看解析" },
-  ];
-  return (
-    <div className="grid min-h-dvh place-items-center px-4 py-10">
-      <div className="card card-float w-full max-w-[520px] p-7">
-        <div className="flex items-start gap-5">
-          <PaperThumb id={paper.id} width={72} frame />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[20px] leading-7 font-semibold">{paper.title}</h1>
-            <p className="mt-1 text-[14px] text-[var(--ink-500)]">{[`${count} 题`, paper.durationMinutes && `${paper.durationMinutes} 分钟`, paper.audio && "含听力"].filter(Boolean).join(" · ")}</p>
-          </div>
-        </div>
-        <div className="mt-6 grid gap-3" role="radiogroup" aria-label="做题方式">
-          {options.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              role="radio"
-              aria-checked={mode === o.value}
-              onClick={() => setMode(o.value)}
-              className={cn(
-                "flex min-h-[64px] items-center gap-4 rounded-[10px] px-4 py-3 text-left transition-[box-shadow,background-color]",
-                mode === o.value ? "bg-[var(--blue-tint)] shadow-[inset_0_0_0_1.5px_var(--blue)]" : "bg-white shadow-[inset_0_0_0_1px_var(--line)] hover:bg-[var(--paper-50)]",
-              )}
-            >
-              <span className={cn("grid size-5 flex-none place-items-center rounded-full border-[1.5px]", mode === o.value ? "border-[var(--blue)]" : "border-[var(--line-control)]")}>
-                {mode === o.value && <span className="size-2.5 rounded-full bg-[var(--blue)]" />}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[15px] font-semibold">{o.title}</span>
-                <span className="block text-[13px] text-[var(--ink-500)]">{o.desc}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-7 flex items-center justify-between gap-3">
-          <Link to={`/papers?exam=${paper.exam}`} className="inline-flex h-10 items-center gap-1.5 text-[14px] text-[var(--ink-500)] hover:text-[var(--ink)]">
-            <ArrowLeft className="size-4" /> 返回真题
-          </Link>
-          <Button variant="primary" size="lg" onClick={() => onStart(mode)}>
-            开始做题
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** 加载中；超过 6 秒还没好就说明卡在哪一步（试卷数据 / 浏览器本地数据库），并给一个刷新 */
 function PaperLoading({ paperReady, recordReady }: { paperReady: boolean; recordReady: boolean }) {
@@ -182,7 +125,7 @@ export function PaperReaderPage() {
 
   // 做题方式：有记录按记录（旧记录当整套模考）；专项新开按地址或设置；整套新开要先选
   const asked = search.get("mode");
-  const mode: AttemptMode = retry ? "retry" : attempt ? attemptMode(attempt) : sectionId ? ((asked ?? settings.practiceMode) === "practice" ? "practice" : "exam") : settings.examMode;
+  const mode: AttemptMode = retry ? "retry" : attempt ? attemptMode(attempt) : sectionId ? ((asked ?? settings.practiceMode) === "practice" ? "practice" : "exam") : "free";
   const init = useMemo(() => ({ mode }), [mode]);
 
   const answers = attempt?.answers ?? {};
@@ -305,18 +248,6 @@ export function PaperReaderPage() {
     );
   }
   if (retryStale) return <LoadingBlock text="正在准备错题…" />;
-  // 整套卷第一次打开：先选做题方式
-  if (!attempt && !sectionId && !retry) {
-    return (
-      <StartSheet
-        paper={paper}
-        onStart={(m) => {
-          void setSetting("examMode", m);
-          void db.attempts.put(emptyAttempt(key, { mode: m }));
-        }}
-      />
-    );
-  }
 
   // 确认框由考场弹出，这里直接交卷（同时记进错题本）、重做
   const submit = async () => {
@@ -373,6 +304,16 @@ export function PaperReaderPage() {
       onLookedUp={onLookedUp}
       onQuestionTime={onQuestionTime}
       onSectionTime={onSectionTime}
+      onMock={
+        // 整套卷还没动笔时可以改成全真模拟（从头倒计时）
+        !sectionId && !retry && (!attempt || (attemptMode(attempt) === "free" && !attempt.submittedAt && !Object.keys(attempt.answers).length && !Object.values(attempt.texts ?? {}).some((t) => t.trim())))
+          ? () => {
+              void setSetting("examMode", "exam");
+              setSessionSec(0);
+              void db.attempts.put(emptyAttempt(key, { mode: "exam" }));
+            }
+          : undefined
+      }
     />
   );
 }

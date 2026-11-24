@@ -3,7 +3,6 @@ import { CalendarBlank, PencilSimple } from "@phosphor-icons/react";
 import { setSetting, useSettings } from "@/lib/settings";
 import { cn, daysUntil } from "@/lib/utils";
 import { Button } from "./ui";
-import { Stamp } from "./paper-ui";
 
 const EXAM_PRESETS = ["考研英语（一）", "考研英语（二）", "大学英语四级", "大学英语六级"];
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -26,18 +25,23 @@ function useNow(ms: number) {
   return now;
 }
 
-/** 首页的考试倒计时牌：像教室墙上"距考试还有 N 天"的撕页牌——厚厚一叠白纸、红线、大红数字、一枚阶段章，下面一行这个阶段该做什么 */
-export function ExamCountdown({ startedAt, weak, className }: { startedAt?: number; weak?: string; className?: string }) {
+/** 真题页、专项页上次选的考试 → 倒计时的默认考试名 */
+const PRESET_OF: Record<string, string> = { kaoyan1: EXAM_PRESETS[0], kaoyan2: EXAM_PRESETS[1], cet4: EXAM_PRESETS[2], cet6: EXAM_PRESETS[3] };
+export const examPreset = (exam?: string | null) => (exam && PRESET_OF[exam]) || undefined;
+
+/** 首页的考试倒计时：一行小条。没设日期时就地设（考试名默认是上次选的考试），设好后是"距某考试还有 N 天"+ 阶段 + 一句建议 */
+export function ExamCountdown({ startedAt, weak, defaultName, className }: { startedAt?: number; weak?: string; defaultName?: string; className?: string }) {
   const settings = useSettings();
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(settings.examName || EXAM_PRESETS[0]);
+  const fallback = defaultName || EXAM_PRESETS[0];
+  const [name, setName] = useState(settings.examName || fallback);
   const [date, setDate] = useState(settings.examDate ?? "");
   const now = useNow(60_000);
 
   useEffect(() => {
-    setName(settings.examName || EXAM_PRESETS[0]);
+    setName(settings.examName || fallback);
     setDate(settings.examDate ?? "");
-  }, [settings.examName, settings.examDate]);
+  }, [settings.examName, settings.examDate, fallback]);
 
   const target = settings.examDate ? new Date(`${settings.examDate}T08:30:00`).getTime() : null;
 
@@ -49,26 +53,25 @@ export function ExamCountdown({ startedAt, weak, className }: { startedAt?: numb
       setEditing(false);
     };
     return (
-      <div className={cn("card card-thick board p-6 pt-8 lg:p-7 lg:pt-9", className)}>
-        <div className="t-label">考试倒计时</div>
-        <h2 className="mt-1.5 text-[28px] leading-9 font-semibold">{target ? "修改考试" : "你在准备哪场考试？"}</h2>
-        <div className="mt-5 flex flex-wrap gap-2">
+      <div className={cn("card flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5", className)}>
+        <span className="text-[14px] font-medium">{target ? "修改考试" : "设个考试日期，开始倒计时"}</span>
+        <div className="flex flex-wrap gap-1.5">
           {EXAM_PRESETS.map((p) => (
             <button key={p} type="button" onClick={() => setName(p)} className={cn("pill", name === p && "pill-on")} aria-pressed={name === p}>
               {p}
             </button>
           ))}
         </div>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <label className="flex h-10 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
+        <div className="flex items-center gap-2">
+          <label className="flex h-9 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
             <CalendarBlank className="size-[18px] text-[var(--ink-500)]" />
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent outline-none" aria-label="考试日期" />
           </label>
-          <Button variant="primary" onClick={save} disabled={!date}>
+          <Button variant="primary" size="sm" onClick={save} disabled={!date}>
             开始倒计时
           </Button>
           {target && (
-            <button type="button" onClick={() => setEditing(false)} className="h-10 px-2 text-[14px] text-[var(--ink-500)] hover:text-[var(--ink)]">
+            <button type="button" onClick={() => setEditing(false)} className="h-9 px-2 text-[14px] text-[var(--ink-500)] hover:text-[var(--ink)]">
               取消
             </button>
           )}
@@ -83,29 +86,20 @@ export function ExamCountdown({ startedAt, weak, className }: { startedAt?: numb
   const d = new Date(target);
   const stage = stageOf(Math.ceil(left / 86_400_000), weak);
 
-  // 一张牌只说一件事：还有几天。日期并进标题，阶段建议一行
   return (
-    <div className={cn("card card-thick board flex flex-col p-6 pt-8 lg:p-7 lg:pt-9", className)} title={startedAt ? `已备考 ${Math.max(1, Math.ceil((now - startedAt) / 86_400_000))} 天` : undefined}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[15px] font-medium text-[var(--ink-700)]">
-            距 {settings.examName || "考试"}（{d.getMonth() + 1} 月 {d.getDate()} 日 周{WEEKDAYS[d.getDay()]}）还有
-          </div>
-          <div className="mt-3 flex items-end gap-3">
-            <span className="num text-[96px] leading-[0.82] tracking-[-0.04em] text-[var(--red)] xl:text-[112px]">{days}</span>
-            <span className="mb-1 text-[22px] font-semibold">天</span>
-          </div>
-        </div>
-        <div className="flex flex-none flex-col items-end gap-3 pt-1">
-          <Stamp size="lg" double id={`stage-${stage.name}`}>
-            {stage.name}阶段
-          </Stamp>
-          <button type="button" onClick={() => setEditing(true)} className="grid size-10 place-items-center rounded-[8px] text-[var(--ink-500)] transition-colors hover:bg-[var(--paper-100)] hover:text-[var(--ink)]" aria-label="修改考试" title="修改考试">
-            <PencilSimple className="size-[18px]" />
-          </button>
-        </div>
+    <div className={cn("card flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3", className)} title={startedAt ? `已备考 ${Math.max(1, Math.ceil((now - startedAt) / 86_400_000))} 天` : undefined}>
+      <div className="flex items-baseline gap-2 whitespace-nowrap">
+        <span className="text-[14px] text-[var(--ink-700)]">
+          距 {settings.examName || "考试"}（{d.getMonth() + 1} 月 {d.getDate()} 日 周{WEEKDAYS[d.getDay()]}）还有
+        </span>
+        <span className="num text-[34px] leading-none text-[var(--red)]">{days}</span>
+        <span className="text-[15px] font-semibold">天</span>
       </div>
-      <p className="mt-auto max-w-[600px] pt-6 text-[15px] leading-6 text-[var(--ink-700)]">{stage.tip}</p>
+      <span className="tag-paper">{stage.name}阶段</span>
+      <p className="min-w-[240px] flex-1 text-[14px] leading-6 text-[var(--ink-700)]">{stage.tip}</p>
+      <button type="button" onClick={() => setEditing(true)} className="grid size-9 flex-none place-items-center rounded-[8px] text-[var(--ink-500)] transition-colors hover:bg-[var(--paper-100)] hover:text-[var(--ink)]" aria-label="修改考试" title="修改考试">
+        <PencilSimple className="size-[18px]" />
+      </button>
     </div>
   );
 }

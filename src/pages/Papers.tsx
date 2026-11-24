@@ -4,7 +4,7 @@ import { FileText } from "@phosphor-icons/react";
 import type { AttemptRow } from "@/lib/db";
 import { answeredCount, paperPath } from "@/lib/attempts";
 import { EXAMS, KIND_NAMES, type ExamId, type PaperIndexItem } from "@/lib/papers";
-import { useSettings } from "@/lib/settings";
+import { setSetting, useSettings } from "@/lib/settings";
 import { pct, useAttemptItems, usePaperIndex } from "@/lib/insights";
 import { cn, daysUntil } from "@/lib/utils";
 import { EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
@@ -100,7 +100,12 @@ export function PapersPage() {
   const [status, setStatus] = useState<Status>("all");
 
   const attemptMap = useMemo(() => new Map((items ?? []).filter((it) => !it.section).map((it) => [it.paper.id, it.attempt])), [items]);
-  const exam = (params.get("exam") as ExamId) || (index?.[0]?.exam ?? "kaoyan1");
+  const exam = (params.get("exam") as ExamId) || (settings.lastExam as ExamId | null) || (index?.[0]?.exam ?? "kaoyan1");
+  // 从别处带着考试进来（如做题页的"返回真题训练"）也记下
+  const askedExam = params.get("exam");
+  useEffect(() => {
+    if (askedExam && askedExam !== settings.lastExam) void setSetting("lastExam", askedExam);
+  }, [askedExam, settings.lastExam]);
   const all = (index ?? []).filter((p) => p.exam === exam);
   const papers = all.filter((p) => status === "all" || statusOf(attemptMap.get(p.id)) === status);
   const count = (s: Status) => (s === "all" ? all.length : all.filter((p) => statusOf(attemptMap.get(p.id)) === s).length);
@@ -156,6 +161,7 @@ export function PapersPage() {
           onChange={(v) => {
             setStatus("all");
             setParams({ exam: v }, { replace: true });
+            void setSetting("lastExam", v);
           }}
           options={EXAMS.map((e) => {
             const n = (index ?? []).filter((p) => p.exam === e.id).length;

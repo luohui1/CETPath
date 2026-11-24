@@ -14,7 +14,7 @@ import { SyntaxCard } from "./SyntaxCard";
  * 这句是仔细阅读里的长难句（syn）时直接放长难句解析（结构 + 译文），不用再点一下。
  * 查词 2026-11-12 起不在这里了：改成词旁边的小卡片（WordCard）
  */
-export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null };
+export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null; nav?: { pos: string; prev?: () => void; next?: () => void } };
 
 /** 竖屏底部抽屉开着时，底部条的内容变成抽屉里临时出现的标签：标签上写什么 */
 export function barLabel(c: BarContent) {
@@ -108,7 +108,7 @@ export function AnswerBar({
         "no-print flex flex-col bg-white",
         embedded
           ? "min-h-0 flex-1"
-          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", content.kind === "explain" || content.syn ? "max-h-[50%]" : "max-h-[40%]"),
+          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", content.kind === "explain" ? "max-h-[50%]" : content.syn ? "max-h-[44%]" : "max-h-[40%]"),
       )}
     >
       {content.kind === "explain" ? (
@@ -137,7 +137,19 @@ export function AnswerBar({
           {/* 长按一句：这句的译文。卷面上这句淡黄底，收起时去掉 */}
           <div className={COLUMN}>
             <div className="flex h-12 items-center gap-2 pr-1 pl-4">
-              <span className="flex-1 text-[15px] font-semibold text-[var(--ink)]">{content.syn ? "长难句解析" : "译句"}</span>
+              <span className="flex-1 text-[15px] font-semibold text-[var(--ink)]">
+                {content.syn ? "长难句解析" : "译句"}
+                {content.nav && <span className="num ml-2 text-[13px] font-normal text-[var(--ink-500)]">{content.nav.pos}</span>}
+              </span>
+              {content.nav && (
+                <span className="flex items-center gap-0.5">
+                  {[["上一句", content.nav.prev], ["下一句", content.nav.next]].map(([label, go]) => (
+                    <button key={label as string} type="button" disabled={!go} onClick={go as (() => void) | undefined} className="h-8 rounded-[8px] px-2.5 text-[13px] font-medium text-[var(--ink-700)] transition-colors hover:bg-[var(--fill-quiet)] disabled:opacity-35">
+                      {label as string}
+                    </button>
+                  ))}
+                </span>
+              )}
               <CloseButton onClose={onClose} />
             </div>
           </div>

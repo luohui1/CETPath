@@ -95,6 +95,7 @@ function Countdown({ collapsed }: { collapsed: boolean }) {
   const settings = useSettings();
   const days = settings.examDate ? daysUntil(settings.examDate) : null;
   const set = days !== null && days >= 0;
+  if (!set) return null; // 设考试只在首页那一条
   return (
     <NavLink
       to={set ? "/" : "/settings"}

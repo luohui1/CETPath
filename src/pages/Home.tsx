@@ -12,7 +12,7 @@ import { itemTitle, itemTotal, lastDays, MIN_ANSWERS, pct, spentText, useAttempt
 import { cn, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { Button } from "@/components/ui";
-import { ExamCountdown } from "@/components/ExamCountdown";
+import { ExamCountdown, examPreset } from "@/components/ExamCountdown";
 import { Heatmap } from "@/components/Heatmap";
 import { Bubbles, PaperThumb } from "@/components/paper-ui";
 
@@ -199,7 +199,7 @@ function RecentCard({ items, className }: { items: AttemptItem[] | null; classNa
 
 /**
  * 首页只回答一个问题：今天做什么。
- * 倒计时牌是主角（跨两列），"今天"在它旁边；下面接着做题、本周；最后是最近练习和学习日历。
+ * 接着做题是主角（跨两列），"今天"在它旁边；倒计时是标题下面的一行小条；下面本周、最近练习和学习日历。
  * 列数按内容区的宽度（容器查询），不按屏幕：侧边栏展开收起都不会把卡片挤成细条。
  * 内容区 ≥1040（1366 屏）三列，720–1040（平板横屏 1024–1280）两列、倒计时牌通栏，再窄一列；第一屏不超过五张卡
  */
@@ -216,9 +216,9 @@ export function HomePage() {
   const current = items?.find((it) => !it.attempt.submittedAt);
   const next = useMemo(() => {
     const done = new Set((items ?? []).filter((it) => !it.section).map((it) => it.paper.id));
-    const p = [...(index ?? [])].sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));
-    return p && { id: p.id, title: p.title, meta: [`${p.questionCount} 题`, p.durationMinutes && `${p.durationMinutes} 分钟`, p.hasAudio && "含听力"].filter(Boolean).join(" · ") };
-  }, [index, items]);
+    const p = [...(index ?? [])].filter((x) => !settings.lastExam || x.exam === settings.lastExam).sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));
+    return p && { id: p.id, exam: p.exam, title: p.title, meta: [`${p.questionCount} 题`, p.durationMinutes && `${p.durationMinutes} 分钟`, p.hasAudio && "含听力"].filter(Boolean).join(" · ") };
+  }, [index, items, settings.lastExam]);
 
   const firstDay = days?.length ? new Date(`${[...days].sort((a, b) => a.day.localeCompare(b.day))[0].day}T00:00:00`).getTime() : undefined;
   const weakest = (kinds ?? [])
@@ -283,18 +283,18 @@ export function HomePage() {
         <h1 className="t-h1">{greeting()}</h1>
         <p className="mt-1.5 text-[14px] text-[var(--ink-500)]">{new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}</p>
       </div>
+      <ExamCountdown startedAt={firstDay} weak={weakest ? KIND_NAMES[weakest.kind] : undefined} defaultName={examPreset(settings.lastExam ?? next?.exam)} className="mb-5" />
 
       <div className="@container">
         <div className="grid grid-flow-row-dense grid-cols-1 gap-5 @min-[720px]:grid-cols-2 @min-[1040px]:grid-cols-3">
-          <ExamCountdown startedAt={firstDay} weak={weakest ? KIND_NAMES[weakest.kind] : undefined} className="@min-[720px]:col-span-2" />
-          <TodayCard todos={todos} />
           <ContinueCard item={current} next={next} weakest={weakest} className="@min-[720px]:col-span-2" />
+          <TodayCard todos={todos} />
           <WeekCard days={days ?? []} />
           <div className="card p-6 @max-[1039px]:order-last">
             <Head title="学习日历" to="/stats" link="统计" />
             <Heatmap days={days ?? []} weeks={18} />
           </div>
-          <RecentCard items={items} className="@min-[1040px]:col-span-2" />
+          <RecentCard items={items} />
         </div>
       </div>
     </div>
