@@ -9,6 +9,17 @@
 AI 驱动的四六级与考研英语真题研习工作台：<br>
 在原卷上做题、查词、手写批注，让感知全局上下文的 **AI 助教**伴读复盘，卷中生词带着原句入库**记忆树**。
 
+<p>
+  <a href="https://yingyu-preview.vercel.app">
+    <img src="https://img.shields.io/badge/在线预览-yingyu--preview.vercel.app-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="在线预览">
+  </a>
+  <a href="https://github.com/luohui1/CETPath/releases/tag/data-v1">
+    <img src="https://img.shields.io/badge/真题数据包-GitHub_Releases-0F172A?style=for-the-badge&logo=github&logoColor=white" alt="真题数据包">
+  </a>
+</p>
+
+<sub>免登录体验四级、六级、考研各一套完整样卷；可在「设置 → Agent 模型」填入自己的 OpenAI 兼容 Key 体验 AI 助教（仅存本地浏览器）。</sub>
+
 [在线预览](https://yingyu-preview.vercel.app) · [核心亮点](#核心亮点) · [功能详解](#功能详解) · [快速开始](#快速开始) · [数据准备](#数据准备) · [技术架构](#技术架构) · [常见问题](#常见问题)
 
 [![AI Agent](https://img.shields.io/badge/AI_助教-OpenAI_Compatible-10B981)](#ai-助教) [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![LINUX DO](https://img.shields.io/badge/LINUX_DO-社区-1a1a1a)](https://linux.do)
