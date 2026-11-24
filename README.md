@@ -9,9 +9,20 @@
 AI 驱动的四六级与考研英语真题研习工作台：<br>
 在原卷上做题、查词、手写批注，让感知全局上下文的 **AI 助教**伴读复盘，卷中生词带着原句入库**记忆树**。
 
-[核心亮点](#核心亮点) · [功能详解](#功能详解) · [快速开始](#快速开始) · [数据准备](#数据准备) · [技术架构](#技术架构) · [常见问题](#常见问题)
+<p>
+  <a href="https://yingyu-preview.vercel.app">
+    <img src="https://img.shields.io/badge/在线预览-yingyu--preview.vercel.app-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="在线预览">
+  </a>
+  <a href="https://github.com/luohui1/CETPath/releases/tag/data-v1">
+    <img src="https://img.shields.io/badge/真题数据包-GitHub_Releases-0F172A?style=for-the-badge&logo=github&logoColor=white" alt="真题数据包">
+  </a>
+</p>
 
-[![AI Agent](https://img.shields.io/badge/AI_助教-OpenAI_Compatible-10B981)](#ai-助教) [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/)
+<sub>免登录体验四级、六级、考研各一套完整样卷；可在「设置 → Agent 模型」填入自己的 OpenAI 兼容 Key 体验 AI 助教（仅存本地浏览器）。</sub>
+
+[在线预览](https://yingyu-preview.vercel.app) · [核心亮点](#核心亮点) · [功能详解](#功能详解) · [快速开始](#快速开始) · [数据准备](#数据准备) · [技术架构](#技术架构) · [常见问题](#常见问题)
+
+[![AI Agent](https://img.shields.io/badge/AI_助教-OpenAI_Compatible-10B981)](#ai-助教) [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com) [![PWA](https://img.shields.io/badge/PWA-离线可用-5A0FC8?logo=pwa&logoColor=white)](https://vite-pwa-org.netlify.app) [![FSRS](https://img.shields.io/badge/间隔重复-FSRS-F08A24)](https://github.com/open-spaced-repetition/ts-fsrs) [![PDF.js](https://img.shields.io/badge/原卷-PDF.js-E44D26?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE) [![LINUX DO](https://img.shields.io/badge/LINUX_DO-社区-1a1a1a)](https://linux.do)
 
 </div>
 
@@ -183,10 +194,31 @@ npm install
 npm run dev
 ```
 
-> [!IMPORTANT]
-> 仓库**仅包含应用源码**，不含受版权保护的真题试卷、音频及词典构建产物（`public/papers/`、`public/audio/`、`public/dict/` 已忽略）。请按下方说明准备本地数据。
+> [!TIP]
+> 为保持 Git 仓库轻量，真题试卷、离线词典与听力音频打包在 **[GitHub Releases (`data-v1`)](https://github.com/luohui1/CETPath/releases/tag/data-v1)** 中，下载解压到 `public/` 目录即可直接刷题。
 
 ### 数据准备
+
+#### 方式一：直接下载数据包（推荐）
+
+前往 [Releases · data-v1](https://github.com/luohui1/CETPath/releases/tag/data-v1) 下载所需压缩包，解压至项目 `public/` 目录即可：
+
+| 压缩包 | 解压路径 | 内容说明 |
+| --- | --- | --- |
+| `cetpath-papers.tar.gz` | `public/papers/` | 137 套完整试卷（四级 68 套、六级 68 套、考研英语一 1 套，含原版 PDF、题目 JSON、解析、译文与长难句） |
+| `cetpath-dict.tar.gz` | `public/dict/` | 离线词典（ECDICT）、词根词缀（OpenEtymology）与易混词数据（Lexkite） |
+| `cetpath-audio.tar.gz` | `public/audio/` | 四六级真题听力音频（可选下载；不含单词真人发音，背词默认使用浏览器语音） |
+
+命令行一键解压示例：
+
+```bash
+# 下载压缩包后在项目根目录执行
+tar -xzf cetpath-papers.tar.gz -C public
+tar -xzf cetpath-dict.tar.gz -C public
+tar -xzf cetpath-audio.tar.gz -C public   # 可选，需要听力音频时解压
+```
+
+#### 方式二：从原始资料自行构建
 
 | 数据模块 | 目标路径 | 构建方式 |
 | --- | --- | --- |
@@ -248,7 +280,7 @@ docs/           架构设计文档、试卷数据格式规范与宣传截图
 <details>
 <summary><b>1. clone 下来为什么没有真题卷子？</b></summary>
 
-真题、听力音频与解析受版权保护，仓库仅开源应用代码。请按 [数据准备](#数据准备) 导入你有权使用的学习资料。
+为了保持 Git 仓库轻量、避免大体积 PDF 和音频拖慢 `git clone`，真题试卷、离线词典和听力音频统一打包在 [GitHub Releases (`data-v1`)](https://github.com/luohui1/CETPath/releases/tag/data-v1) 中。下载解压到 `public/` 目录即可直接使用，也可以按 [数据准备](#数据准备) 自行导入其他卷子。
 </details>
 
 <details>
@@ -267,6 +299,8 @@ docs/           架构设计文档、试卷数据格式规范与宣传截图
 
 - **开源数据致谢**：词典释义与音标来自 [ECDICT](https://github.com/skywind3000/ECDICT) (MIT)；词根词缀与词源来自 [OpenEtymology](https://github.com/openetymology/OpenEtymology) (CC BY-SA 4.0)；易混词辨析（82 组）来自 [Lexkite confused-words-dataset](https://github.com/lexkiteapp/confused-words-dataset) (CC BY 4.0)。
 - **核心依赖致谢**：[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)、[PDF.js](https://github.com/mozilla/pdf.js)、[Dexie.js](https://github.com/dexie/Dexie.js)、[Workbox](https://github.com/GoogleChrome/workbox)。
-- **版权与合规声明**：本仓库不分发任何试卷、音频或商业题库内容；请仅导入个人有权使用的资料，公开部署前须取得相应授权。
+- **社区致谢**：[LINUX DO](https://linux.do) 社区。
+- **开源协议**：本仓库应用源码采用 [MIT License](LICENSE) 开源。
+- **版权与合规声明**：Releases 数据包中的真题原卷、音频与解析版权仍归原权利人所有，仅供个人学习参考，不包含在 MIT 开源授权内；公开部署或二次分发前请取得相应授权。
 
 <div align="right"><a href="#readme-top">↑ 回到顶部</a></div>
