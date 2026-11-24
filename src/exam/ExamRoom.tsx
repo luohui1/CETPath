@@ -1,11 +1,15 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { choiceStems, marksSummary, paperText, progressSummary, reviewSummary, useAgentEnabled } from "@/lib/agent";
+import { goBack } from "@/lib/nav";
+import { inkNotes } from "@/lib/ink";
+import type { AgentThread } from "./AgentPanel";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import {
+import { Sparkle,
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowUUpLeft,
@@ -24,6 +28,7 @@ import {
   MagnifyingGlassPlus,
   NoteBlank,
   Pen,
+  PushPin,
   SidebarSimple,
   TextUnderline,
   type Icon,
@@ -31,13 +36,14 @@ import {
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { retryPath } from "@/lib/attempts";
-import { allQuestions, findAudioLine, KIND_NAMES, type ExplainFields, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
+import { allQuestions, findAudioLine, kindName, KIND_NAMES, type ExplainFields, type Group, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
 import { suggestMap } from "@/lib/report";
 import { colorValue, COLORS, colorTool, markBounds, PEN_SIZES, useMarkHistory, wordAt, type ColorTool, type MarkRow, type Tool } from "@/lib/marks";
 import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
 import { shortTitle, type AnswerSheet } from "@/lib/exportPdf";
 import { cn, formatDuration } from "@/lib/utils";
-import { useVocabMarks, WordTextProvider, type WordClick } from "@/components/WordText";
+import { useVocabMarks, vocabHits, WordTextProvider, type WordClick } from "@/components/WordText";
+import { markSeen } from "@/lib/learning";
 import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
 import { prefetchAudio, touchAudio } from "@/lib/audioCache";
@@ -54,6 +60,9 @@ import { Stopwatch, useQuestionTimer } from "./Stopwatch";
 import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
 import { ThumbRail } from "./ThumbRail";
+import { AgentSplit } from "./AgentSplit";
+import { PaperLinkCtx, type PaperLink } from "./paperLink";
+import { findText } from "@/lib/agentTools";
 import { FindBar, findInPages, pageTexts, type FindHit } from "./FindBar";
 import { ExportDialog } from "./ExportDialog";
 import { endPinch, gesture, startPinch } from "./gesture";
@@ -139,7 +148,7 @@ const MIN_WIDTH = 760; // 平板竖屏 768 起
 const LONG_PRESS_MS = 500; // 手指按住一句不动这么久：出这句的译文
 const HINT_KEY = "yz.examHintSeen"; // 底部"怎么选答案、查词"的提示只在第一次做题时出
 const DOCK_KEY = "yz.dockTab"; // 停靠区上次开的标签（只是记住个习惯，存在浏览器里，取不到就算了）
-const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax"];
+const DOCK_TABS: DockTab[] = ["sheet", "listen", "explain", "write", "notes", "vocab", "syntax", "ask"];
 function lastDockTab(): DockTab | null {
   try {
     const t = localStorage.getItem(DOCK_KEY) as DockTab | null;
@@ -393,7 +402,8 @@ export function ExamRoom({
   const [winHeight, setWinHeight] = useState(innerHeight);
   const [search] = useSearchParams();
   // 缩略图栏：平板竖屏、窄屏默认收起
-  const [rail, setRail] = useState(() => innerWidth >= 1100 && innerWidth > innerHeight);
+  // 缩略图栏默认收起，把宽度留给卷面；工具栏按钮或 T 键打开
+  const [rail, setRail] = useState(false);
   // 卷面查找：focusKey 每按一次 Ctrl+F 加一，回到输入框
   const [find, setFind] = useState({ open: false, query: "", index: 0, focusKey: 0 });
   const findOpen = find.open;
@@ -404,6 +414,17 @@ export function ExamRoom({
   // 只有写作和翻译的卷（一页纸的第 2、3 套）直接打开作答
   const hasChoiceQ = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => q.options?.length)));
   const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
+  // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
+  const [agentOpen, setAgentOpen] = useState(false);
+  // 交卷单上点了"找 Agent 复盘"：打开整卷会话并自动问复盘（每点一次加一，关掉 Agent 归零）
+  const [reviewAsk, setReviewAsk] = useState(0);
+  // 工具栏实际放不下（开笔后多出预设、颜色）时逐级收：1 按钮只留图标，2 再收起笔的预设；还放不下就这一行左右滑
+  const [squeeze, setSqueeze] = useState(0);
+  const [toolOver, setToolOver] = useState(false);
+  const [agentW, setAgentW] = useState(() => Number(localStorage.getItem("yz-agent-w")) || 460);
+  useEffect(() => {
+    if (panel) setAgentOpen(false);
+  }, [panel]);
   useEffect(() => {
     if (!panel) return;
     try {
@@ -418,6 +439,8 @@ export function ExamRoom({
   const [writeSeen, setWriteSeen] = useState(false); // 点开过作文、翻译：停靠区多一个"作答"
   const [listenSlot, setListenSlot] = useState<HTMLDivElement | null>(null); // 停靠区"原文"标签的格子，听力条把原文画进去
   const [openQ, setOpenQ] = useState<string | null>(null);
+  const [agentFlash, setAgentFlash] = useState<{ page: number; range: [number, number] } | null>(null); // Agent 里点了引用的原文：卷面那一句闪一下
+  const agentFlashT = useRef(0);
   const [hit, setHit] = useState<WordClick | null>(null);
   // 长按一句（鼠标右键）：这句的译文放在底部条，卷面上这句淡黄底
   const [sent, setSent] = useState<{ page: number; sid: number; sentence: string; n: number } | null>(null);
@@ -441,6 +464,20 @@ export function ExamRoom({
       live = false;
     };
   }, [paper.id]);
+  // 预先生成的长难句解析默认不上卷面，让人自己找；停靠区"长难句"里一键标出（每套卷子各记各的）
+  const [synOn, setSynOn] = useState(false);
+  useEffect(() => {
+    setSynOn(localStorage.getItem(`yz-syn-on:${paper.id}`) === "1");
+  }, [paper.id]);
+  const toggleSyn = useCallback(() => {
+    const next = !synOn;
+    setSynOn(next);
+    try {
+      localStorage.setItem(`yz-syn-on:${paper.id}`, next ? "1" : "0");
+    } catch {
+      // 存储满了就只在这次打开时生效
+    }
+  }, [paper.id, synOn]);
   const [playing, setPlaying] = useState<{ seg: string | null; on: boolean }>({ seg: null, on: false });
   const [confirm, setConfirm] = useState<"submit" | "redo" | "clear" | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false); // 刚交卷：答题卡上的分数"盖"下去
@@ -462,9 +499,18 @@ export function ExamRoom({
   const [report, setReport] = useState<{ open: boolean; retired: string[] }>({ open: false, retired: [] });
   const history = useMarkHistory();
   const bar = useRef<ListeningBarHandle>(null);
-  const marksData = useVocabMarks(settings.showVocabMarks);
+  const marksData = useVocabMarks(true);
   const vocabMarks = settings.showVocabMarks ? marksData : null;
-  const vocabCount = useLiveQuery(() => db.vocab.filter((v) => v.sources.some((s) => s.paperId === paper.id)).count(), [paper.id]) ?? 0;
+  // 生词本里的词这套卷子里又出现了：记下来（出现得多的先背），生词面板里列出来
+  const seenVocab = useMemo(() => {
+    if (!pages || !marksData.vocab.size) return [];
+    const out = new Set<string>();
+    for (const p of pages) for (const k of vocabHits(p.w.map((w) => w[0]), marksData, p.w.map((w) => w[5])).keys) out.add(k);
+    return [...out];
+  }, [pages, marksData]);
+  useEffect(() => void markSeen(paper.id, seenVocab), [paper.id, seenVocab]);
+  const vocabCount =
+    useLiveQuery(() => db.vocab.filter((v) => v.sources.some((s) => s.paperId === paper.id) || seenVocab.includes(v.word)).count(), [paper.id, seenVocab]) ?? 0;
   const flagList = useSame(attempt?.flags);
   const flags = useMemo(() => new Set(flagList ?? []), [flagList]);
   const struck = useSame(attempt?.struck ?? NO_STRUCK);
@@ -544,13 +590,16 @@ export function ExamRoom({
   const compact = winWidth > winHeight && winHeight < 900;
   // 停靠区：横屏或宽 ≥ 1100 在右侧一栏（宽 360，把卷面挤窄）；竖屏窄屏是听力条上面的底部抽屉（把卷面挤矮）
   const sideDock = winWidth > winHeight || winWidth >= 1100;
-  const dockSpace = panel && sideDock ? DOCK_WIDTH + 8 : 0;
+  // 存的宽度按当前窗口再限一次（窄窗口里不能把卷面挤没）
+  const agentWidth = Math.min(agentW, Math.max(320, Math.round(winWidth * 0.6)));
+  const dockSpace = !sideDock ? 0 : agentOpen ? agentWidth + 8 : panel ? DOCK_WIDTH + 8 : 0;
   const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && !floating ? RAIL_WIDTH : 0) - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
   const pagePad = tightPad ? 32 : 96;
   const avail = canvasWidth - 12 - pagePad;
-  const narrow = canvasWidth < 820; // 工具栏放不下时省掉次要的按钮和数字
+  // 工具栏放不下时省掉次要的按钮和数字；横屏矮屏（平板横放）顶栏的按钮也并进工具栏这一行，要更早收
+  const narrow = canvasWidth < (compact ? 1100 : 820) || squeeze > 0;
   const slim = narrow || compact; // 并成一行时也省
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
@@ -661,7 +710,16 @@ export function ExamRoom({
 
   // 矮屏并成一行的工具栏：卷面往下滚收起，往上滚、回到顶上或点顶上的小把手露出来
   const [barHidden, setBarHidden] = useState(false);
+  // 重开时要不要连卷面笔记一起清
+  const [redoNotes, setRedoNotes] = useState(false);
   useEffect(() => setBarHidden(false), [compact]);
+  // 固定工具栏：往下滑也不收起
+  const pinBar = settings.pinToolbar;
+  const pinRef = useRef(pinBar);
+  pinRef.current = pinBar;
+  useEffect(() => {
+    if (pinBar) setBarHidden(false);
+  }, [pinBar]);
   // 那一行有多高（触屏按钮 40px 时 48）：侧栏顶上让出这么多
   const [toolRow, setToolRow] = useState<HTMLDivElement | null>(null);
   const [toolH, setToolH] = useState(48);
@@ -671,6 +729,44 @@ export function ExamRoom({
     ro.observe(toolRow);
     return () => ro.disconnect();
   }, [toolRow]);
+  // 每一级收法下整行要多宽（按当前这组按钮记）：收起后量不到前一级的宽度，所以记下来比
+  const toolFit = useRef(new Map<string, number[]>());
+  const toolKey = `${tool}|${compact}|${agentOpen}|${canvasWidth < (compact ? 1100 : 820)}`;
+  useLayoutEffect(() => {
+    if (!toolRow) return;
+    const bar = toolRow.firstElementChild as HTMLElement | null;
+    if (!bar) return;
+    const check = () => {
+      const avail = bar.offsetWidth;
+      const prev = bar.style.width;
+      bar.style.width = "max-content";
+      const need = bar.offsetWidth;
+      bar.style.width = prev;
+      const w = toolFit.current.get(toolKey) ?? [];
+      w[squeeze] = need;
+      toolFit.current.set(toolKey, w);
+      let next = 2;
+      for (let l = 0; l <= 2; l++)
+        if (w[l] === undefined || w[l] <= avail) {
+          next = l;
+          break;
+        }
+      setSqueeze(next);
+      setToolOver(next === 2 && w[2] !== undefined && w[2] > avail);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(toolRow);
+    for (const c of bar.children) ro.observe(c);
+    return () => ro.disconnect();
+  }, [toolRow, toolKey, squeeze]);
+  // 打开 Agent 时先在后台把手写笔记认好，提问时就不用等
+  const inkWarm = useRef({ marksRaw, pages });
+  inkWarm.current = { marksRaw, pages };
+  useEffect(() => {
+    const { marksRaw: m, pages: p } = inkWarm.current;
+    if (agentOpen && m?.length) void inkNotes(m, p);
+  }, [agentOpen]);
 
   // 滚动时只有这一个监听（每帧最多算一次）：当前页（缩略图栏、状态栏页码）、当前部分（顶栏）、矮屏工具栏收起。
   // 各页、各部分的起点只在排版变了时量一次，滚动时只做比较（滚动里量元素位置会卡）；值没变不 setState
@@ -692,7 +788,7 @@ export function ExamRoom({
       let p = partTops[0]?.id;
       for (const t of partTops) if (t.top <= y + h * 0.45) p = t.id;
       scrollStore.set({ page: cur, part: p });
-      if (!compact) return;
+      if (!compact || pinRef.current) return;
       if (y < 40) setBarHidden(false);
       else if (y - last > 8) setBarHidden(true);
       else if (last - y > 8) setBarHidden(false);
@@ -851,6 +947,7 @@ export function ExamRoom({
       const w = pages?.[page - 1]?.w[range[0]];
       if (!w || !document.getElementById(`pdf-page-${page}`)) return;
       setTool("select");
+      leftView.current = true;
       scrollToY(topOf(page, w[2]) - (stage?.clientHeight ?? 600) / 3);
       setWordFlash({ page, range, n: Date.now() });
     },
@@ -1403,24 +1500,38 @@ export function ExamRoom({
   }, [sideDock]);
   // 长难句在卷面上的位置：句子键 → 第几页、第几句、句首的 y；每页有哪几句。
   // 只认卷面上显示的页；专项练习不是仔细阅读时一句都没有（停靠区也不出"长难句"标签）
+  // Agent 在卷面上标的长难句并进来：和解析层一样划线、点开看结构（不限仔细阅读）
+  const aiSyntax = useLiveQuery(() => db.aiSyntax.where("paperId").equals(paper.id).toArray(), [paper.id]);
+  const baseSyn = synOn ? syntaxFile : null;
+  const synFile = useMemo<SyntaxFile | null>(() => {
+    if (!aiSyntax?.length) return baseSyn;
+    const sentences = { ...baseSyn?.sentences };
+    for (const r of aiSyntax) sentences[r.key] ??= r.entry;
+    return { id: paper.id, by: "ai", version: syntaxFile?.version ?? 1, sentences };
+  }, [baseSyn, syntaxFile, aiSyntax, paper.id]);
   const syntaxAt = useMemo(() => {
     const at = new Map<string, { page: number; sid: number; y: number }>();
-    const byPage = new Map<number, Set<number>>();
-    if (!syntaxFile || !pages || (scope && scope.section.kind !== "reading")) return { at, byPage };
+    const byPage = new Map<number, Map<number, number>>();
+    if (!synFile || !pages) return { at, byPage };
+    const readingOnly = !!scope && scope.section.kind !== "reading";
+    const count = new Map<string, number>();
     pages.forEach((data, i) => {
       if (i + 1 < firstPage || i + 1 > lastPage) return;
       data.s.forEach((s, sid) => {
         const k = sentenceKey(s);
-        if (!syntaxFile.sentences[k] || at.has(k)) return;
+        const e = synFile.sentences[k];
+        if (!e || (readingOnly && e.group !== "ai") || at.has(k)) return;
         const w = data.w.find((x) => x[5] === sid);
         if (!w) return;
         at.set(k, { page: i + 1, sid, y: w[2] });
-        byPage.set(i + 1, (byPage.get(i + 1) ?? new Set()).add(sid));
+        const n = (count.get(e.group) ?? 0) + 1;
+        count.set(e.group, n);
+        byPage.set(i + 1, (byPage.get(i + 1) ?? new Map()).set(sid, n));
       });
     });
     return { at, byPage };
-  }, [syntaxFile, pages, scope, firstPage, lastPage]);
-  const synOf = useCallback((sentence: string) => (sentence && syntaxFile?.sentences[sentenceKey(sentence)]) || null, [syntaxFile]);
+  }, [synFile, pages, scope, firstPage, lastPage]);
+  const synOf = useCallback((sentence: string) => (sentence && synFile?.sentences[sentenceKey(sentence)]) || null, [synFile]);
   /** 打开一句长难句的解析：收起查词、选项条，卷面上这句淡黄底，底部条放解析；scroll 时把这句滚到卷面上三分之一处 */
   const openSyntax = useCallback(
     (key: string, scroll: boolean) => {
@@ -1501,16 +1612,43 @@ export function ExamRoom({
   // 卷面上点了词（点在空白处是 null：收起）
   const onPaperWord = showWord;
   const cover = `/papers/pdf/${encodeURIComponent(paper.id)}.thumb.jpg`;
+  // 问 AI：卷面上的一句（可带点的词），右侧"问 AI"标签里接着聊
+  const aiOn = useAgentEnabled();
+  const [agentThread, setAgentThread] = useState<AgentThread | null>(null);
+  const askAI = useCallback(
+    (sentence: string, word?: string) => {
+      setAgentThread({ id: `${sentenceKey(sentence)}:${word ?? ""}`, ctx: { paper: paper.title, sentence, word, syntax: synOf(sentence) ?? undefined } });
+      setPanel(null);
+      setAgentOpen(true);
+    },
+    [paper.title, synOf],
+  );
+  // 右下角 Agent 默认聊整套卷：交卷后（练习模式选完就判）给它每题作答、对错和用时，交卷前只给进度
+  const reviewReady = submitted || practice;
+  const paperThread = useMemo<AgentThread>(
+    () => ({
+      id: `paper:${attemptKey}:${attempt?.submittedAt ?? 0}`,
+      ctx: {
+        paper: paper.title,
+        sentence: "",
+        reviewReady,
+        review: reviewReady ? reviewSummary(paper, answers, questionSec, limits, attempt?.sectionSec) : progressSummary(paper, answers),
+        paperText: paperText(pages, undefined, choiceStems(paper)),
+        marks: marksSummary(marksRaw),
+      },
+    }),
+    [paper, attemptKey, attempt?.submittedAt, attempt?.sectionSec, reviewReady, answers, questionSec, limits, pages, marksRaw],
+  );
   // 长难句按卷面顺序：解析条上"上一句 / 下一句"和"第一篇 3/5"
   const synOrder = useMemo(() => [...syntaxAt.at.keys()], [syntaxAt]); // Map 按卷面顺序插入；Object.keys 会把纯数字键提前
   const synNav = (key: string) => {
     const i = synOrder.indexOf(key);
-    if (i < 0 || !syntaxFile) return undefined;
-    const group = syntaxFile.sentences[key].group;
-    const groups = [...new Set(synOrder.map((k) => syntaxFile.sentences[k].group))];
-    const same = synOrder.filter((k) => syntaxFile.sentences[k].group === group);
+    if (i < 0 || !synFile) return undefined;
+    const group = synFile.sentences[key].group;
+    const groups = [...new Set(synOrder.map((k) => synFile.sentences[k].group).filter((g) => g !== "ai"))];
+    const same = synOrder.filter((k) => synFile.sentences[k].group === group);
     return {
-      pos: `${["第一篇", "第二篇", "第三篇"][groups.indexOf(group)] ?? group} ${same.indexOf(key) + 1}/${same.length}`,
+      pos: `${group === "ai" ? "AI 标的" : (["第一篇", "第二篇", "第三篇"][groups.indexOf(group)] ?? group)} ${same.indexOf(key) + 1}/${same.length}`,
       prev: i > 0 ? () => openSyntax(synOrder[i - 1], true) : undefined,
       next: i < synOrder.length - 1 ? () => openSyntax(synOrder[i + 1], true) : undefined,
     };
@@ -1530,7 +1668,7 @@ export function ExamRoom({
       ? // 练习模式还没作答的题：先不放解析
         { kind: "explain", q: curQ, id: openQ, cue, locked: practice && !submitted && !answers[curQ.id] }
       : sent
-        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)) }
+        ? { kind: "sentence", id: `${sent.page}:${sent.sid}:${sent.n}`, sentence: sent.sentence, syn: synOf(sent.sentence), nav: synNav(sentenceKey(sent.sentence)), onRemove: aiSyntax?.some((r) => r.key === sentenceKey(sent.sentence) && !baseSyn?.sentences[r.key]) ? () => void db.aiSyntax.delete(`${paper.id}:${sentenceKey(sent.sentence)}`).then(closeBar) : undefined }
         : null;
   // 竖屏底部抽屉开着时只有这一块底部区域：底部条的内容放进抽屉，当一个临时标签（新内容出来时切过去，收起时回到原来的标签）
   const barInDock = !!panel && !sideDock;
@@ -1546,8 +1684,26 @@ export function ExamRoom({
   // 打开的那道题（题号和贴着它的选项条）要露在可见区域里：本来就看得见就不动，看不见只滚到刚好露出来。
   // 正在查的那个词：整个不在视野里就放到可见区域上部三分之一处，只差一点就挪一点。
   // 底部条、停靠区都排在卷面旁边（卷面那一栏跟着变窄变矮），画布的框就是可见区域；它们开关、换高度时再看一次
+  // 用户自己滚开了（滚轮、手指）或点了"在卷面上标出"跳去定位句：同一道题、同一个词就不再拉回来，换了题、换了词才重新管
+  const viewKey = useRef("");
+  const leftView = useRef(false);
+  useEffect(() => {
+    if (!stage) return;
+    const off = () => (leftView.current = true);
+    stage.addEventListener("wheel", off, { passive: true });
+    stage.addEventListener("touchmove", off, { passive: true });
+    return () => {
+      stage.removeEventListener("wheel", off);
+      stage.removeEventListener("touchmove", off);
+    };
+  }, [stage]);
   useEffect(() => {
     if (!stage || (!openQ && !hit)) return;
+    const key = `${openQ}|${hit?.page}|${hit?.index}`;
+    if (key !== viewKey.current) {
+      viewKey.current = key;
+      leftView.current = false;
+    } else if (leftView.current) return;
     const s = stage.getBoundingClientRect();
     const top = s.top + (compact && !barHidden ? 56 : 0) + 8;
     const bottom = s.bottom - 12;
@@ -1685,7 +1841,7 @@ export function ExamRoom({
 
   const backLink = (
     <Tip label={back.label}>
-      <Link to={back.to} aria-label={back.label} className="gr-iconbtn">
+      <Link to={back.to} onClick={(e) => goBack(navigate, back.to, e)} aria-label={back.label} className="gr-iconbtn">
         <ArrowLeft className="size-[18px]" />
       </Link>
     </Tip>
@@ -1705,11 +1861,7 @@ export function ExamRoom({
         <Button size="sm" onClick={() => setConfirm("redo")}>
           <ArrowCounterClockwise className="size-4" /> 重做
         </Button>
-      ) : (
-        <Button size="sm" variant="primary" onClick={() => setConfirm("submit")}>
-          {practice ? "结束练习" : "交卷"}
-        </Button>
-      )}
+      ) : null /* 交卷在答题卡里 */}
     </>
   );
   // 并成一行时卷名只留一行小字
@@ -1717,13 +1869,14 @@ export function ExamRoom({
 
   // 底部条：卷面那一栏下面一条；竖屏底部抽屉开着时放进抽屉，当一个临时标签
   const sentKey = sent ? sentenceKey(sent.sentence) : null;
+  const synReady = syntaxFile && !(scope && scope.section.kind !== "reading") ? Object.keys(syntaxFile.sentences).length : 0;
   const dockSyntax = useMemo<DockSyntax | null>(() => {
-    if (!syntaxFile || !syntaxAt.at.size) return null;
-    const titles: Record<string, string> = {};
+    if (!synReady && !syntaxAt.at.size) return null;
+    const titles: Record<string, string> = { ai: "AI 标的长难句" };
     for (const s of paper.sections) for (const g of s.groups) titles[g.id] = (g.title ?? g.id).replace(/^Section C · /, "");
-    const sentences = Object.fromEntries(Object.entries(syntaxFile.sentences).filter(([k]) => syntaxAt.at.has(k)));
-    return { file: { ...syntaxFile, sentences }, titles, current: sentKey, onOpen: (k) => openSyntax(k, true) };
-  }, [syntaxFile, syntaxAt, paper.sections, sentKey, openSyntax]);
+    const sentences = Object.fromEntries([...syntaxAt.at.keys()].map((k) => [k, synFile!.sentences[k]]));
+    return { file: { id: paper.id, by: "ai", version: 1, ...synFile, sentences }, order: [...syntaxAt.at.keys()], titles, current: sentKey, onOpen: (k) => openSyntax(k, true), ready: synReady, on: synOn, onToggle: toggleSyn };
+  }, [synFile, syntaxAt, paper.sections, paper.id, sentKey, openSyntax, synReady, synOn, toggleSyn]);
   const barEl = (embedded: boolean) =>
     barContent && (
       <AnswerBar
@@ -1733,9 +1886,88 @@ export function ExamRoom({
         trans={trans}
         onClose={barContent.kind === "explain" ? () => setExplainOpen(false) : closeBar}
         step={{ prev: canPrev, next: canNext, go: onStep }}
+        onAsk={aiOn && barContent.kind === "sentence" ? () => askAI(barContent.sentence) : undefined}
         onHeight={embedded ? undefined : setBarH}
       />
     );
+  const paperLink: PaperLink = {
+    locate: (text) => {
+      const h = pages
+        ? findText(pages, text, undefined, (n, y) => {
+            if (n < firstPage || n > lastPage) return false;
+            const c = range ? clips.get(n) : undefined;
+            return !c || (y >= c.top && y <= (c.bottom ?? Infinity));
+          })
+        : null;
+      if (!h || !pages) return false;
+      scrollToY(topOf(h.page, pages[h.page - 1].w[h.a][2]) - 160);
+      setAgentFlash({ page: h.page, range: [h.a, h.b] });
+      clearTimeout(agentFlashT.current);
+      agentFlashT.current = window.setTimeout(() => setAgentFlash(null), 2600);
+      return true;
+    },
+    question: (n) => {
+      const q = allQuestions(paper).find((x) => x.number === n);
+      if (!q) return false;
+      lowerDrawer();
+      onJump(q);
+      return true;
+    },
+  };
+  // 学习者此刻在卷面上看哪，每次提问时交给 Agent
+  const where = () => {
+    const s = scrollStore.get();
+    const qs = allQuestions(paper).filter((q) => q.number > 0 && (q.page ?? q.blank?.page) === s.page);
+    const sec = paper.sections.find((x) => x.id === s.part);
+    const open = openQ ? allQuestions(paper).find((q) => q.id === openQ.split("@")[0]) : null;
+    // 正在看哪篇：屏幕上部那一行往后，最先做完题的那组。文章在题目前面，看到第二篇正文时第一篇的题已经在上面了
+    let grp: { sec: Section; g: Group } | null = null;
+    if (stage) {
+      const at = stage.scrollTop + stage.clientHeight * 0.4;
+      outer: for (const x of paper.sections)
+        for (const g of x.groups) {
+          const lastQ = [...g.questions].reverse().find((q) => q.page && q.box);
+          if (lastQ && topOf(lastQ.page!, lastQ.box![1]) >= at) {
+            grp = { sec: x, g };
+            break outer;
+          }
+        }
+    }
+    const gqs = grp?.g.questions.filter((q) => q.number > 0) ?? [];
+    return (
+      `第 ${s.page} 页` +
+      (sec ? `（${kindName(sec.kind, paper.exam)}）` : "") +
+      (qs.length ? `，这一页上有第 ${qs[0].number}–${qs[qs.length - 1].number} 题` : "") +
+      (grp && gqs.length
+        ? `；屏幕上正在看的是 ${grp.g.title || kindName(grp.sec.kind, paper.exam)}（第 ${gqs[0].number}–${gqs[gqs.length - 1].number} 题），“这篇”指它`
+        : "") +
+      (open ? `；刚点开第 ${open.number} 题` : "") +
+      "。学习者说“这题”“这篇”“这段”时先按这个理解。"
+    );
+  };
+  const agentEl = agentOpen && (
+    <PaperLinkCtx.Provider value={paperLink}>
+    <AgentSplit
+      side={sideDock}
+      width={agentWidth}
+      inset={compact && !barHidden ? toolH + 8 : 0}
+      onWidth={(w) => {
+        setAgentW(w);
+        localStorage.setItem("yz-agent-w", String(w));
+      }}
+      enabled={!!aiOn}
+      paperThread={paperThread}
+      sentence={agentThread}
+      onClearSentence={() => setAgentThread(null)}
+      onClose={() => {
+        setAgentOpen(false);
+        setReviewAsk(0);
+      }}
+      review={reviewAsk}
+      env={{ paper, answers, ink: (signal) => inkNotes(marksRaw ?? [], pages, signal, 4000), pages, where }}
+    />
+    </PaperLinkCtx.Provider>
+  );
   const dockEl = panel && dockView && (
     <Dock
       layout={sideDock ? "side" : "drawer"}
@@ -1763,6 +1995,7 @@ export function ExamRoom({
       elapsed={elapsed}
       flags={flags}
       vocabCount={vocabCount}
+      seenVocab={seenVocab}
       justSubmitted={justSubmitted}
       marks={marks}
       history={history}
@@ -1788,6 +2021,7 @@ export function ExamRoom({
         ref={setToolRow}
         className={cn(
           "no-print px-1.5 py-1.5",
+          toolOver && "overflow-x-auto",
           // 矮屏：这一行浮在卷面和侧栏上面（高 48），往下滚时整行收上去
           compact && "absolute inset-x-0 top-0 z-40 rounded-[var(--radius-md)] bg-white py-0 shadow-[var(--elev-1)] transition-transform duration-200 ease-out",
           compact && barHidden && "-translate-y-[calc(100%+8px)]",
@@ -1814,7 +2048,12 @@ export function ExamRoom({
                   ],
                 ]
               : []),
-            [tool$(rail ? "收起缩略图" : "页面缩略图", <SidebarSimple className="size-[19px]" weight={rail ? "fill" : "duotone"} />, () => setRail(!rail), { active: rail, soft: true, kbd: "T" })],
+            [
+              tool$(rail ? "收起缩略图" : "页面缩略图", <SidebarSimple className="size-[19px]" weight={rail ? "fill" : "duotone"} />, () => setRail(!rail), { active: rail, soft: true, kbd: "T" }),
+              ...(compact
+                ? [tool$(pinBar ? "取消固定：往下滑时收起工具栏" : "固定工具栏：往下滑也不收起", <PushPin className="size-[19px]" weight={pinBar ? "fill" : "duotone"} />, () => void setSetting("pinToolbar", !pinBar), { active: pinBar, soft: true })]
+                : []),
+            ],
             toolGroup(0),
             toolGroup(1),
             toolGroup(2),
@@ -1824,7 +2063,7 @@ export function ExamRoom({
                     ...(tool === "pen"
                       ? [
                           // 手写笔：3 个预设槽，颜色和粗细收在旁边的小弹框里
-                          ...presets.map((p, i) => ({
+                          ...(squeeze >= 2 ? [] : presets).map((p, i) => ({
                             icon: "circle" as const,
                             label: `笔 ${i + 1}`,
                             render: (
@@ -1956,6 +2195,21 @@ export function ExamRoom({
           )}
           {/* 本卷笔记、生词在"更多"里和停靠区的标签里 */}
           {panelButton("sheet", "答题卡", <Exam className="size-[19px]" />, `答题卡 ${practice && !submitted ? `${rightCount}/${answered}` : progress.replace(/^\D+/, "")}`)}
+          <Tip label="Agent：分屏和 AI 对话，它看得到你的作答">
+            <button
+              type="button"
+              className={agentOpen ? "gr-tool gr-tool-soft" : "gr-tool"}
+              onClick={() => {
+                if (!agentOpen) setPanel(null);
+                setAgentOpen(!agentOpen);
+              }}
+              aria-label="Agent"
+              aria-pressed={agentOpen}
+            >
+              <Sparkle className="size-[19px]" />
+              {!narrow && <span className="gr-tool-text whitespace-nowrap">Agent</span>}
+            </button>
+          </Tip>
           {/* 更多：查找、双页、生词标记、导出（不常用的都收在这里，工具栏不加常驻按钮） */}
           <G.Popover
             label="更多"
@@ -1970,6 +2224,7 @@ export function ExamRoom({
             {(close: () => void) => (
               <div className="py-0.5">
                 {moreItem("本卷笔记", () => (close(), togglePanel("notes")), marks.length ? <span className="num">{marks.length}</span> : undefined)}
+                {!submitted && moreItem("重开这套卷子", () => (close(), setConfirm("redo")))}
                 {moreItem("本卷生词", () => (close(), togglePanel("vocab")), vocabCount ? <span className="num">{vocabCount}</span> : undefined)}
                 {moreItem(
                   "在卷面查找",
@@ -2090,6 +2345,14 @@ export function ExamRoom({
                 floating={floating}
                 inset={compact ? 56 : 0}
                 onJump={jumpPage}
+                parts={
+                  !scope && !retry && partAnchors.length > 1
+                    ? partAnchors.map((a) => {
+                        const sec = paper.sections.find((x) => x.id === a.id);
+                        return { label: kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : ""), onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
+                      })
+                    : undefined
+                }
               />
             )}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
@@ -2133,7 +2396,7 @@ export function ExamRoom({
                       limits={limits}
                       playingSeg={playing.on ? playing.seg : null}
                       hits={hitsByPage.get(firstPage + k)}
-                      hitCur={curHit?.page === firstPage + k ? curHit.range : null}
+                      hitCur={agentFlash?.page === firstPage + k ? agentFlash.range : curHit?.page === firstPage + k ? curHit.range : null}
                       longs={syntaxAt.byPage.get(firstPage + k)}
                       activeWord={hit?.page === firstPage + k ? hit.index : null}
                       activeWords={hit?.page === firstPage + k ? phraseWords : null}
@@ -2182,10 +2445,10 @@ export function ExamRoom({
           </div>
 
           {/* 停靠区：横屏在右侧一栏 */}
-          {sideDock && dockEl}
+          {sideDock && (agentOpen ? agentEl : dockEl)}
         </div>
         {/* 停靠区：竖屏是听力条上面的底部抽屉 */}
-        {!sideDock && dockEl}
+        {!sideDock && (agentOpen ? agentEl : dockEl)}
         </div>
 
         {paper.audio && (
@@ -2276,20 +2539,44 @@ export function ExamRoom({
             openTab("explain");
           }}
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
+          onAgent={() => {
+            setReport((r) => ({ ...r, open: false }));
+            setPanel(null);
+            setAgentThread(null);
+            setReviewAsk((n) => n + 1);
+            setAgentOpen(true);
+          }}
         />
       )}
       <ConfirmDialog
         open={confirm === "redo"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-        title={retry ? "再重做一次？" : "重做这套卷子？"}
-        description={retry ? "会清空这次重做的作答。错题本里的记录保留。" : "会清空本卷的作答记录和用时。卷面笔记和生词本都保留。"}
-        confirmText="清空并重做"
+        onOpenChange={(o) => {
+          if (o) return;
+          setConfirm(null);
+          setRedoNotes(false);
+        }}
+        title={retry ? "再重做一次？" : submitted ? "重做这套卷子？" : "重开这套卷子？"}
+        description={retry ? "会清空这次重做的作答。错题本里的记录保留。" : `会清空本卷的作答记录和用时。${redoNotes ? "卷面笔记也一起删掉，" : "卷面笔记、"}生词本和错题本都保留。`}
+        confirmText={submitted ? "清空并重做" : "清空并重开"}
         danger
         onConfirm={async () => {
+          if (redoNotes && marks.length) await history.remove(marks);
+          setRedoNotes(false);
+          // 手上这题的秒表、还没存的各部分用时都是重开前的，丢掉，不记进新的作答
+          timer.discard();
+          secBuf.current = {};
+          setOpenQ(null); // 收起开着的题：重开后点开哪题，就从那题重新计时
           await onRedo();
           stage?.scrollTo({ top: 0 });
         }}
-      />
+      >
+        {!retry && marks.length > 0 && (
+          <label className="mt-4 flex min-h-10 items-center gap-2.5 text-[14px] text-[var(--ink-700)]">
+            <input type="checkbox" checked={redoNotes} onChange={(e) => setRedoNotes(e.target.checked)} className="size-4 accent-[var(--red)]" />
+            同时清空卷面笔记（{marks.length} 条高亮、下划线、便签和手写）
+          </label>
+        )}
+      </ConfirmDialog>
       <PaperDialog open={keysOpen} onClose={() => setKeysOpen(false)} title="快捷键" width={440}>
         <dl className="mt-4 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-[14px]">
           {KEYS.map(([keys, what]) => (
@@ -2330,6 +2617,14 @@ export function ExamRoom({
             onClose={closeWord}
             onTransOpen={setCardTrans}
             onSyntax={hit.page != null && synOf(hit.sentence) ? () => openSyntax(sentenceKey(hit.sentence), false) : undefined}
+            onAsk={
+              aiOn && hit.sentence
+                ? (word?: string) => {
+                    closeWord();
+                    askAI(hit.sentence, word);
+                  }
+                : undefined
+            }
           />,
           document.body,
         )}

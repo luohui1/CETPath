@@ -27,6 +27,7 @@ function useNow(ms: number) {
 
 /** 真题页、专项页上次选的考试 → 倒计时的默认考试名 */
 const PRESET_OF: Record<string, string> = { kaoyan1: EXAM_PRESETS[0], kaoyan2: EXAM_PRESETS[1], cet4: EXAM_PRESETS[2], cet6: EXAM_PRESETS[3] };
+const EXAM_OF: Record<string, string> = Object.fromEntries(Object.entries(PRESET_OF).map(([k, v]) => [v, k]));
 export const examPreset = (exam?: string | null) => (exam && PRESET_OF[exam]) || undefined;
 
 /** 首页的考试倒计时：一行小条。没设日期时就地设（考试名默认是上次选的考试），设好后是"距某考试还有 N 天"+ 阶段 + 一句建议 */
@@ -41,7 +42,9 @@ export function ExamCountdown({ startedAt, weak, defaultName, className }: { sta
   useEffect(() => {
     setName(settings.examName || fallback);
     setDate(settings.examDate ?? "");
-  }, [settings.examName, settings.examDate, fallback]);
+    // 只跟着存下的考试走：点考试按钮会改 lastExam（fallback 跟着变），不能把刚点的选择和没保存的日期冲掉
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.examName, settings.examDate]);
 
   const target = settings.examDate ? new Date(`${settings.examDate}T08:30:00`).getTime() : null;
 
@@ -57,13 +60,17 @@ export function ExamCountdown({ startedAt, weak, defaultName, className }: { sta
         <span className="text-[14px] font-medium">{target ? "修改考试" : "设个考试日期，开始倒计时"}</span>
         <div className="flex flex-wrap gap-1.5">
           {EXAM_PRESETS.map((p) => (
-            <button key={p} type="button" onClick={() => setName(p)} className={cn("pill", name === p && "pill-on")} aria-pressed={name === p}>
+            <button key={p} type="button" onClick={() => {
+                setName(p);
+                // 首页下面的"继续做题"、推荐卷子跟着换成这门考试
+                void setSetting("lastExam", EXAM_OF[p]);
+              }} className={cn("pill", name === p && "pill-on")} aria-pressed={name === p}>
               {p}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex h-9 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex h-9 min-w-0 items-center gap-2 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)]">
             <CalendarBlank className="size-[18px] text-[var(--ink-500)]" />
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent outline-none" aria-label="考试日期" />
           </label>

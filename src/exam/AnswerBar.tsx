@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
+import { CaretLeft, CaretRight, X, Sparkle } from "@phosphor-icons/react";
 import type { Question } from "@/lib/papers";
 import type { SyntaxEntry } from "@/lib/syntax";
 import type { TransLookup } from "@/lib/trans";
@@ -14,7 +14,7 @@ import { SyntaxCard } from "./SyntaxCard";
  * 这句是仔细阅读里的长难句（syn）时直接放长难句解析（结构 + 译文），不用再点一下。
  * 查词 2026-11-12 起不在这里了：改成词旁边的小卡片（WordCard）
  */
-export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null; nav?: { pos: string; prev?: () => void; next?: () => void } };
+export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null; nav?: { pos: string; prev?: () => void; next?: () => void }; onRemove?: () => void };
 
 /** 竖屏底部抽屉开着时，底部条的内容变成抽屉里临时出现的标签：标签上写什么 */
 export function barLabel(c: BarContent) {
@@ -61,6 +61,7 @@ export function AnswerBar({
   onClose,
   step,
   onHeight,
+  onAsk,
 }: {
   content: BarContent;
   mine?: string | null; // 解析里要不要对答案（交卷后、练习模式选过）：见 ExplanationCard
@@ -69,6 +70,7 @@ export function AnswerBar({
   onClose: () => void;
   step?: { prev: boolean; next: boolean; go: (dir: 1 | -1) => void }; // 解析头上的上一题、下一题
   onHeight?: (h: number) => void;
+  onAsk?: () => void; // 长按出的这句：右侧面板里问 AI
 }) {
   const self = useRef<HTMLElement>(null);
 
@@ -86,11 +88,40 @@ export function AnswerBar({
 
   const report = useRef(onHeight);
   report.current = onHeight;
+  // 拖上沿改高度（占卷面那一栏的比例，记在本机）；拖的时候直接改样式，松手才告诉考场条，免得每一帧都重排整页
+  const kind = content.kind === "explain" ? "explain" : "sentence";
+  const [frac, setFrac] = useState<number | null>(() => readFrac(kind));
+  useEffect(() => setFrac(readFrac(kind)), [kind]);
+  const dragging = useRef(false);
+  const onGrip = (e: RPointerEvent<HTMLDivElement>) => {
+    const el = self.current;
+    const box = el?.parentElement?.getBoundingClientRect();
+    if (!el || !box) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragging.current = true;
+    let f = el.offsetHeight / box.height;
+    const move = (ev: PointerEvent) => {
+      f = Math.min(0.8, Math.max(0.18, (box.bottom - ev.clientY) / box.height));
+      el.style.height = `${f * 100}%`;
+      el.style.maxHeight = "none";
+    };
+    const up = () => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      dragging.current = false;
+      localStorage.setItem(`yz-bar-${kind}`, f.toFixed(3));
+      setFrac(f);
+      report.current?.(el.offsetHeight);
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   useLayoutEffect(() => {
     const el = self.current;
     if (!el || embedded) return;
     report.current?.(el.offsetHeight);
-    const ro = new ResizeObserver(() => report.current?.(el.offsetHeight));
+    const ro = new ResizeObserver(() => !dragging.current && report.current?.(el.offsetHeight));
     ro.observe(el);
     return () => {
       ro.disconnect();
@@ -108,9 +139,22 @@ export function AnswerBar({
         "no-print flex flex-col bg-white",
         embedded
           ? "min-h-0 flex-1"
-          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", content.kind === "explain" ? "max-h-[50%]" : content.syn ? "max-h-[44%]" : "max-h-[40%]"),
+          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", frac == null && (content.kind === "explain" ? "h-[42%]" : content.syn ? "max-h-[44%]" : "max-h-[40%]")),
       )}
+      // 解析固定高度（换题时卷面不跟着跳）；译句、长难句按内容高，最多到拖出来的高度
+      style={embedded || frac == null ? undefined : content.kind === "explain" ? { height: `${frac * 100}%` } : { maxHeight: `${frac * 100}%` }}
     >
+      {!embedded && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="拖动调整高度"
+          onPointerDown={onGrip}
+          className="group absolute inset-x-0 -top-1.5 z-10 flex h-3 cursor-row-resize touch-none items-center justify-center"
+        >
+          <span className="h-1 w-10 rounded-full bg-[var(--line)] transition-colors group-hover:bg-[var(--blue)]" />
+        </div>
+      )}
       {content.kind === "explain" ? (
         <>
           {/* 解析：头一行是第几题和认题的那段原文（一眼对得上是哪道题），右边上一题、下一题、✕；下面是解析卡 */}
@@ -141,6 +185,11 @@ export function AnswerBar({
                 {content.syn ? "长难句解析" : "译句"}
                 {content.nav && <span className="num ml-2 text-[13px] font-normal text-[var(--ink-500)]">{content.nav.pos}</span>}
               </span>
+              {onAsk && (
+                <button type="button" onClick={onAsk} className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-[var(--blue)] transition-colors hover:bg-[var(--blue-tint)]">
+                  <Sparkle className="size-3.5" weight="fill" /> 问 AI
+                </button>
+              )}
               {content.nav && (
                 <span className="flex items-center gap-0.5">
                   {[["上一句", content.nav.prev], ["下一句", content.nav.next]].map(([label, go]) => (
@@ -154,7 +203,7 @@ export function AnswerBar({
             </div>
           </div>
           <DrawerBody key={content.id}>
-            {content.syn ? <SyntaxCard e={content.syn} /> : <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />}
+            {content.syn ? <SyntaxCard e={content.syn} onRemove={content.onRemove} /> : <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />}
           </DrawerBody>
         </>
       )}
@@ -168,6 +217,11 @@ const COLUMN = "mx-auto w-full max-w-[880px]";
 
 const DrawerBody = ({ children }: { children: ReactNode }) => (
   <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-[var(--line-soft)] pt-3 pb-4">
-    <div className={cn(COLUMN, "px-4")}>{children}</div>
+    <div className={cn(COLUMN, "animate-body-in px-4")}>{children}</div>
   </div>
 );
+
+function readFrac(kind: string): number | null {
+  const v = Number(localStorage.getItem(`yz-bar-${kind}`));
+  return v >= 0.18 && v <= 0.8 ? v : null;
+}

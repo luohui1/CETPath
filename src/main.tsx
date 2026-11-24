@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
+import { ARTICLES_ON } from "./lib/articles";
 import { registerSW } from "virtual:pwa-register";
 import { IconContext } from "@phosphor-icons/react";
 // 数字和英文展示用的衬线体，只要拉丁字符
@@ -11,8 +12,10 @@ import "@fontsource/source-serif-4/latin-700.css";
 import "./index.css";
 import { primeAppData } from "./lib/insights";
 import { db, memoryDb } from "./lib/db";
+import { leaveHttp, takeHandoff } from "./lib/https";
 import type { ComponentType } from "react";
 import { Layout } from "./components/Layout";
+import { loadMe } from "./lib/auth";
 import { HomePage } from "./pages/Home";
 import { NotFoundPage } from "./pages/NotFound";
 
@@ -21,11 +24,21 @@ import { NotFoundPage } from "./pages/NotFound";
  * 进那一页才下载。慢网（国内到新加坡 14–50KB/s）下第一次打开站点少下一大半脚本。
  * 装好 Service Worker 以后所有包都在预缓存里，切页不用等网络。
  */
-const page = (load: () => Promise<ComponentType>) => ({ lazy: async () => ({ Component: await load() }) });
+const loaders: (() => Promise<unknown>)[] = [];
+const page = (load: () => Promise<ComponentType>) => {
+  loaders.push(load);
+  return { lazy: async () => ({ Component: await load() }) };
+};
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
 
+void loadMe(); // 从哪个页面打开都先查登录、开始同步
+
 const router = createBrowserRouter([
+  { path: "/welcome", ...page(() => import("./pages/Welcome").then((m) => m.WelcomePage)) },
   // 做题页是沉浸式考场，不显示应用侧边栏；/paper/:id/retry?q=… 是重做错题
+  ARTICLES_ON
+    ? { path: "/articles/:id", ...page(() => import("./pages/Article").then((m) => m.ArticlePage)) }
+    : { path: "/articles/*", element: <Navigate to="/" replace /> },
   { path: "/paper/:id/:section?", ...page(reader), hydrateFallbackElement: <div className="min-h-dvh bg-[var(--paper-100)]" /> },
   {
     element: <Layout />,
@@ -33,12 +46,20 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <HomePage /> },
       { path: "/papers", ...page(() => import("./pages/Papers").then((m) => m.PapersPage)) },
+      ARTICLES_ON
+        ? { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) }
+        : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },
+      { path: "/methods", ...page(() => import("./pages/Methods").then((m) => m.MethodsPage)) },
       { path: "/review", ...page(() => import("./pages/Review").then((m) => m.ReviewPage)) },
+      { path: "/review/quick", ...page(() => import("./pages/Quick").then((m) => m.QuickPassPage)) },
+      { path: "/review/digest", ...page(() => import("./pages/Quick").then((m) => m.DigestPage)) },
       { path: "/vocab", ...page(() => import("./pages/Vocab").then((m) => m.VocabPage)) },
       { path: "/books", ...page(() => import("./pages/Books").then((m) => m.BooksPage)) },
+      { path: "/roots", ...page(() => import("./pages/Roots").then((m) => m.RootsPage)) },
       { path: "/stats", ...page(() => import("./pages/Stats").then((m) => m.StatsPage)) },
+      { path: "/ask", ...page(() => import("./pages/Ask").then((m) => m.AskPage)) },
       { path: "/settings", ...page(() => import("./pages/Settings").then((m) => m.SettingsPage)) },
       { path: "*", element: <NotFoundPage /> },
     ],
@@ -47,7 +68,11 @@ const router = createBrowserRouter([
 
 // 首页画出来、浏览器空下来以后，先把做题页那一包取好：点"开始做题"时不用再等
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 2000));
-idle(() => void reader().catch(() => {}));
+// 再把其余各页的包也取好：切页时不用等下载（慢网下以前每切一页都要卡一下）
+idle(() => {
+  void reader().catch(() => {});
+  loaders.forEach((l, i) => setTimeout(() => void l().catch(() => {}), 300 * (i + 1)));
+});
 
 registerSW({ immediate: true });
 
@@ -117,4 +142,13 @@ const render = () =>
       </IconContext.Provider>
     </StrictMode>,
   );
-Promise.race([primeAppData(), new Promise((r) => setTimeout(r, 600))]).then(render, render);
+const start = () => Promise.race([primeAppData(), new Promise((r) => setTimeout(r, 600))]).then(render, render);
+// 站点换成 https：http 页先把本地数据搬过去再跳走；内存库时读不到真数据，不搬也不跳
+if (memoryDb) void start();
+else
+  void leaveHttp().then((away) => {
+    if (!away)
+      void takeHandoff().then((back) => {
+        if (!back) void start();
+      }, start);
+  });

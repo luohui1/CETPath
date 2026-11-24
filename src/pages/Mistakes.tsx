@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Button, EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
 import { PaperDialog } from "@/components/overlay";
 import { PaperThumb } from "@/components/paper-ui";
+import { MISTAKE_PAGES, WordsTabs } from "@/components/WordsTabs";
 import { ExplainContext, ExplanationCard } from "@/exam/Explanation";
 
 type Status = "pending" | "retired" | "all";
@@ -162,6 +163,7 @@ export function MistakesPage() {
 
   return (
     <div>
+      <WordsTabs pages={MISTAKE_PAGES} label="错题" />
       <PageHeader
         title="错题本"
         actions={

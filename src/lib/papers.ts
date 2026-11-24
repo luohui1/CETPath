@@ -220,6 +220,9 @@ export interface ExplainFields {
   translation?: string; // 定位句的中文
   points?: string[]; // 写作、翻译
   phrases?: { en: string; zh: string }[];
+  kind?: string; // 题型：细节、推理、主旨……
+  signal?: string; // 做题信号：一句话说这题该盯哪个词
+  traps?: Record<string, string>; // 错误选项属于哪种陷阱：偷换对象、无中生有……
 }
 
 /** 解析层 public/papers/explain/<id>.json：整理过的官方解析和 AI 补写的解析，由 scripts/polish_explanations.py 生成 */

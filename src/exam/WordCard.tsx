@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
+import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, Sparkle, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { lookup, phonetic, TAG_LABELS, translationLines, type LookupResult } from "@/lib/dict";
 import { addToVocab, removeFromVocab } from "@/lib/learning";
@@ -8,6 +8,8 @@ import { findPhrases, type PhraseHit } from "@/lib/phrases";
 import { speak } from "@/lib/speech";
 import { getSettings } from "@/lib/settings";
 import { lookupOnline, type OnlineResult } from "@/lib/youdao";
+import { getRoots, type RootInfo } from "@/lib/roots";
+import { RootLine } from "@/components/RootLine";
 import type { TransLookup } from "@/lib/trans";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui";
@@ -40,16 +42,21 @@ const MIN_H = 150; // 再矮就看不清了：宁可滚卷面
 /** 查词，查到了记一次、按设置自动发音；正在查的词（正文里的词元素）加个高亮 */
 function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
   const [result, setResult] = useState<LookupResult | null | undefined>(undefined);
+  const [roots, setRoots] = useState<RootInfo | null>(null);
   const looked = useRef(onLookedUp);
   looked.current = onLookedUp;
   useEffect(() => {
     let cancelled = false;
     setResult(undefined);
+    setRoots(null);
     hit.el?.classList.add("is-active");
+    // 词根和释义一起出来：分两次出来卡片要变两次高
     lookup(word).then(
       async (r) => {
+        const rt = r && !r.parts ? await getRoots(r.entry.w) : null;
         if (cancelled) return;
         setResult(r);
+        setRoots(rt);
         if (r) {
           looked.current();
           if ((await getSettings()).autoSpeak) speak(r.entry.w);
@@ -62,7 +69,7 @@ function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
       hit.el?.classList.remove("is-active");
     };
   }, [word, hit]);
-  return result;
+  return [result, roots] as const;
 }
 
 /** 在线兜底：need 为真才查（离线查不到、或者是连字符词）。undefined 还在查，null 没查到 */
@@ -87,7 +94,7 @@ function PhraseRow({ phrase, trans, from, between, sentence, source }: { phrase:
   const saved = useLiveQuery(async () => !!(await db.vocab.get(key)), [key]);
   const toggle = async () => {
     if (saved) await removeFromVocab(key);
-    else await addToVocab(key, source ? { ...source, sentence } : undefined, { w: plain, t: trans.replace(/；/g, "\n") });
+    else await addToVocab(key, source ? { ...source, sentence } : undefined, trans ? { w: plain, t: trans.replace(/；/g, "\n") } : undefined);
   };
   return (
     <div className="flex items-start gap-2">
@@ -142,6 +149,7 @@ export function WordCard({
   onTransOpen,
   onPhrase,
   onSyntax,
+  onAsk,
 }: {
   hit: WordClick;
   /** 这句的词序列和点的是第几个（认短语用） */
@@ -162,17 +170,19 @@ export function WordCard({
   onPhrase?: (pos: number[] | null) => void;
   /** 这句是有解析的长难句：多一个"长难句"按钮，点了收起卡片、底部放这句的解析 */
   onSyntax?: () => void;
+  /** AI 助教开通了：多"问这个词""问这句"，点了收起卡片、右侧面板里讲；word 不给就是问整句 */
+  onAsk?: (word?: string) => void;
 }) {
   // "可能是 government"：点了就改查那个词
   const [alt, setAlt] = useState<string | null>(null);
   const word = alt ?? hit.word;
-  const result = useLookup(word, hit, onLookedUp);
+  const [result, roots] = useLookup(word, hit, onLookedUp);
   const online = useOnline(word, result === null || !!result?.parts);
   const [more, setMore] = useState(false);
   const [showTrans, setShowTrans] = useState(false);
   const [phrases, setPhrases] = useState<PhraseHit[]>([]);
-  // 选短语：这句词序列里选中的起止（含）；null 是没在选
-  const [pick, setPick] = useState<[number, number] | null>(null);
+  // 选短语：这句词序列里选中的词（升序，可以不挨着：take … into account）；null 是没在选
+  const [pick, setPick] = useState<number[] | null>(null);
   const [picked, setPicked] = useState<{ phrase: string; trans: string; from: string } | null | undefined>(undefined);
   useEffect(() => {
     setMore(false);
@@ -213,9 +223,13 @@ export function WordCard({
   }, [ctx]);
 
   // 选短语：选了两个词以上就查——先离线短语表（要正好是这一段），再有道
-  const pickText = pick && ctx && pick[1] > pick[0] ? ctx.tokens.slice(pick[0], pick[1] + 1).join(" ").replace(/[^A-Za-z'’ -]/g, "").trim() : "";
+  // 换到更短的句子时 pick 还没清（effect 在渲染后），序号可能越界
+  const clean = (t: string | undefined) => (t ?? "").replace(/[^A-Za-z'’-]/g, "");
+  const pickText = pick && ctx && pick.length > 1 ? pick.map((k) => clean(ctx.tokens[k])).filter(Boolean).join(" ") : "";
+  // 显示用：中间隔开的地方写成 …（take … into account）
+  const pickShow = pick && ctx && pick.length > 1 ? pick.map((k, i) => (i && k > pick[i - 1] + 1 ? "… " : "") + clean(ctx.tokens[k])).join(" ") : "";
   useEffect(() => {
-    if (pick) phraseCb.current?.(Array.from({ length: pick[1] - pick[0] + 1 }, (_, i) => pick[0] + i));
+    if (pick?.length) phraseCb.current?.(pick);
     else phraseCb.current?.(phrases[0] ? phrases[0].pos : null);
   }, [pick, phrases]);
   useEffect(() => {
@@ -223,7 +237,7 @@ export function WordCard({
     setPicked(undefined);
     if (!pickText || !ctx || !pick) return;
     (async () => {
-      const local = (await findPhrases(ctx.tokens, pick[0], 12)).find((f) => f.from === pick[0] && f.to === pick[1] && f.pos.length === pick[1] - pick[0] + 1);
+      const local = (await findPhrases(ctx.tokens, pick[0], 12)).find((f) => f.pos.length === pick.length && f.pos.every((p, i) => p === pick[i]));
       if (local) return { phrase: local.phrase, trans: local.trans, from: "词典" };
       const r = await lookupOnline(pickText);
       return r?.entry.t ? { phrase: r.entry.w, trans: r.entry.t.replace(/\n/g, "；"), from: "有道" } : null;
@@ -236,20 +250,13 @@ export function WordCard({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickText]);
-  const tapToken = (k: number) =>
-    setPick((p) => {
-      if (!p) return [k, k];
-      const [a, b] = p;
-      if (k < a) return [k, b];
-      if (k > b) return [a, k];
-      if (k === a && a < b) return [a + 1, b];
-      if (k === b && a < b) return [a, b - 1];
-      return p;
-    });
+  // 点一个词加进来，再点一次去掉；可以跳着选
+  const tapToken = (k: number) => setPick((p) => (!p ? [k] : p.includes(k) ? p.filter((x) => x !== k) : [...p, k].sort((a, b) => a - b)));
 
   // 离线查不到、在线查到的：生词本存在线的释义
   const onlineMain = (!result || !!result.parts) && !!online?.entry.t;
-  const vocabKey = result && !result.parts ? result.lemma : onlineMain ? online!.entry.w.toLowerCase() : null;
+  // 离线、在线都查不到的也能加，只存词，释义空着
+  const vocabKey = result && !result.parts ? result.lemma : onlineMain ? online!.entry.w.toLowerCase() : result === null && online === null ? word.toLowerCase() : null;
   const inVocab = useLiveQuery(async () => (vocabKey ? !!(await db.vocab.get(vocabKey)) : false), [vocabKey]);
   const toggleVocab = async () => {
     if (!vocabKey) return;
@@ -262,11 +269,20 @@ export function WordCard({
   const body = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<Place | null>(null);
   const scrolled = useRef(false);
-  useEffect(() => {
+  // 同一个词摆在原文上面还是下面，定了就不轻易换：卷面滚动、内容变高时来回换边就是上下频闪
+  const side = useRef<boolean | null>(null);
+  const scrollingUntil = useRef(0);
+  const recent = useRef<{ key: string; maxH: number; t: number }[]>([]);
+  useLayoutEffect(() => {
     scrolled.current = false;
   }, [hit, showTrans, more, phrases, pick, online]);
   useLayoutEffect(() => {
+    side.current = null;
+    scrollingUntil.current = 0;
+  }, [hit]);
+  useLayoutEffect(() => {
     let raf = 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
     const run = () => {
       raf = 0;
       const el = self.current;
@@ -276,16 +292,21 @@ export function WordCard({
       const b = bounds();
       const { word, avoid } = at;
       const w = el.offsetWidth;
-      const natural = Math.min(content.scrollHeight, MAX_H);
+      // 向上取整：scrollHeight 舍掉的零点几像素会让里面多出滚动条、字换行变高，卡片就一帧高一帧矮地闪
+      const inner = content.firstElementChild?.getBoundingClientRect().height ?? 0;
+      const natural = Math.min(Math.max(content.scrollHeight, Math.ceil(inner)), MAX_H);
       const hidden = word.bottom < b.top || word.top > b.bottom || word.right < b.left || word.left > b.right;
       const roomBelow = b.bottom - avoid.bottom - GAP - EDGE;
       const roomAbove = avoid.top - b.top - GAP - EDGE;
       let below: boolean;
-      if (natural <= roomBelow && natural <= roomAbove) below = word.top + word.height / 2 < b.top + b.height / 2;
+      const kept = side.current;
+      if (kept !== null && natural <= (kept ? roomBelow : roomAbove)) below = kept;
+      else if (kept && performance.now() < scrollingUntil.current) below = true; // 正在把卷面往上滚、给下面腾地方
+      else if (natural <= roomBelow && natural <= roomAbove) below = word.top + word.height / 2 < b.top + b.height / 2;
       else if (natural <= roomBelow) below = true;
       else if (natural <= roomAbove) below = false;
       else {
-        below = roomBelow >= roomAbove;
+        below = kept !== null && Math.abs(roomBelow - roomAbove) < 48 ? kept : roomBelow >= roomAbove;
         // 两边都放不下：把卷面滚一下，让原文往上走、下面腾出地方（原文不滚出可见区域顶上）
         if (scroller && !scrolled.current && !hidden) {
           const need = natural - roomBelow;
@@ -293,11 +314,15 @@ export function WordCard({
           const delta = Math.min(need, can);
           if (delta > 8) {
             scrolled.current = true;
+            scrollingUntil.current = performance.now() + 700;
+            clearTimeout(settle);
+            settle = setTimeout(kick, 750); // 滚完（或滚到底也没腾够地方）再摆一次
             scroller.scrollBy({ top: delta, behavior: "smooth" });
             below = true;
           }
         }
       }
+      side.current = below;
       const room = below ? roomBelow : roomAbove;
       const maxH = Math.max(MIN_H, Math.min(natural, room));
       const h = Math.min(natural, maxH);
@@ -305,6 +330,15 @@ export function WordCard({
       const cx = word.left + word.width / 2;
       const left = Math.max(b.left + EDGE, Math.min(cx - w / 2, b.right - EDGE - w));
       const arrow = Math.max(16, Math.min(cx - left, w - 16));
+      // 兜底：两种摆法一帧一帧来回换（高度互相影响），就停在高的那种，不再跟着换
+      const key = `${below}|${top}|${maxH}`;
+      const now = performance.now();
+      const hist = recent.current.filter((x) => now - x.t < 400);
+      if (hist.length >= 3 && hist[hist.length - 2].key === key && hist[hist.length - 1].key !== key) {
+        const other = hist[hist.length - 1];
+        if (other.maxH > maxH) return;
+      }
+      recent.current = [...hist.slice(-5), { key, maxH, t: now }];
       setPlace((p) =>
         p && p.left === left && p.top === top && p.maxH === maxH && p.below === below && p.arrow === arrow && p.hidden === hidden ? p : { left, top, maxH, below, arrow, hidden },
       );
@@ -319,6 +353,7 @@ export function WordCard({
     if (body.current?.firstElementChild) ro.observe(body.current.firstElementChild);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(settle);
       removeEventListener("scroll", kick, true);
       removeEventListener("resize", kick);
       ro.disconnect();
@@ -384,7 +419,9 @@ export function WordCard({
           style={{ left: place.arrow - 6 }}
         />
       )}
-      <div ref={body} className="relative overflow-y-auto overscroll-contain rounded-[14px]" style={{ maxHeight: place?.maxH ?? MAX_H }}>
+      <div
+        ref={body}
+        className="relative overflow-y-auto overscroll-contain rounded-[14px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ maxHeight: place?.maxH ?? MAX_H }}>
         <div className="px-4 pt-2.5 pb-3.5">
           {/* 头一行：词、音标、发音、✕ */}
           <div className="flex min-h-11 items-center gap-1.5">
@@ -483,6 +520,7 @@ export function WordCard({
               ) : (
                 <BriefSenses lines={lines} max={3} className="flex-col !items-start gap-y-0.5" />
               )}
+              {roots && !parts && <RootLine info={roots} className="mt-2" />}
             </>
           )}
 
@@ -531,10 +569,30 @@ export function WordCard({
                 长难句
               </button>
             )}
+            {onAsk && (
+              <button
+                type="button"
+                onClick={() => onAsk(pickShow || hit.word)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium text-[var(--ink-700)] shadow-[inset_0_0_0_1px_var(--line)] transition hover:bg-[var(--fill-quiet)] active:scale-[0.98]"
+              >
+                <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
+                {pickShow ? "问这个短语" : "问这个词"}
+              </button>
+            )}
+            {onAsk && hit.sentence && (
+              <button
+                type="button"
+                onClick={() => onAsk()}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium text-[var(--ink-700)] shadow-[inset_0_0_0_1px_var(--line)] transition hover:bg-[var(--fill-quiet)] active:scale-[0.98]"
+              >
+                <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
+                问这句
+              </button>
+            )}
             {win && (
               <button
                 type="button"
-                onClick={() => setPick((p) => (p ? null : [ctx!.at, ctx!.at]))}
+                onClick={() => setPick((p) => (p ? null : [ctx!.at]))}
                 aria-pressed={!!pick}
                 className={cn(
                   "inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition active:scale-[0.98]",
@@ -556,12 +614,12 @@ export function WordCard({
           {/* 选短语：这句的词摆成一排（点的词前后各 8 个），点词连成一段；选中两个词以上就查 */}
           {pick && win && (
             <div className="mt-3 rounded-[10px] px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
-              <p className="mb-2 text-[13px] text-[var(--ink-500)]">点前后的词，连成要查的短语（再点两头的词可以缩回去）</p>
+              <p className="mb-2 text-[13px] text-[var(--ink-500)]">点词组成要查的短语，可以跳着选（比如 take … into account），再点一次取消</p>
               <div className="flex flex-wrap gap-1">
                 {win[0] > 0 && <span className="self-end px-0.5 text-[var(--ink-500)]">…</span>}
                 {tokens.slice(win[0], win[1] + 1).map((t, i) => {
                   const k = win[0] + i;
-                  const on = k >= pick[0] && k <= pick[1];
+                  const on = pick.includes(k);
                   return (
                     <button
                       key={k}
@@ -577,17 +635,22 @@ export function WordCard({
               </div>
               <div className="mt-2.5">
                 {!pickText ? (
-                  <p className="text-[14px] text-[var(--ink-500)]">再点一个相邻的词</p>
+                  <p className="text-[14px] text-[var(--ink-500)]">再点一个词</p>
                 ) : picked === undefined ? (
                   <p className="flex items-center gap-2 text-[14px] text-[var(--ink-500)]">
-                    <Spinner /> 查 {pickText}…
+                    <Spinner /> 查 {pickShow}…
                   </p>
                 ) : picked ? (
                   <div className="rounded-[8px] bg-[var(--blue-tint)] px-2.5 py-2">
                     <PhraseRow phrase={picked.phrase} trans={picked.trans} from={picked.from} sentence={hit.sentence} source={source} />
                   </div>
                 ) : (
-                  <p className="text-[14px] text-[var(--ink-500)]">“{pickText}” 不是词典里的短语：可以再连几个词，或者看整句译文</p>
+                  <div className="space-y-2">
+                    <p className="text-[14px] text-[var(--ink-500)]">“{pickShow}” 词典里查不到：可以再连几个词，或者看整句译文；要记也可以直接加</p>
+                    <div className="rounded-[8px] bg-[var(--blue-tint)] px-2.5 py-2">
+                      <PhraseRow phrase={pickShow} trans="" sentence={hit.sentence} source={source} />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

@@ -1,7 +1,10 @@
 # 英语之道国内站（阿里云武汉，/etc/nginx/sites-available/yingyu，软链到 sites-enabled）。
-# 国内机房用域名要备案，所以直接用 IP 访问。
-# 现在（2026-11-12）还没有 IP 证书，站点先走 80 口：Service Worker、离线缓存要 https 才有，能做题但不能离线。
-# 拿到证书后换成文件末尾注释里的写法：80 只留证书验证和跳转，站点走 443。
+# 国内机房用域名要备案，所以直接用 IP 访问；证书是 Let's Encrypt 的 IP 证书（shortlived，约 6 天）。
+# 服务器上 acme.sh（/root/.acme.sh）每天 4 次检查，到期前自动续签、装到 /etc/nginx/ssl/ 并 reload nginx：
+#   acme.sh --issue --server letsencrypt -d 8.162.0.101 --webroot /var/www/acme --cert-profile shortlived --days 3
+#   acme.sh --install-cert -d 8.162.0.101 --ecc --key-file /etc/nginx/ssl/yingyu.key --fullchain-file /etc/nginx/ssl/yingyu.fullchain.pem --reloadcmd "systemctl reload nginx"
+# 80 口暂时照常出站点：老用户的本地数据在 http 那边，页面打开后自己搬到 https 再跳过去（src/lib/https.ts）。
+# 老用户都搬完以后，80 口可以改成只留证书验证、其余 301 到 https。
 
 server {
     listen 80 default_server;
@@ -14,22 +17,14 @@ server {
     include snippets/yingyu-site.conf;
 }
 
-# ---- 有证书以后 ----
-# server {
-#     listen 80 default_server;
-#     listen [::]:80 default_server;
-#     server_name _;
-#     location ^~ /.well-known/acme-challenge/ { root /var/www/acme; default_type text/plain; }
-#     location / { return 301 https://$host$request_uri; }
-# }
-# server {
-#     listen 443 ssl http2 default_server;
-#     listen [::]:443 ssl http2 default_server;
-#     server_name _;
-#     ssl_certificate     /etc/nginx/ssl/yingyu.fullchain.pem;
-#     ssl_certificate_key /etc/nginx/ssl/yingyu.key;
-#     ssl_protocols TLSv1.2 TLSv1.3;
-#     ssl_session_cache shared:SSL:10m;
-#     ssl_session_timeout 1d;
-#     include snippets/yingyu-site.conf;
-# }
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name _;
+    ssl_certificate     /etc/nginx/ssl/yingyu.fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/yingyu.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    include snippets/yingyu-site.conf;
+}

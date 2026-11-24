@@ -95,6 +95,7 @@ export function ThumbRail({
   floating,
   inset = 0,
   onJump,
+  parts,
 }: {
   doc: PDFDocumentProxy;
   cover?: string; // 试卷封面小图（第一页）
@@ -104,6 +105,7 @@ export function ThumbRail({
   floating: boolean;
   inset?: number; // 上面浮着工具栏时让出的高度
   onJump: (n: number) => void;
+  parts?: { label: string; onClick: () => void }[]; // 题型导航：一点跳到那一部分
 }) {
   const [root, setRoot] = useState<HTMLElement | null>(null);
   // 当前页滚出缩略图栏时，把它带回视野里（只动这一栏）
@@ -124,6 +126,16 @@ export function ThumbRail({
         floating ? "absolute top-0 bottom-1.5 left-1.5 z-30 shadow-[var(--elev-3)]" : "mb-1.5 ml-1.5",
       )}
     >
+      {parts && (
+        <div className="mx-1.5 space-y-0.5 border-b border-[var(--line-soft)] pb-2">
+          <p className="px-1.5 pb-0.5 text-[11px] font-medium text-[var(--ink-500)]">题型</p>
+          {parts.map((x) => (
+            <button key={x.label} type="button" onClick={x.onClick} className="block w-full rounded-[6px] px-1.5 py-1 text-left text-[12px] leading-[16px] text-[var(--ink-700)] hover:bg-white hover:text-[var(--blue)]">
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
       {pages.map((p) => (
         <Thumb key={p.n} doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
       ))}

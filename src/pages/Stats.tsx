@@ -217,7 +217,7 @@ export function StatsPage() {
         />
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-3">
         <Panel title={kindTotal ? `各题型正确率 · 平均 ${avg}%` : "各题型正确率"} desc="整套和专项都算；蓝色竖线是平均" className="lg:col-span-2">
           {kindRows.length ? (
             <div className="space-y-1">
@@ -255,7 +255,7 @@ export function StatsPage() {
         </Panel>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-3">
         <Panel title="未来 7 天复习" desc="已经过期没复习的算在今天">
           <DayColumns data={forecast.map((f) => ({ label: f.label, value: f.复习 }))} unit=" 个" />
         </Panel>

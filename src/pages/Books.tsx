@@ -6,6 +6,7 @@ import { loadBook, loadBookMeta, phonetic, shortTranslation, type BookInfo, type
 import { setSetting, useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { WordsTabs } from "@/components/WordsTabs";
 import { Button, Card, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { PixelIcon } from "@/components/PixelIcon";
 import { Bubbles } from "@/components/paper-ui";
@@ -81,6 +82,8 @@ export function BooksPage() {
   const learnedWords = useCachedLiveQuery("learned-words", () => db.cards.where("state").notEqual(State.New).primaryKeys());
   const learned = useMemo(() => new Set(learnedWords ?? []), [learnedWords]);
   const [bookSets, setBookSets] = useState<Record<string, Set<string>>>({});
+  const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
+  const vocabLearned = useCachedLiveQuery("vocab-learned", async () => (await db.cards.bulkGet(await db.vocab.toCollection().primaryKeys())).filter((c) => c && c.state !== State.New).length);
 
   useEffect(() => {
     loadBookMeta().then(setBooks, () => setBooks([]));
@@ -113,9 +116,30 @@ export function BooksPage() {
 
   return (
     <div>
-      <PageHeader title="词书" desc="选一本词书，每天按计划学新词；学过的词按遗忘曲线自动安排复习。" />
+      <WordsTabs />
+      <PageHeader title="词书" desc="生词本里的词总是先背；再选一本词书，生词背完了就从词书里补新词。学过的词按遗忘曲线自动安排复习。" />
 
       <div className="grid gap-3 md:grid-cols-3">
+        <Card className={cn("relative flex flex-col overflow-hidden p-5", !settings.activeBook && "card-raised before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[var(--blue)]")}>
+          <div className="flex items-start justify-between gap-2">
+            <PixelIcon name="books" size={36} />
+            {!settings.activeBook && (
+              <span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">
+                <Check className="size-3.5" weight="bold" /> 正在学
+              </span>
+            )}
+          </div>
+          <h3 className="mt-3 text-[18px] leading-6 font-semibold">只背生词本</h3>
+          <p className="mt-1 flex-1 text-[13px] text-[var(--ink-500)]">做题时自己加的词。后面的卷子里又出现的，卷面上会划蓝线，也会先背。</p>
+          <div className="mt-4 text-[13px] text-[var(--ink-500)]">
+            已学 <span className="num text-[22px] text-[var(--ink)]">{vocabLearned ?? 0}</span> <span className="num">/ {vocabCount ?? 0}</span>
+          </div>
+          {settings.activeBook && (
+            <Button className="mt-4" onClick={() => setSetting("activeBook", null)}>
+              只背生词本
+            </Button>
+          )}
+        </Card>
         {books.map((b) => {
           const set = bookSets[b.id];
           const done = set ? [...set].filter((w) => learned.has(w)).length : 0;
@@ -139,7 +163,7 @@ export function BooksPage() {
               {done > 0 && done < b.count && <Bubbles total={b.count} done={done} max={20} className="mt-2" />}
               {!active && (
                 <Button className="mt-4" onClick={() => setSetting("activeBook", b.id)}>
-                  选这本
+                  生词背完补这本
                 </Button>
               )}
             </Card>
@@ -151,8 +175,13 @@ export function BooksPage() {
         <div>
           <div className="text-[16px] font-semibold">每天新词数</div>
           <div className="text-[13px] text-[var(--ink-500)]">
-            按这个速度，{books.find((b) => b.id === settings.activeBook)?.name ?? "词书"}大约需要{" "}
-            {settings.activeBook ? Math.ceil((books.find((b) => b.id === settings.activeBook)?.count ?? 0) / settings.dailyNew) : "—"} 天学完一遍
+            {settings.activeBook ? (
+              <>
+                按这个速度，{books.find((b) => b.id === settings.activeBook)?.name ?? "词书"}大约需要 {Math.ceil((books.find((b) => b.id === settings.activeBook)?.count ?? 0) / settings.dailyNew)} 天学完一遍
+              </>
+            ) : (
+              "生词本里还没背的词，每天最多拿这么多个出来背"
+            )}
           </div>
         </div>
         <Segmented value={settings.dailyNew} onChange={(v) => setSetting("dailyNew", v)} options={DAILY_OPTIONS.map((n) => ({ value: n, label: `${n}` }))} />

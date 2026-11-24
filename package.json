@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "build:dict": "node scripts/build-dict.mjs",
+    "build:roots": "python -I scripts/build_roots.py",
     "build:audio": "node scripts/build-audio.mjs",
     "import:sample": "python -I scripts/import_neea_sample.py cet4",
     "import:kaoyan": "python -I scripts/import_kaoyan.py",

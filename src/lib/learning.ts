@@ -83,7 +83,24 @@ export async function addToVocab(word: string, source?: Omit<VocabSource, "added
   });
 }
 
+/** 卷面上又碰到生词本里的词：记下这套卷子 */
+export async function markSeen(paperId: string, words: string[]) {
+  if (!words.length) return;
+  await db.transaction("rw", db.vocab, async () => {
+    for (const it of await db.vocab.bulkGet(words)) {
+      if (!it || it.sources.some((s) => s.paperId === paperId) || it.seen?.includes(paperId)) continue;
+      await db.vocab.update(it.word, { seen: [...(it.seen ?? []), paperId] });
+    }
+  });
+}
+
 /** 移出生词本；还没开始学的卡片一起删掉，学过的保留复习记录 */
+/** 改生词的常用释义；空串就恢复词典释义。词不在生词本里返回 false */
+export async function setVocabMeaning(word: string, meaning: string) {
+  const m = meaning.trim().slice(0, 300);
+  return (await db.vocab.update(word, { meaning: m || undefined })) > 0;
+}
+
 export async function removeFromVocab(word: string) {
   await db.transaction("rw", db.vocab, db.cards, async () => {
     await db.vocab.delete(word);
@@ -147,10 +164,10 @@ export async function buildQueue(extraNew = 0): Promise<QueueItem[]> {
   let quota = Math.max(0, settings.dailyNew + extraNew - today.newWords);
   const fresh: QueueItem[] = [];
   if (quota > 0) {
-    const vocabNew = (await db.cards.where("state").equals(State.New).toArray())
-      .filter((c) => c.origin === "vocab")
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(0, quota);
+    const vocabCards = (await db.cards.where("state").equals(State.New).toArray()).filter((c) => c.origin === "vocab");
+    // 生词本里在后来的卷子上反复出现的词先背
+    const seen = new Map((await db.vocab.bulkGet(vocabCards.map((c) => c.word))).map((v, i) => [vocabCards[i].word, v?.seen?.length ?? 0]));
+    const vocabNew = vocabCards.sort((a, b) => (seen.get(b.word) ?? 0) - (seen.get(a.word) ?? 0) || a.createdAt - b.createdAt).slice(0, quota);
     fresh.push(...vocabNew.map((c) => ({ word: c.word, origin: c.origin, isNew: true })));
     quota -= vocabNew.length;
   }
@@ -209,6 +226,31 @@ export const STATE_LABELS: Record<State, string> = {
   [State.Review]: "复习中",
   [State.Relearning]: "重学中",
 };
+
+/** FSRS 估计的现在还记得的概率（0–1）；没学过的是 0 */
+export function retrievability(row: CardRow, now = new Date()) {
+  if (row.state === State.New) return 0;
+  return scheduler.get_retrievability(toCard(row), now, false);
+}
+
+/**
+ * 记忆等级 0–5：按 FSRS 的稳定度（不复习也能记住约多少天）分。
+ * 0 没学；1 不到 1 天；2 不到 1 周；3 不到 3 周；4 不到 3 个月（已掌握）；5 三个月以上
+ */
+export const LEVELS = [
+  { label: "没学", hint: "还没开始背" },
+  { label: "刚学", hint: "记不过 1 天" },
+  { label: "短期", hint: "能记几天" },
+  { label: "中期", hint: "能记 1–3 周" },
+  { label: "长期", hint: "能记 3 周以上" },
+  { label: "牢固", hint: "能记 3 个月以上" },
+] as const;
+
+export function memoryLevel(row: CardRow | undefined) {
+  if (!row || row.state === State.New) return 0;
+  const s = row.stability;
+  return s < 1 ? 1 : s < 7 ? 2 : s < 21 ? 3 : s < 90 ? 4 : 5;
+}
 
 /** 稳定度超过 21 天视为已掌握 */
 export function isMastered(row: CardRow) {

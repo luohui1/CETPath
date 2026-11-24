@@ -1,10 +1,16 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, useEffect } from "react";
+import { touchMemory } from "@/lib/agent";
+import { clearProfile, getProfile, learningStats, PROFILE_SECTIONS, saveProfile, useProfile } from "@/lib/profile";
 import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icons/react";
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
 import { setSetting, useSettings } from "@/lib/settings";
 import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
 import { downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
+import { AgentModel } from "@/components/AgentModel";
+import { Link } from "react-router";
+import { signOut, useMe } from "@/lib/auth";
+import { syncNow, syncState } from "@/lib/sync";
 import { Button, Card, PageHeader, Segmented, Switch } from "@/components/ui";
 
 function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
@@ -19,15 +25,42 @@ function Row({ title, desc, children }: { title: string; desc?: ReactNode; child
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function Group({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="mb-7">
+    <section id={id} className="mb-7 scroll-mt-6">
       {/* 分组标题是一张从卡片上沿伸出的便签 */}
       <h2 className="ml-4">
         <StickyTab>{title}</StickyTab>
       </h2>
       <Card className="divide-y divide-[var(--line-soft)]">{children}</Card>
     </section>
+  );
+}
+
+function Account() {
+  const me = useMe();
+  const [st, setSt] = useState(syncState());
+  useEffect(() => {
+    const on = () => setSt(syncState());
+    addEventListener("yz-sync", on);
+    return () => removeEventListener("yz-sync", on);
+  }, []);
+  const label = st.status === "syncing" ? "正在同步…" : st.status === "error" ? `同步出错：${st.error}` : st.at ? `已同步 · ${new Date(st.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "等待同步";
+  return (
+    <Group title="账号">
+      {me ? (
+        <Row title={me.name} desc={`${label}。生词、错题、做题记录、笔记、Agent 档案和对话会在登录了这个账号的设备间同步`}>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => void syncNow()} loading={st.status === "syncing"}>立即同步</Button>
+            <Button size="sm" onClick={() => signOut().catch((e: Error) => alert(e.message))}>退出登录</Button>
+          </div>
+        </Row>
+      ) : (
+        <Row title="没有登录" desc="数据只存在这台设备上。登录后会在多台设备间同步，本机已有的数据会合并进账号">
+          <Link to="/welcome" className="inline-flex h-8 items-center rounded-[10px] bg-[var(--blue)] px-3 text-[13px] font-medium text-white">登录 / 注册</Link>
+        </Row>
+      )}
+    </Group>
   );
 }
 
@@ -64,9 +97,10 @@ export function SettingsPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader title="设置" />
+      <Account />
 
       <Group title="做题">
-        <Row title="整套卷的做题方式" desc="新开一套时默认选中，开始前还能改">
+        <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
           <Segmented
             label="整套卷的做题方式"
             value={s.examMode}
@@ -149,6 +183,14 @@ export function SettingsPage() {
         </Row>
       </Group>
 
+      <Group title="Agent 模型" id="agent">
+        <AgentModel />
+      </Group>
+
+      <Group title="学习者档案（Agent 的长期记忆）" id="memory">
+        <AgentMemory />
+      </Group>
+
       <Group title="数据">
         <div className="px-5 py-4 text-[13px] leading-[21px] text-[var(--ink-700)]">
           现在是单机版：所有数据只存在这台设备的浏览器里。换设备、换浏览器或清理浏览器数据之前，请先导出备份。
@@ -190,11 +232,51 @@ export function SettingsPage() {
             <a className="text-primary hover:underline" href="https://github.com/skywind3000/ECDICT" target="_blank" rel="noreferrer">
               ECDICT
             </a>
-            （MIT 协议）；记忆算法使用 FSRS。
+            （MIT 协议）；词根词缀和词源来自{" "}
+            <a className="text-primary hover:underline" href="https://github.com/openetymology/OpenEtymology" target="_blank" rel="noreferrer">
+              OpenEtymology
+            </a>
+            （CC BY-SA 4.0）；记忆算法使用 FSRS。
           </p>
           <p>标"示例"的试卷是按真题题型原创的模拟题，只用于演示功能。</p>
         </div>
       </Group>
     </div>
+  );
+}
+
+/** Agent 的长期记忆：一份学习者档案，聊完由模型改写，这里能直接改；下面是从本机数据现算的学习情况 */
+function AgentMemory() {
+  const profile = useProfile();
+  const [stats, setStats] = useState("");
+  useEffect(() => {
+    void getProfile().then(() => learningStats().then(setStats));
+  }, []);
+  if (profile === undefined) return null;
+  return (
+    <>
+      <div className="space-y-2 px-5 py-4">
+        <textarea
+          key={profile}
+          defaultValue={profile || PROFILE_SECTIONS.map((t) => `## ${t}\n`).join("\n")}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v === profile.trim()) return;
+            touchMemory();
+            void saveProfile(v);
+          }}
+          rows={14}
+          className="block w-full resize-y rounded-[10px] bg-[var(--paper-100)] px-3 py-2.5 font-mono text-[13px] leading-[1.7] outline-none focus:shadow-[0_0_0_2px_var(--blue)]"
+          aria-label="学习者档案"
+        />
+        <p className="text-[12px] leading-[19px] text-[var(--ink-500)]">每次和 Agent 聊完，它会把值得记住的写进这份档案（合并重复、删掉过时的）；也可以直接在这里改，离开输入框就保存。档案只存在这台设备上。</p>
+        {stats && <p className="rounded-[10px] bg-[var(--fill-quiet)] px-3 py-2 text-[12px] leading-[19px] whitespace-pre-line text-[var(--ink-700)]">Agent 还会看到这些学习数据（每次现算，不用记）：{"\n"}{stats}</p>}
+      </div>
+      <Row title="清空档案" desc="清空后 Agent 会重新认识你">
+        <Button variant="danger" size="sm" onClick={() => confirm("清空学习者档案？") && (touchMemory(), void clearProfile())}>
+          清空
+        </Button>
+      </Row>
+    </>
   );
 }

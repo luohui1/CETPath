@@ -170,3 +170,35 @@ export function Punch({ className }: { className?: string }) {
     </div>
   );
 }
+
+/** 滚动时看现在读到哪一年（顶边过了 140px 的最后一个） */
+/** 年份索引点一下：页内平滑滚过去，不改地址栏（改 #hash 会触发路由跳转，平板上会弹回顶部） */
+export function jumpToYear(e: { preventDefault(): void }, year: number) {
+  e.preventDefault();
+  document.getElementById(`y${year}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+export function useCurrentYear(years: number[]) {
+  const [cur, setCur] = useState<number | undefined>(years[0]);
+  const key = years.join(",");
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        let c = years[0];
+        for (const y of years) if ((document.getElementById(`y${y}`)?.getBoundingClientRect().top ?? Infinity) <= 140) c = y;
+        setCur(c);
+      });
+    };
+    onScroll();
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      removeEventListener("scroll", onScroll);
+    };
+    // key 概括了 years
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return cur;
+}

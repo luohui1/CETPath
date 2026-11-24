@@ -87,7 +87,7 @@ function ContinueCard({ item, next, weakest, className }: { item?: AttemptItem; 
   const total = item ? itemTotal(item) : 0;
   return (
     <div className={cn("card flex gap-6 p-6", className)}>
-      {id && <PaperThumb id={id} width={88} fan className="mt-1" />}
+      {id && <PaperThumb id={id} width={88} fan className="mt-1 max-[380px]:hidden" />}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="t-label">{item ? (item.section ? "继续专项训练" : "继续真题训练") : "推荐下一套"}</div>
         <h2 className="mt-1 text-[20px] leading-7 font-semibold">{(item ? itemTitle(item) : next?.title) ?? "所有真题都做过了"}</h2>
@@ -109,7 +109,7 @@ function ContinueCard({ item, next, weakest, className }: { item?: AttemptItem; 
             </Link>
           </p>
         )}
-        <div className="mt-auto flex items-center gap-3 pt-5">
+        <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
           {(item || next) && (
             <Link to={item ? paperPath(item.paper.id, item.section?.id) : paperPath(next!.id)}>
               <Button variant="primary" size="lg">
@@ -213,7 +213,7 @@ export function HomePage() {
   const kinds = useKindStats(index, items);
   const mistakes = usePendingMistakes() ?? 0;
 
-  const current = items?.find((it) => !it.attempt.submittedAt);
+  const current = items?.find((it) => !it.attempt.submittedAt && (!settings.lastExam || it.paper.exam === settings.lastExam));
   const next = useMemo(() => {
     const done = new Set((items ?? []).filter((it) => !it.section).map((it) => it.paper.id));
     const p = [...(index ?? [])].filter((x) => !settings.lastExam || x.exam === settings.lastExam).sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));

@@ -3,6 +3,7 @@ import { IDBKeyRange as fakeIDBKeyRange, indexedDB as fakeIndexedDB } from "fake
 import type { State } from "ts-fsrs";
 import type { DictEntry } from "./dict";
 import type { SectionKind } from "./papers";
+import type { SyntaxEntry } from "./syntax";
 
 /** 生词本里一个词的出处：哪套试卷、哪句话 */
 export interface VocabSource {
@@ -10,6 +11,8 @@ export interface VocabSource {
   paperTitle: string;
   sentence: string;
   addedAt: number;
+  /** 出处句的译文：卷子的译文层里没有时让模型翻的，存下来下次不用再翻 */
+  zh?: string;
 }
 
 export interface VocabItem {
@@ -19,6 +22,10 @@ export interface VocabItem {
   note?: string;
   /** 离线词典里没有的（短语 focus on、有道在线查到的词）：加入时把释义一起存下，生词本、复习都用它（2026-11-12） */
   gloss?: DictEntry;
+  /** 学习者或 Agent 改的常用释义（词典给的不是高频义时）：显示在词典释义最前面，背词也先背它 */
+  meaning?: string;
+  /** 加入以后又在哪些卷子里出现过（不含加入时的出处）：出现得多的先背 */
+  seen?: string[];
 }
 
 /** FSRS 记忆卡片，日期都存成时间戳 */
@@ -90,6 +97,8 @@ export interface DayRow {
   lookups: number;
   questions: number;
   correct: number;
+  /** 正式复习以外，今天又快速过了几遍 */
+  passes?: number;
 }
 
 /** 卷面笔记：手写笔迹、高亮、下划线、便签。坐标都是 PDF 点，原点在页面左上角 */
@@ -107,7 +116,46 @@ export interface MarkRow {
   text?: string; // 高亮、下划线：选中的原文
   at?: [number, number]; // 便签位置
   note?: string; // 便签内容，或高亮上的批注
+  ai?: boolean; // Agent 加的（右上角带 AI 角标）
   createdAt: number;
+  updatedAt: number;
+}
+
+/** AI 助教的长期记忆：每条是一个要点，聊完由模型整理（加、改、删），设置里能看能改 */
+export interface MemoryRow {
+  id?: number;
+  kind: "weak" | "pref" | "fact" | "profile"; // profile：学习者档案（现在只用这一行）；前三种是旧版的一条条记忆，读档案时会合并进去
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** AI 助教的一段对话：问的哪句（可带点的词）和来回的消息；AI 助教页列出历史 */
+/** 解题思路库：从解析的"信号"、Agent 的回答里收进来的，或者自己写的做题方法（2026-11-22） */
+export interface MethodRow {
+  id: string;
+  text: string;
+  kind?: string; // 题型：细节、推理、主旨、听力……没有就算"通用"
+  from: "explain" | "agent" | "mine";
+  source?: { paperId: string; paperTitle: string; questionId?: string; number?: number };
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Agent 在卷面上标的长难句：和长难句解析层一样的结构，卷面上这句划蓝虚线，点开底部条看解析 */
+export interface AiSyntaxRow {
+  id: string; // paperId:句子键
+  paperId: string;
+  key: string; // 句子键（同 lib/trans.ts 的 sentenceKey）
+  entry: SyntaxEntry;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChatRow {
+  id: string; // 句子键 + 词
+  ctx: { paper?: string; sentence: string; question?: string; word?: string; syntax?: unknown; review?: string; reviewReady?: boolean };
+  messages: import("./agent").ChatMsg[];
   updatedAt: number;
 }
 
@@ -143,6 +191,10 @@ export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexed
   settings: EntityTable<SettingRow, "key">;
   marks: EntityTable<MarkRow, "id">;
   mastery: EntityTable<MasteryRow, "id">;
+  memory: EntityTable<MemoryRow, "id">;
+  chats: EntityTable<ChatRow, "id">;
+  methods: EntityTable<MethodRow, "id">;
+  aiSyntax: EntityTable<AiSyntaxRow, "id">;
 };
 
 db.version(1).stores({
@@ -160,6 +212,22 @@ db.version(2).stores({
 
 db.version(3).stores({
   mastery: "id, paperId, kind, firstWrongAt, retiredAt",
+});
+
+db.version(4).stores({
+  memory: "++id, kind, updatedAt",
+});
+
+db.version(5).stores({
+  chats: "id, updatedAt",
+});
+
+db.version(6).stores({
+  methods: "id, updatedAt, kind",
+});
+
+db.version(7).stores({
+  aiSyntax: "id, paperId",
 });
 
 // Safari（iPhone/iPad）的老毛病：新开的页面里第一次打开 IndexedDB 可能一直不响应，页面就卡在"加载中"。
@@ -184,7 +252,7 @@ export async function bumpDay(patch: Partial<Omit<DayRow, "day">>, when: Date | 
   const day = dayKey(when);
   await db.transaction("rw", db.days, async () => {
     const row = (await db.days.get(day)) ?? { day, reviews: 0, newWords: 0, lookups: 0, questions: 0, correct: 0 };
-    for (const [k, v] of Object.entries(patch) as [keyof Omit<DayRow, "day">, number][]) row[k] += v;
+    for (const [k, v] of Object.entries(patch) as [keyof Omit<DayRow, "day">, number][]) row[k] = (row[k] ?? 0) + v;
     await db.days.put(row);
   });
 }

@@ -20,6 +20,8 @@ export interface QuestionTimer extends TimerState {
   lap: (qid: string, next: string | null) => void;
   toggle: () => void;
   reset: () => void;
+  /** 重开整卷：手上的时间不记，回到没在计时 */
+  discard: () => void;
 }
 
 const IDLE: TimerState = { qid: null, sec: 0, running: false, set: null };
@@ -81,6 +83,9 @@ export function useQuestionTimer({ enabled, onCommit }: { enabled: boolean; onCo
       },
       reset() {
         set({ ...cur.current, sec: 0, running: false });
+      },
+      discard() {
+        set(IDLE);
       },
     }),
     [enabled, flush, set],

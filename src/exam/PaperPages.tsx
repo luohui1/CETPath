@@ -6,7 +6,7 @@ import { wordAt, type MarkRow } from "@/lib/marks";
 import { cn } from "@/lib/utils";
 import { clock } from "@/lib/report";
 import { Tip } from "@/components/overlay";
-import type { WordClick } from "@/components/WordText";
+import { vocabHits, type WordClick } from "@/components/WordText";
 import { InkLayer, type InkState } from "./InkLayer";
 import { gesture } from "./gesture";
 import { addSlot, gate, getThumb, onThumb, pump, saveThumb, thumbKey, type PageSlot } from "./pagePool";
@@ -65,7 +65,7 @@ export interface ExamPageProps {
   activeWord?: number | null; // 正在查的词（这一页的单词序号）
   activeWords?: number[] | null; // 查词卡片认出的短语里的词（整个短语标出来）
   sentence?: number | null; // 长按出译文的那一句（这一页的句子序号）：整句淡黄底
-  longs?: Set<number> | null; // 这一页上有长难句解析的句子（句子序号）：句下一道虚线
+  longs?: Map<number, number> | null; // 这一页上有长难句解析的句子：句子序号 → 它在这篇里的编号，句首标一个小号码
   hintId?: string | null; // 一道都没答时的第一题（题号或 `${id}@blank`）：它的空圈闪几下
   flags: Set<string>; // 标记待检查的题
   struck: Record<string, string[]>; // 各题划掉的选项
@@ -476,7 +476,7 @@ const WordLayer = memo(function WordLayer({
   active?: number | null;
   actives?: number[] | null;
   sentence?: number | null;
-  longs?: Set<number> | null;
+  longs?: Map<number, number> | null;
   onWord: (hit: WordClick | null) => void;
 }) {
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -488,25 +488,16 @@ const WordLayer = memo(function WordLayer({
     onWord({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(page, data, k, scale), page, index: k, nth: wordNth(data, k) });
   };
   // 生词本里的词：词表变了才重新找
-  const vocab = useMemo(() => {
-    if (!marks) return [];
-    const out: number[] = [];
-    data.w.forEach(([t], i) => {
-      const lower = t.toLowerCase();
-      if (marks.vocab.has(lower) || marks.vocab.has(marks.lemma[lower] ?? "")) out.push(i);
-    });
-    return out;
-  }, [data, marks]);
+  const vocab = useMemo(() => (marks ? vocabHits(data.w.map((w) => w[0]), marks, data.w.map((w) => w[5])).hits : new Map<number, boolean>()), [data, marks]);
   // 每个要画框的词：5 长难句，0 生词，4 长按出译文的那句，1 命中，2 当前命中，3 正在查（后面的盖前面的）
   const shown = new Map<number, number>();
-  if (longs?.size) data.w.forEach((w, i) => longs.has(w[5]) && shown.set(i, 5));
-  for (const i of vocab) shown.set(i, 0);
+  for (const i of vocab.keys()) shown.set(i, 0);
   if (sentence != null) data.w.forEach((w, i) => w[5] === sentence && shown.set(i, 4));
   if (hits) for (const [a, b] of hits) for (let i = a; i <= b; i++) shown.set(i, 1);
   if (hitCur) for (let i = hitCur[0]; i <= hitCur[1]; i++) shown.set(i, 2);
   if (actives) for (const i of actives) if (i < data.w.length) shown.set(i, Math.max(shown.get(i) ?? 3, 3));
   if (active != null && active < data.w.length) shown.set(active, Math.max(shown.get(active) ?? 3, 3));
-  // 每句长难句句首一个小"析"字
+  // 每句长难句句首一个小号码，和右侧长难句列表的编号对得上
   const heads: number[] = [];
   if (longs?.size) {
     const seen = new Set<number>();
@@ -516,7 +507,17 @@ const WordLayer = memo(function WordLayer({
     <div className="absolute inset-0 z-[1] cursor-text" onClick={onClick}>
       {heads.map((i) => {
         const [, x0, y0] = data.w[i];
-        return <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 7, top: y0 * scale - 10 }}>析</span>;
+        return (
+          <span key={`h${i}`} className="syn-head pointer-events-none" style={{ left: x0 * scale - 6, top: y0 * scale - 9 }}>
+            {longs?.get(data.w[i][5])}
+          </span>
+        );
+      })}
+      {/* 生词本里的词、短语：最后一个词右上角一个小点 */}
+      {[...vocab].map(([i, end]) => {
+        if (!end) return null;
+        const [, , y0, x1] = data.w[i];
+        return <span key={`v${i}`} className="vocab-dot pointer-events-none" style={{ left: x1 * scale, top: y0 * scale - 2 }} />;
       })}
       {[...shown].map(([i, kind]) => {
         const [, x0, y0, x1, y1] = data.w[i];
@@ -695,7 +696,8 @@ export const ExamPage = memo(function ExamPage(p: ExamPageProps) {
           const [x0, y0, , y1] = g.anchor!.box;
           const playing = p.playingSeg === g.audioSegment;
           return (
-            <div key={g.id} className="absolute z-[3]" style={{ left: x0 * scale - 42, top: ((y0 + y1) / 2) * scale - 14 }}>
+            // 放在作答圈左边、压在它的扩大点按区上面，不然整个按钮都被作答圈接走
+            <div key={g.id} className="absolute z-[9]" style={{ left: Math.max(2, x0 * scale - 64), top: ((y0 + y1) / 2) * scale - 14 }}>
               <Tip label={playing ? "暂停" : `播放 ${g.title}`} side="top">
                 <button
                   type="button"

@@ -1,27 +1,37 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { sourceHref } from "@/lib/articles";
 import { Link, useSearchParams } from "react-router";
 import { BookBookmark, Brain, CaretDown, DownloadSimple, MagnifyingGlass, Plus, Printer, SpeakerHigh, Trash } from "@phosphor-icons/react";
 import { db, type CardRow, type VocabItem } from "@/lib/db";
 import { lookup, phonetic, shortTranslation, translationLines } from "@/lib/dict";
-import { addToVocab, isMastered, removeFromVocab, State, STATE_LABELS } from "@/lib/learning";
+import { addToVocab, isMastered, LEVELS, memoryLevel, removeFromVocab, setVocabMeaning, State, STATE_LABELS } from "@/lib/learning";
+import { LevelMeter, MemoryTree } from "@/components/MemoryTree";
+import { useMemory } from "@/lib/rootFamilies";
 import { useEntries } from "@/lib/useEntries";
+import { lookupOnline } from "@/lib/youdao";
 import { speak } from "@/lib/speech";
 import { cn, downloadText, fromNow, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { WordsTabs } from "@/components/WordsTabs";
 import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 
 import { DefinitionLines } from "@/components/WordPopover";
 import { HighlightSentence } from "@/components/HighlightSentence";
+import { SourceZh } from "@/components/SourceZh";
 
-type Sort = "recent" | "alpha" | "due";
+type Sort = "recent" | "alpha" | "due" | "seen";
 
 /** 记忆状态的小标签：纸底墨字；已掌握墨底白字，待复习荧光黄 */
 function StatusBadge({ card }: { card?: CardRow }) {
   if (!card) return null;
-  if (isMastered(card)) return <span className="tag-paper bg-[var(--ink)] text-white">已掌握</span>;
-  if (card.state === State.New) return <span className="tag-paper">未学</span>;
-  const due = card.due <= Date.now();
-  return <span className={cn("tag-paper", due && "bg-[var(--mark)] text-[var(--ink)]")}>{due ? "待复习" : `${STATE_LABELS[card.state]} · ${fromNow(card.due)}`}</span>;
+  const lv = memoryLevel(card);
+  const due = card.state !== State.New && card.due <= Date.now();
+  return (
+    <span className="inline-flex items-center gap-2 text-[13px] text-[var(--ink-500)]">
+      <LevelMeter lv={lv} />
+      <span className={cn(due && "rounded-[4px] bg-[var(--mark)] px-1 text-[var(--ink)]")}>{card.state === State.New ? "还没背" : due ? "该复习了" : `${LEVELS[lv].label} · ${fromNow(card.due)}复习`}</span>
+    </span>
+  );
 }
 
 /** 概况里的一格：标签、衬线大数字、一句说明 */
@@ -53,6 +63,7 @@ export function VocabPage() {
   const [adding, setAdding] = useState("");
   const [addMsg, setAddMsg] = useState<string | null>(null);
   const paperFilter = params.get("paper") ?? "";
+  const memory = useMemory();
 
   const papers = useMemo(() => {
     const m = new Map<string, string>();
@@ -66,11 +77,16 @@ export function VocabPage() {
     const q = query.trim().toLowerCase();
     if (q) l = l.filter((it) => it.word.includes(q));
     if (sort === "alpha") l = [...l].sort((a, b) => a.word.localeCompare(b.word));
+    if (sort === "seen") l = [...l].sort((a, b) => (b.seen?.length ?? 0) - (a.seen?.length ?? 0));
     if (sort === "due") l = [...l].sort((a, b) => (cardMap.get(a.word)?.due ?? Infinity) - (cardMap.get(b.word)?.due ?? Infinity));
     return l;
   }, [items, paperFilter, query, sort, cardMap]);
 
-  const entries = useEntries(list.map((it) => it.word));
+  const entries = useEntries(
+    list.map((it) => it.word),
+    list.map((it) => it.meaning ?? "").join("|"),
+  );
+  const [editing, setEditing] = useState<string | null>(null);
   const dueCount = (cards ?? []).filter((c) => c.due <= Date.now()).length;
   const todayStart = new Date().setHours(0, 0, 0, 0);
 
@@ -78,9 +94,14 @@ export function VocabPage() {
     e.preventDefault();
     const w = adding.trim();
     if (!w) return;
-    const r = await lookup(w);
+    const r = /\s/.test(w) ? null : await lookup(w);
     if (!r) {
-      setAddMsg(`词典里没有找到 ${w}`);
+      // 离线词典没有的词和短语也加：在线查到释义就随词存下，查不到先只存词
+      const key = w.toLowerCase().replace(/\s+/g, " ");
+      const online = (await lookupOnline(w))?.entry.t ? await lookupOnline(w) : null;
+      await addToVocab(key, undefined, online?.entry);
+      setAddMsg(online ? `已加入 ${key}` : `已加入 ${key}（没查到释义）`);
+      setAdding("");
       return;
     }
     await addToVocab(r.lemma);
@@ -109,6 +130,7 @@ export function VocabPage() {
 
   return (
     <div>
+      <WordsTabs />
       <PageHeader
         title="生词本"
         desc={`共 ${items.length} 个词${dueCount ? ` · ${dueCount} 个待复习` : ""}。在真题里查过并加入的词，都会带上出处原句。`}
@@ -174,6 +196,7 @@ export function VocabPage() {
             { value: "recent", label: "最近添加" },
             { value: "alpha", label: "字母" },
             { value: "due", label: "复习时间" },
+            { value: "seen", label: "又出现" },
           ]}
         />
       </div>
@@ -229,6 +252,7 @@ export function VocabPage() {
                     <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
                       <StatusBadge card={cardMap.get(it.word)} />
                       <span className="text-[13px] text-[var(--ink-500)]">
+                        {it.seen?.length ? `又在 ${it.seen.length} 套卷子出现 · ` : ""}
                         {it.sources.length ? `${it.sources.length} 处出处 · ` : ""}
                         {timeAgo(it.addedAt)}
                       </span>
@@ -244,14 +268,53 @@ export function VocabPage() {
                     <div className="sm:hidden">
                       <StatusBadge card={cardMap.get(it.word)} />
                     </div>
-                    {e && <DefinitionLines lines={translationLines(e)} />}
+                    {editing === it.word ? (
+                      <form
+                        className="no-print space-y-2"
+                        onSubmit={(ev) => {
+                          ev.preventDefault();
+                          const v = new FormData(ev.currentTarget).get("m");
+                          void setVocabMeaning(it.word, String(v ?? "")).then(() => setEditing(null));
+                        }}
+                      >
+                        <textarea
+                          name="m"
+                          defaultValue={it.meaning ?? ""}
+                          autoFocus
+                          rows={2}
+                          placeholder={"常用释义，如 v. 订购；定制（多个词性分行）"}
+                          className="w-full rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-[15px]"
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" type="submit">保存</Button>
+                          <Button size="sm" variant="ghost" type="button" onClick={() => setEditing(null)}>取消</Button>
+                          <span className="self-center text-[12px] text-[var(--ink-500)]">留空就用回词典释义</span>
+                        </div>
+                      </form>
+                    ) : (
+                      <div>
+                        {e && <DefinitionLines lines={translationLines(e)} />}
+                        <button
+                          type="button"
+                          onClick={() => setEditing(it.word)}
+                          className="no-print mt-1 text-[13px] text-[var(--blue)] hover:underline"
+                        >
+                          {it.meaning ? "改常用释义" : "释义不对？改成常用释义"}
+                        </button>
+                      </div>
+                    )}
+                    <div className="no-print rounded-[12px] bg-white px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--line-soft)]">
+                      <div className="mb-2 text-[12px] font-medium text-[var(--ink-500)]">记忆树</div>
+                      <MemoryTree word={it.word} memory={memory} compact onWord={(w) => setQuery(w)} />
+                    </div>
                     {it.sources.length > 0 && (
                       <div className="space-y-2">
                         <div className="tag-paper">真题出处</div>
                         {it.sources.map((s, i) => (
                           <div key={i} className="card px-3.5 py-2.5">
                             <HighlightSentence sentence={s.sentence} word={it.word} className="serif text-[15px] leading-relaxed" />
-                            <Link to={`/paper/${s.paperId}`} className="mt-1 block text-[13px] text-[var(--blue)] hover:underline">
+                            <SourceZh word={it.word} s={s} className="mt-1" />
+                            <Link to={sourceHref(s.paperId)} className="mt-1 block text-[13px] text-[var(--blue)] hover:underline">
                               {s.paperTitle}
                             </Link>
                           </div>

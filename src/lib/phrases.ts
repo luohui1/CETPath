@@ -140,3 +140,16 @@ export async function findPhrases(tokens: string[], at: number, max = 2): Promis
   }
   return out;
 }
+
+const FILLER = new Set(["a", "an", "the", "to", "of", "be", "~any", "~poss", "~refl", "sb", "sth"]);
+
+/** 含这个词的常用短语，按在试卷里出现的次数排（记忆树的"短语"分支） */
+export async function phrasesOf(word: string, max = 4): Promise<{ phrase: string; trans: string }[]> {
+  const { rows } = await loadTable();
+  const w = word.toLowerCase();
+  return rows
+    .filter(([toks]) => toks.length > 1 && toks.includes(w) && toks.some((t) => t !== w && !FILLER.has(t)))
+    .sort((a, b) => b[3] - a[3])
+    .slice(0, max)
+    .map(([, phrase, trans]) => ({ phrase, trans: trans.split(/[；;]/)[0] }));
+}

@@ -54,6 +54,12 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 贴着右边的提示气泡、弹层会把页面撑宽；平板上一拖就能拖出右边、下边的大片空白 */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   min-height: 100dvh;
 }
@@ -80,8 +86,34 @@ button:disabled {
 .w:hover {
   background: var(--blue-tint);
 }
+.w.am-hl,
+.am-hl-gap {
+  background: rgba(255, 222, 89, 0.55);
+}
+.w.am-ul,
+.am-ul-gap {
+  text-decoration: underline 2px var(--blue);
+  text-underline-offset: 4px;
+}
 .w.is-vocab {
   box-shadow: inset 0 -2px 0 var(--pixel-blue);
+}
+.w.is-vocab-end::after,
+.vocab-dot {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pixel-blue);
+}
+.w.is-vocab-end::after {
+  display: inline-block;
+  margin-left: 1px;
+  vertical-align: super;
+}
+.vocab-dot {
+  position: absolute;
+  z-index: 1;
 }
 .w.is-active {
   background: var(--blue-tint);
@@ -120,14 +152,6 @@ button:disabled {
   mix-blend-mode: multiply;
   border-radius: 1px;
 }
-/* 有长难句解析的句子：每个词下面一道浅蓝虚线（不铺底色，不挡字）；长按这句或点句里的词就能看解析 */
-.w.pw.is-long {
-  background: none;
-  border-bottom: 2px dashed color-mix(in oklab, var(--blue) 85%, transparent);
-  border-radius: 0;
-  margin-left: -0.5px;
-  padding-right: 1px;
-}
 /* 卷面上的小按钮（题号、空位、便签）：触屏时热区至少 40×40，看起来还是原来大小 */
 .hit40 {
   position: relative;
@@ -150,20 +174,20 @@ button:disabled {
   border-radius: 1px;
 }
 .w.pw.is-hit {
-  background: #fff0a0;
+  background: rgba(255, 228, 90, 0.5);
 }
 .w.pw.is-hit-cur {
-  background: #ffcf33;
+  background: rgba(255, 196, 0, 0.5);
   animation: find-flash 0.6s ease-out;
 }
 @keyframes find-flash {
   0%,
   40% {
-    background: #ffb300;
+    background: rgba(255, 170, 0, 0.6);
     box-shadow: 0 0 0 3px rgba(255, 179, 0, 0.45);
   }
   100% {
-    background: #ffcf33;
+    background: rgba(255, 196, 0, 0.5);
     box-shadow: none;
   }
 }
@@ -204,6 +228,24 @@ button:disabled {
 }
 .animate-pop {
   animation: pop-in 160ms var(--ease-out);
+}
+
+/* 展开收起：高度带一点回弹（阻尼） */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.55s cubic-bezier(0.3, 1.2, 0.45, 1),
+    opacity 0.3s var(--ease-out);
+}
+.fold[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.fold > div {
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 从笔记面板跳到卷面时，框出那条笔记闪两下 */
@@ -270,8 +312,19 @@ button:disabled {
 .animate-bar-in {
   animation: bar-in 160ms var(--ease-out);
 }
+/* 解析换题：新内容淡入，不闪 */
+@keyframes body-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.animate-body-in {
+  animation: body-in 140ms var(--ease-out);
+}
 @media (prefers-reduced-motion: reduce) {
-  .animate-bar-in {
+  .animate-bar-in,
+  .animate-body-in {
     animation: none;
   }
 }
@@ -321,17 +374,26 @@ html.yz-memdb .min-h-dvh {
   }
 }
 
-/* 长难句句首的小"析"字 */
+/* 长难句句首：一个小号码，和右侧列表的编号一致；点句子里任一个词打开解析 */
 .syn-head {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 999px;
   background: var(--blue);
   color: #fff;
-  font-size: 8px;
-  line-height: 1;
+  font-size: 9px;
   font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-100%);
+  opacity: 0.85;
 }
+
+/* 落地页示意卷面：慢慢浮动 */
+@keyframes welcome-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+.welcome-float { animation: welcome-float 7s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .welcome-float { animation: none; } }

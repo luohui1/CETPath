@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CaretDown, Check, Crosshair, Play, Plus, X } from "@phosphor-icons/react";
+import { CaretDown, Check, Crosshair, Lightbulb, Play, Plus, X } from "@phosphor-icons/react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { addMethod, hasMethod } from "@/lib/methods";
 import type { ExplainFields, ExplainSource, Question } from "@/lib/papers";
 import { addToVocab } from "@/lib/learning";
 import { setSetting, useSettings } from "@/lib/settings";
@@ -152,6 +154,25 @@ function grammarMeaning(grammar?: string, meaning?: string) {
   return clip(`语法：${gs}；语义：${m}`, BRIEF_MAX);
 }
 
+/** 信号旁的"收进思路库"：存题型 + 信号，记下出处题号 */
+function SaveSignal({ q, kind, signal }: { q: Question; kind?: string; signal: string }) {
+  const ctx = useContext(ExplainContext);
+  const saved = useLiveQuery(() => hasMethod(signal), [signal]);
+  if (!ctx) return null;
+  return (
+    <button
+      type="button"
+      disabled={!!saved}
+      onClick={() => void addMethod({ text: signal, kind, from: "explain", source: { paperId: ctx.paperId, paperTitle: ctx.paperTitle, questionId: q.id, number: q.number } })}
+      className="-my-0.5 inline-flex h-7 flex-none items-center gap-1 rounded-full px-2 text-[12px] text-[var(--ink-500)] hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
+      title="收进解题思路库"
+    >
+      {saved ? <Check className="size-3" weight="bold" /> : <Lightbulb className="size-3" />}
+      {saved ? "已收" : "收进思路库"}
+    </button>
+  );
+}
+
 /* ---------- 展开后的细节：一个个小节，小标题在上 ---------- */
 
 /** "解析有问题"（记到本地，以后汇总重写） */
@@ -234,30 +255,46 @@ function restAfterBrief(text: string, brief: string) {
  * 结构化解析的全部细节。有官方解析时官方原文是正文（小标题照原文），AI 整理的只补官方没有的：
  * 其他选项为什么不对、题干和原文对照、生词；没有官方解析时才用 AI 写的语法 / 语义 / 思路。写作翻译是要点和亮点
  */
+/** 解题步骤的小标题：圆圈序号 + 名字 */
+function Step({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="num grid size-[18px] place-items-center rounded-full bg-[var(--ink)] text-[11px] font-semibold text-white">{n}</span>
+      {children}
+    </span>
+  );
+}
+
 function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields; brief: string; official?: string }) {
   const options = Object.entries(f.options ?? {}).filter(([k]) => k !== q.answer);
-  const reasoning = !official && !f.grammar && !f.meaning && f.reasoning ? restAfterBrief(f.reasoning, brief) : "";
+  const reasoning = !f.grammar && !f.meaning && f.reasoning ? restAfterBrief(f.reasoning, brief) : "";
+  // 有整理好的思路时，官方原文收进最后一个折叠里，不再整段摊在最前面
+  const foldOfficial = !!official && (!!reasoning || options.length > 0);
   const aiParts = options.length > 0 || !!f.mapping?.length || !!f.vocab?.length;
+  let n = 0;
   return (
     <>
-      {official && <OfficialText text={official} />}
-      {!official && f.grammar && <CardSection label="语法">{f.grammar}</CardSection>}
-      {!official && f.meaning && <CardSection label="语义">{f.meaning}</CardSection>}
-      {reasoning && <CardSection label="思路">{reasoning}</CardSection>}
+      {official && !foldOfficial && <OfficialText text={official} />}
+      {!official && f.grammar && <CardSection label={<Step n={++n}>语法</Step>}>{f.grammar}</CardSection>}
+      {!official && f.meaning && <CardSection label={<Step n={++n}>语义</Step>}>{f.meaning}</CardSection>}
+      {reasoning && <CardSection label={<Step n={++n}>思路</Step>}>{reasoning}</CardSection>}
       {options.length > 0 && (
-        <CardSection label="其他选项为什么不对">
+        <CardSection label={<Step n={++n}>排除错项</Step>}>
           <ul className="space-y-1.5">
             {options.map(([k, v]) => (
               <li key={k} className="flex gap-2.5">
                 <span className="num mt-[3px] grid size-[22px] flex-none place-items-center rounded-full bg-[var(--paper-200)] text-[12px] font-semibold text-[var(--ink-700)]">{k}</span>
-                <span className="min-w-0">{v}</span>
+                <span className="min-w-0">
+                  {f.traps?.[k] && <span className="mr-1.5 inline-block rounded-[5px] bg-[var(--red)]/10 px-1.5 text-[12px] leading-[20px] font-medium text-[var(--red)]">{f.traps[k]}</span>}
+                  {v}
+                </span>
               </li>
             ))}
           </ul>
         </CardSection>
       )}
       {!!f.mapping?.length && (
-        <CardSection label="题干和原文对照">
+        <CardSection label={<Step n={++n}>题干和原文对照</Step>}>
           <table className="w-full text-[14px] leading-[1.5]">
             <thead>
               <tr className="text-left text-[13px] text-[var(--ink-500)]">
@@ -297,6 +334,14 @@ function FieldDetails({ q, f, brief, official }: { q: Question; f: ExplainFields
         </CardSection>
       )}
       {!!f.vocab?.length && <VocabSection list={f.vocab} sentence={f.locate?.quote} />}
+      {foldOfficial && (
+        <details className="group">
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--ink-500)] select-none hover:text-[var(--ink-700)]">官方解析原文</summary>
+          <div className="mt-2">
+            <OfficialText text={official!} />
+          </div>
+        </details>
+      )}
       {official && aiParts && <p className="text-[12px] leading-5 text-[var(--ink-500)]">上面的一句话结论、逐项分析、对照和生词由 AI 按官方解析整理，仅供参考。</p>}
     </>
   );
@@ -387,7 +432,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
   // 展开按钮后面写里面有什么
   const inside = f
     ? [
-        official ? "官方解析" : f.grammar || f.meaning ? "语法语义" : f.reasoning && restAfterBrief(f.reasoning, brief) ? "思路" : "",
+        f.grammar || f.meaning ? "语法语义" : f.reasoning && restAfterBrief(f.reasoning, brief) ? "思路" : official ? "官方解析" : "",
         Object.keys(f.options ?? {}).some((k) => k !== q.answer) && "逐项",
         f.mapping?.length && "对照",
         f.translation && showLoc && "译文",
@@ -407,6 +452,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
         <header className={cn("flex min-h-8 flex-wrap items-center gap-y-1", narrow ? "gap-x-2" : "gap-x-3")}>
           {title}
           {choice && answer && <AnswerMark letter={q.answer!} />}
+          {f?.kind && <span className="rounded-full bg-[var(--paper-200)] px-2 text-[12px] leading-[22px] font-medium text-[var(--ink-700)]">{f.kind}</span>}
           {mine !== undefined && choice && (
             <span className={cn("inline-flex items-center gap-1 text-[14px] font-medium", right ? "text-[var(--blue)]" : mine ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>
               {right ? <Check className="size-4" weight="bold" /> : mine ? <X className="size-4" weight="bold" /> : null}
@@ -422,10 +468,17 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
         </header>
       )}
       {brief && <p className={cn("text-[15px] leading-[1.65] font-medium text-[var(--ink)]", head && "mt-2")}>{brief}</p>}
+      {f?.signal && (
+        <p className="mt-1.5 flex gap-2 text-[14px] leading-[1.6] text-[var(--ink-700)]">
+          <span className="flex-none rounded-[5px] bg-[var(--blue)]/10 px-1.5 text-[12px] leading-[22px] font-medium text-[var(--blue)]">信号</span>
+          <span className="min-w-0 flex-1">{f.signal}</span>
+          {ctx && <SaveSignal q={q} kind={f.kind} signal={f.signal} />}
+        </p>
+      )}
       {showLoc && (
         <QuoteBlock
           className="mt-3"
-          caption={loc!.where ? `原文 · ${loc!.where}` : "原文"}
+          caption={loc!.where ? `定位 · ${loc!.where}` : "定位"}
           actions={
             <>
               {canFlash && (
