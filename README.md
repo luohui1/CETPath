@@ -16,7 +16,7 @@ React · TypeScript · Vite · PWA · IndexedDB · PDF.js · FSRS
 </div>
 
 <p align="center">
-  <img src="docs/images/hero.webp" alt="英语之道：AI 助教在卷子旁边画句子结构图，右下是记忆树" width="100%">
+  <img src="docs/images/promo-hero.webp" alt="英语之道：AI 助教在卷子旁边画句子结构图，右下是记忆树" width="100%">
 </p>
 
 ## 为什么做这个
@@ -44,7 +44,7 @@ flowchart LR
 
 ### AI 助教
 
-<img src="docs/images/agent-steps.webp" alt="AI 助教在卷子旁边分屏讲第 47 题：解题步骤卡，一步一步点开" width="100%">
+<img src="docs/images/promo-agent.webp" alt="AI 助教在卷子旁边分屏讲第 47 题：解题步骤卡和句子结构图" width="100%">
 
 在卷子旁边分屏打开。它看得到整套卷子和你的作答，问「第 47 题怎么做」，回答里直接嵌一张解题步骤卡，按固定顺序一步一步点开：
 
@@ -78,6 +78,8 @@ flowchart LR
 | 解题思路库 | 把讲过的方法收进去，按题型归类 |
 | 学习者档案 | 聊完自动改写长期记忆 |
 
+<img src="docs/images/promo-agent-memory.webp" alt="交卷后找 Agent 复盘，右下是 Agent 的长期记忆：学习者档案" width="100%">
+
 <table>
 <tr>
 <td width="50%"><img src="docs/images/memory.webp" alt="设置里的学习者档案：Agent 的长期记忆"></td>
@@ -93,7 +95,16 @@ flowchart LR
 
 ### 原卷做题
 
-<img src="docs/images/exam-lookup.webp" alt="在原卷上点词查词" width="100%">
+<table>
+<tr>
+<td width="50%"><img src="docs/images/promo-ink.webp" alt="手写笔在原卷上圈画、高亮、下划线"></td>
+<td width="50%"><img src="docs/images/promo-lookup.webp" alt="点一个词弹出词卡"></td>
+</tr>
+<tr>
+<td><b>手写和高亮</b>：手写笔才落墨，手指只管滑动；圈词、划线、打勾、荧光笔高亮，笔记跟着卷面存。</td>
+<td><b>点词出卡片</b>：词卡里有音标、发音、释义和拆法，能加进生词本、译整句、标长难句或直接问 AI。</td>
+</tr>
+</table>
 
 - 原卷 PDF 渲染，带文字层：点一个词查词（自动还原词形，studies → study），框选几个词查短语或整句翻译。
 - 生词本里的词和短语，在之后的每套卷子里都会自动标出来。
@@ -103,6 +114,13 @@ flowchart LR
 - 专项训练：只截取原卷的一个部分练，比如只练听力或仔细阅读，和整卷分开计分。
 
 #### 听力和解析
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/promo-listening.webp" alt="听力播放器：真题音频、按段跳转、原文逐句同步"></td>
+<td width="50%"><img src="docs/images/promo-explain.webp" alt="每道题自带解析：答案、信号、定位句"></td>
+</tr>
+</table>
 
 <table>
 <tr>
@@ -117,13 +135,18 @@ flowchart LR
 
 ### 长难句结构解析
 
-<img src="docs/images/exam-syntax.webp" alt="长难句结构卡片：主干、从句、修饰成分分色标出" width="100%">
+<img src="docs/images/promo-syntax.webp" alt="长难句结构卡片：主干、从句、修饰成分分色标出" width="100%">
 
 默认不标，留给自己找。想对照时在右侧「长难句」里一键解析：卷面句首出现编号，点开是结构卡片，主语、谓语、宾语、从句、短语分色标出，下面是主干、译文、每个修饰成分修饰谁，以及怎么拆。也可以在卷面上选任意一句让 AI 现场分析。
 
 ### 背单词：记忆树
 
-<img src="docs/images/roots.webp" alt="记忆树：dict 词根下按前缀长出同根词，圆点是记忆程度" width="100%">
+<table>
+<tr>
+<td width="50%"><img src="docs/images/promo-tree.webp" alt="记忆树：dict 词根下按前缀长出同根词，圆点是记忆程度"></td>
+<td width="50%"><img src="docs/images/promo-review.webp" alt="FSRS 背词卡片和晚间速览"></td>
+</tr>
+</table>
 
 词根是树干，前缀是分叉，同根词是叶子，圆点颜色是你对每个词的记忆程度。点一个词，右边是它怎么拼出来（pre 之前 + dict 说 → 预知）、词源故事，以及同根词、短语和易混词三根枝：没有词根的词（take、look）靠短语枝记搭配，易混词（adapt / adopt、affect / effect）带区分要点。
 
@@ -272,4 +295,4 @@ docs/           设计文档、试卷数据格式、截图
 
 ## 截图说明
 
-README 里的截图来自真实界面，卷面是 2023 年 12 月大学英语六级第 1 套；生词、记忆进度等学习数据是演示用的示例数据；AI 助教的回答是线上模型（deepseek-v4.1-flash）当场生成的，没有改动。
+README 里的截图来自真实界面，卷面是 2023 年 12 月大学英语六级第 1 套；生词、记忆进度等学习数据是演示用的示例数据；AI 助教的回答是线上模型（deepseek-v4.1-flash）当场生成的，没有改动。宣传图的浅色背景由图像模型生成，图里的界面全部是真实截图，没有用生图改动。
