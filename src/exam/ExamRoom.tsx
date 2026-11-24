@@ -413,9 +413,9 @@ export function ExamRoom({
   // 停靠区（所有面板放在一处，同一时间一个标签）：平板这类窄屏默认收起，卷面大一些好写字；宽屏打开上次开的标签。
   // 只有写作和翻译的卷（一页纸的第 2、3 套）直接打开作答
   const hasChoiceQ = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => q.options?.length)));
-  const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
+  const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 || search.get("agent") === "1" ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
   // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
-  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(() => search.get("agent") === "1"); // AI 助教页"回到卷子"带 ?agent=1
   // 交卷单上点了"找 Agent 复盘"：打开整卷会话并自动问复盘（每点一次加一，关掉 Agent 归零）
   const [reviewAsk, setReviewAsk] = useState(0);
   // 工具栏实际放不下（开笔后多出预设、颜色）时逐级收：1 按钮只留图标，2 再收起笔的预设；还放不下就这一行左右滑
