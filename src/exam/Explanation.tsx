@@ -77,6 +77,11 @@ function dropStem(text: string) {
   return text.slice(m[0].length).replace(/^[！!]?[解金答]?(?=根据|由|文章|讲话|说话|对话|选项|该|题干|新闻|在|从|本)/, "");
 }
 
+/** 思路开头"题干问……。"那一句：读题这一步用 */
+function stemOf(text?: string) {
+  return text?.match(/^(本|此|该)?题(干|目)?(问|询问|问的是|要求|考查的是|说|提到|意为|是说)[^。；！]{0,80}[。；！]/)?.[0] ?? "";
+}
+
 /** 去掉开头套话后的第一句（在第一个。；！处截断） */
 function firstSentence(text?: string) {
   if (!text) return "";
@@ -381,6 +386,33 @@ function TextDetails({ text }: { text: string }) {
   );
 }
 
+/** 讲题模板的一步：左边序号和竖线串起来，右边标题和内容 */
+function TplStep({ n, title, tag, aside, strong, last, children }: { n: number; title: string; tag?: string; aside?: ReactNode; strong?: boolean; last?: boolean; children: ReactNode }) {
+  return (
+    <li className="relative grid grid-cols-[24px_1fr] gap-x-3">
+      {!last && <span aria-hidden className="absolute top-7 bottom-1 left-[11.5px] w-px bg-[var(--line)]" />}
+      <span className={cn("num relative mt-0.5 grid size-6 place-items-center rounded-full text-[12px] font-semibold", strong ? "bg-[var(--blue)] text-white" : "bg-[var(--ink)] text-white")}>{n}</span>
+      <div className={cn("min-w-0 space-y-2", !last && "pb-4")}>
+        <h4 className="flex min-h-7 items-center gap-2 text-[14px] font-semibold text-[var(--ink)]">
+          {title}
+          {tag && <span className="rounded-full bg-[var(--paper-200)] px-2 text-[12px] leading-[20px] font-medium text-[var(--ink-700)]">{tag}</span>}
+          {aside && <span className="ml-auto flex items-center font-normal">{aside}</span>}
+        </h4>
+        {children}
+      </div>
+    </li>
+  );
+}
+
+function Line({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <p>
+      <span className="mr-2 inline-block rounded-[5px] bg-[var(--paper-200)] px-1.5 text-[12px] leading-[20px] font-medium text-[var(--ink-500)]">{label}</span>
+      {children}
+    </p>
+  );
+}
+
 /** 正确答案：灰字"答案" + 一枚字母章 */
 function AnswerMark({ letter }: { letter: string }) {
   return (
@@ -445,7 +477,131 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
   const head = !!(title || action || (choice && answer) || mine !== undefined || by === "ai");
   // 带题号的（答题卡面板，宽 360）：头要挤在一行里，AI 章只写"AI"
   const narrow = !!title;
-
+  const header = head && (
+    <header className={cn("flex min-h-8 flex-wrap items-center gap-y-1", narrow ? "gap-x-2" : "gap-x-3")}>
+      {title}
+      {choice && answer && <AnswerMark letter={q.answer!} />}
+      {mine !== undefined && choice && (
+        <span className={cn("inline-flex items-center gap-1 text-[14px] font-medium", right ? "text-[var(--blue)]" : mine ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>
+          {right ? <Check className="size-4" weight="bold" /> : mine ? <X className="size-4" weight="bold" /> : null}
+          {right ? "答对了" : mine ? `你选了 ${mine}` : "没有作答"}
+        </span>
+      )}
+      {(by === "ai" || action) && (
+        <span className="ml-auto flex items-center gap-2">
+          {by === "ai" && <AiTag short={narrow} />}
+          {action}
+        </span>
+      )}
+    </header>
+  );
+  // 选择题有定位句：套讲题模板（和 Agent 的讲题 skill 同一个顺序）：读题 → 定位 → 解题 → 排除；生词和官方原文折叠在最后
+  if (f && choice && showLoc) {
+    const stem = stemOf(f.reasoning);
+    const banked = !!(f.grammar || f.meaning);
+    const rest = f.reasoning ? restAfterBrief(f.reasoning.slice(stem.length).trim(), brief) : "";
+    const valid = new Set((q.options ?? []).map((o) => o.key));
+    const wrong = Object.entries(f.options ?? {}).filter(([k]) => k !== q.answer && (!valid.size || valid.has(k)));
+    const why = brief.replace(/^选\s*[A-O]\s*[：:，,]\s*/, "");
+    const more = !!f.vocab?.length || !!official;
+    let n = 0;
+    return (
+      <article className={cn("text-[14px] leading-[1.7] text-[var(--ink-700)]", className)}>
+        {header}
+        <ol className={cn(head && "mt-3")}>
+          {(stem || q.stem || (banked && f.grammar)) && (
+            <TplStep n={++n} title="读题" tag={f.kind}>
+              {stem ? <p>{stem}</p> : q.stem && !banked && <Line label="题干">{q.stem}</Line>}
+              {banked && f.grammar && <Line label="空格要什么">{f.grammar}</Line>}
+            </TplStep>
+          )}
+          <TplStep n={++n} title="定位" aside={f.signal && ctx ? <SaveSignal q={q} kind={f.kind} signal={f.signal} /> : undefined}>
+            {f.signal && <Line label="定位词">{f.signal}</Line>}
+            <QuoteBlock
+              caption={loc!.where || "原文"}
+              actions={
+                <>
+                  {canFlash && (
+                    <QuoteAction onClick={() => ctx!.flashWords!(loc!.page!, loc!.words!)} icon={<Crosshair className="size-3.5" />}>
+                      在卷面上标出
+                    </QuoteAction>
+                  )}
+                  {canListen && (
+                    <QuoteAction onClick={() => ctx!.listen!(q, loc!)} icon={<Play className="size-3.5" weight="fill" />}>
+                      听这一句
+                    </QuoteAction>
+                  )}
+                </>
+              }
+              sub={f.translation}
+            >
+              {loc!.quote}
+            </QuoteBlock>
+          </TplStep>
+          <TplStep n={++n} title="解题" strong>
+            {!!f.mapping?.length && (
+              <div className="overflow-hidden rounded-[10px] border border-[var(--line-soft)]">
+                <div className="grid grid-cols-2 bg-[var(--paper-200)]/60 px-3 py-1 text-[12px] font-medium text-[var(--ink-500)]">
+                  <span>题干的说法</span>
+                  <span>原文的说法</span>
+                </div>
+                {f.mapping.map((m, i) => (
+                  <div key={i} className="serif grid grid-cols-2 gap-3 border-t border-[var(--line-soft)] px-3 py-1.5 text-[14px] leading-[1.5]">
+                    <span>{m.stem}</span>
+                    <span className="text-[var(--ink)]">{m.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {banked && f.meaning && <Line label="语义">{f.meaning}</Line>}
+            {!banked && rest && <p>{rest}</p>}
+            <p className="flex items-start gap-2.5 rounded-[10px] bg-[var(--blue-tint)] px-3 py-2 text-[15px] leading-[1.6] font-medium text-[var(--ink)]">
+              <span className="num mt-px grid size-[24px] flex-none place-items-center rounded-full bg-[var(--blue)] text-[13px] font-semibold text-white">{q.answer}</span>
+              <span>所以选 {q.answer}{why ? `：${why}` : ""}</span>
+            </p>
+          </TplStep>
+          {wrong.length > 0 && (
+            <TplStep n={++n} title="排除" last>
+              <ul className="space-y-1.5">
+                {wrong.map(([k, v]) => (
+                  <li key={k} className="flex gap-2.5">
+                    <span className="num mt-[3px] grid size-[22px] flex-none place-items-center rounded-full bg-[var(--paper-200)] text-[12px] font-semibold text-[var(--ink-700)]">{k}</span>
+                    <span className="min-w-0">
+                      {f.traps?.[k] && <span className="mr-1.5 inline-block rounded-[5px] bg-[var(--red)]/10 px-1.5 text-[12px] leading-[20px] font-medium text-[var(--red)]">{f.traps[k]}</span>}
+                      {v}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </TplStep>
+          )}
+        </ol>
+        {more && (
+          <div className="mt-3 border-t border-[var(--line-soft)] pt-1">
+            <button
+              type="button"
+              onClick={() => setOpen(!open)}
+              aria-expanded={open}
+              className="flex min-h-9 w-full items-center gap-2 rounded-[8px] text-left text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]"
+            >
+              <CaretDown className={cn("size-4 flex-none transition-transform duration-150", open && "rotate-180")} />
+              {[f.vocab?.length && `生词 ${f.vocab.length}`, official && "官方解析原文"].filter(Boolean).join(" · ")}
+            </button>
+            {open && (
+              <div className="space-y-4 pt-1 pb-2">
+                {!!f.vocab?.length && <VocabSection list={f.vocab} sentence={loc!.quote} />}
+                {official && <OfficialText text={official} />}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <span className="text-[12px] leading-5 text-[var(--ink-500)]">{official ? "按官方解析整理成讲题步骤，仅供参考" : ""}</span>
+          <Report q={q} />
+        </div>
+      </article>
+    );
+  }
   return (
     <article className={cn("text-[14px] leading-[1.7] text-[var(--ink-700)]", className)}>
       {head && (

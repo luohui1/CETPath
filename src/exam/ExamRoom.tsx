@@ -616,9 +616,18 @@ export function ExamRoom({
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
   const single = Math.min(PAGE_WIDTH, Math.max(avail, 480)) * zoom;
-  // 双页视图：横屏、整套卷、两页并排每页还有 420 宽（字不会太小）时可选
-  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && (avail - 20) / 2 >= 420;
-  const twoUp = settings.twoUpPages && twoUpOk;
+  // 双页视图：横屏、整套卷，收起右侧栏后两页并排每页还有 380 宽（字不会太小）时可选；
+  // 右侧栏开着放不下就先单页，打开双页时顺手收起右侧栏
+  const twoUpMin = (w: number) => (w - 20) / 2 >= 380;
+  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && twoUpMin(canvasWidth + dockSpace - 12 - (canvasWidth + dockSpace < 900 ? 32 : 96));
+  const twoUp = settings.twoUpPages && twoUpOk && twoUpMin(avail);
+  const toggleTwoUp = () => {
+    if (!twoUp && !twoUpMin(avail)) {
+      setPanel(null);
+      setAgentOpen(false);
+    }
+    void setSetting("twoUpPages", !twoUp);
+  };
   const scale = (twoUp ? Math.min(single, (avail - 20) / 2) : single) / pageWidth;
   // 同一套卷子里页面宽窄不一（拼进来的听力页等）：每页按自己的宽度缩放，显示出来一样宽
   const scaleOf = (k: number, n: number) => (pages?.[n - 1]?.width ? (k * pageWidth) / pages[n - 1].width : k);
@@ -2186,6 +2195,7 @@ export function ExamRoom({
                 ]
               : []),
             undoRedo,
+            ...(twoUpOk ? [[tool$(twoUp ? "换回单页" : "双页并排：左右两页一起看", <BookOpen className="size-[19px]" weight={twoUp ? "fill" : "duotone"} />, toggleTwoUp, { active: twoUp, soft: true, text: "双页" })]] : []),
             // 窄屏时缩放收进"更多"，工具栏放得下笔的预设
             ...(slim
               ? []
@@ -2202,7 +2212,6 @@ export function ExamRoom({
                       ),
                     },
                     tool$("放大", <MagnifyingGlassPlus className="size-[19px]" />, zoomIn, { disabled: zoom >= MAX_ZOOM }),
-                    ...(twoUpOk ? [tool$(twoUp ? "换回单页" : "双页并排：左右两页一起看", <BookOpen className="size-[19px]" weight={twoUp ? "fill" : "duotone"} />, () => void setSetting("twoUpPages", !settings.twoUpPages), { active: twoUp, soft: true, text: "双页" })] : []),
                   ],
                 ]),
           ]}
@@ -2280,7 +2289,7 @@ export function ExamRoom({
                     </span>
                   </div>
                 )}
-                {twoUpOk && moreItem("双页视图", () => void setSetting("twoUpPages", !settings.twoUpPages), settings.twoUpPages && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
+                {twoUpOk && moreItem("双页视图", () => (close(), toggleTwoUp()), twoUp && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
                 {moreItem("标出生词本里的词", () => void setSetting("showVocabMarks", !settings.showVocabMarks), settings.showVocabMarks && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
                 {moreItem("快捷键", () => {
                   close();
