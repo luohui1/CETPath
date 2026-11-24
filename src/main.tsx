@@ -133,14 +133,25 @@ function MemoryDbNotice() {
   );
 }
 
-/** 预览版：顶部一行说明这是预览版、少了什么 */
+/** 预览版：顶部一行说明这是预览版、少了什么，并挂显眼的 GitHub 仓库入口 */
 function PreviewNotice() {
   return (
-    <div role="status" className="no-print fixed inset-x-0 top-0 z-[100] flex h-8 items-center justify-center gap-2 overflow-hidden bg-[var(--star-tint)] px-4 text-center text-[13px] whitespace-nowrap text-[var(--ink-700)] shadow-[inset_0_-1px_0_var(--line)]">
+    <div role="status" className="no-print fixed inset-x-0 top-0 z-[100] flex h-8 items-center justify-center gap-2.5 overflow-hidden bg-[var(--star-tint)] px-3 text-center text-[13px] whitespace-nowrap text-[var(--ink-700)] shadow-[inset_0_-1px_0_var(--line)]">
       <span className="rounded-full bg-[var(--blue)] px-2 py-px text-[11px] leading-4 font-semibold text-white">预览版</span>
-      <span className="hidden sm:inline">只带四级、六级、考研各一套卷子，没有账号和同步。AI 助教可以在</span>
+      <span className="hidden md:inline">含四级、六级、考研各一套卷子，AI 助教可在</span>
       <a href="/settings#agent" className="font-medium text-[var(--blue)] underline-offset-2 hover:underline">
         设置里接自己的模型
+      </a>
+      <a
+        href="https://github.com/luohui1/CETPath"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[#1f2328] px-2.5 py-0.5 text-[12px] leading-4 font-semibold text-white shadow-xs transition hover:bg-black"
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+        </svg>
+        <span>GitHub 开源 · CETPath</span>
       </a>
     </div>
   );
