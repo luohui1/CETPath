@@ -61,7 +61,7 @@ export default defineConfig({
           {
             // 试卷数据、解析、句子译文层、卷面单词坐标（.words.json）会重新导入、润色、校正：先用缓存秒开，后台再取新的。
             // 单词坐标以前落在下面的 CacheFirst 规则里，2026-11-11 按图像校正过的坐标到不了老设备，所以并进这一条
-            urlPattern: ({ url }) => /^\/papers\/((explain|trans)\/[^/]+|[^/]+|pdf\/[^/]+\.words)\.json$/.test(url.pathname),
+            urlPattern: ({ url }) => /^\/papers\/((explain|trans|syntax)\/[^/]+|[^/]+|pdf\/[^/]+\.words)\.json$/.test(url.pathname),
             handler: "StaleWhileRevalidate",
             options: { cacheName: "paper-data", expiration: { maxEntries: 400 } },
           },

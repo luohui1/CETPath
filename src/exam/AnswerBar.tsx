@@ -1,21 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import type { Question } from "@/lib/papers";
+import type { SyntaxEntry } from "@/lib/syntax";
 import type { TransLookup } from "@/lib/trans";
 import { cn } from "@/lib/utils";
 import { ExplanationCard } from "./Explanation";
 import { TransQuote } from "./cardParts";
+import { SyntaxCard } from "./SyntaxCard";
 
 /**
  * 底部条放的东西，同一时间只放一样：
- * explain 一道题的解析（cue 是认题用的一小段原文，locked 是练习模式还没作答）；sentence 长按一句出的译文。
+ * explain 一道题的解析（cue 是认题用的一小段原文，locked 是练习模式还没作答）；sentence 长按一句出的译文，
+ * 这句是仔细阅读里的长难句（syn）时直接放长难句解析（结构 + 译文），不用再点一下。
  * 查词 2026-11-12 起不在这里了：改成词旁边的小卡片（WordCard）
  */
-export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string };
+export type BarContent = { kind: "explain"; q: Question; id: string; cue: string; locked: boolean } | { kind: "sentence"; id: string; sentence: string; syn?: SyntaxEntry | null };
 
 /** 竖屏底部抽屉开着时，底部条的内容变成抽屉里临时出现的标签：标签上写什么 */
 export function barLabel(c: BarContent) {
-  return c.kind === "explain" ? `解析 ${c.q.number}` : "译句";
+  return c.kind === "explain" ? `解析 ${c.q.number}` : c.syn ? "长难句" : "译句";
 }
 
 /** 解析头上的上一题、下一题：40px 高，图标在文字外侧 */
@@ -100,12 +103,12 @@ export function AnswerBar({
       ref={self}
       data-answer-bar
       role="region"
-      aria-label={content.kind === "explain" ? `第 ${content.q.number} 题解析` : "译句"}
+      aria-label={barLabel(content)}
       className={cn(
         "no-print flex flex-col bg-white",
         embedded
           ? "min-h-0 flex-1"
-          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", content.kind === "explain" ? "max-h-[50%]" : "max-h-[40%]"),
+          : cn("animate-bar-in relative z-[28] shrink-0 border-t border-[var(--line)] shadow-[var(--elev-2)]", content.kind === "explain" || content.syn ? "max-h-[50%]" : "max-h-[40%]"),
       )}
     >
       {content.kind === "explain" ? (
@@ -134,12 +137,12 @@ export function AnswerBar({
           {/* 长按一句：这句的译文。卷面上这句淡黄底，收起时去掉 */}
           <div className={COLUMN}>
             <div className="flex h-12 items-center gap-2 pr-1 pl-4">
-              <span className="flex-1 text-[15px] font-semibold text-[var(--ink)]">译句</span>
+              <span className="flex-1 text-[15px] font-semibold text-[var(--ink)]">{content.syn ? "长难句解析" : "译句"}</span>
               <CloseButton onClose={onClose} />
             </div>
           </div>
-          <DrawerBody>
-            <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />
+          <DrawerBody key={content.id}>
+            {content.syn ? <SyntaxCard e={content.syn} /> : <TransQuote sentence={content.sentence} trans={trans(content.sentence)} />}
           </DrawerBody>
         </>
       )}
