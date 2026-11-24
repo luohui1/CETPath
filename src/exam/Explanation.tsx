@@ -77,6 +77,11 @@ function dropStem(text: string) {
   return text.slice(m[0].length).replace(/^[！!]?[解金答]?(?=根据|由|文章|讲话|说话|对话|选项|该|题干|新闻|在|从|本)/, "");
 }
 
+/** 思路开头"题干问……。"那一句：读题这一步用 */
+function stemOf(text?: string) {
+  return text?.match(/^(本|此|该)?题(干|目)?(问|询问|问的是|要求|考查的是)[^。；！]{0,60}[。；！]/)?.[0] ?? "";
+}
+
 /** 去掉开头套话后的第一句（在第一个。；！处截断） */
 function firstSentence(text?: string) {
   if (!text) return "";
@@ -445,6 +450,128 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
   const head = !!(title || action || (choice && answer) || mine !== undefined || by === "ai");
   // 带题号的（答题卡面板，宽 360）：头要挤在一行里，AI 章只写"AI"
   const narrow = !!title;
+  const header = head && (
+    <header className={cn("flex min-h-8 flex-wrap items-center gap-y-1", narrow ? "gap-x-2" : "gap-x-3")}>
+      {title}
+      {choice && answer && <AnswerMark letter={q.answer!} />}
+      {f?.kind && <span className="rounded-full bg-[var(--paper-200)] px-2 text-[12px] leading-[22px] font-medium text-[var(--ink-700)]">{f.kind}</span>}
+      {mine !== undefined && choice && (
+        <span className={cn("inline-flex items-center gap-1 text-[14px] font-medium", right ? "text-[var(--blue)]" : mine ? "text-[var(--red)]" : "text-[var(--ink-500)]")}>
+          {right ? <Check className="size-4" weight="bold" /> : mine ? <X className="size-4" weight="bold" /> : null}
+          {right ? "答对了" : mine ? `你选了 ${mine}` : "没有作答"}
+        </span>
+      )}
+      {(by === "ai" || action) && (
+        <span className="ml-auto flex items-center gap-2">
+          {by === "ai" && <AiTag short={narrow} />}
+          {action}
+        </span>
+      )}
+    </header>
+  );
+  // 选择题有定位句：按"读题 → 定位思路 → 定位句 → 解题和排除"一步步摊开（和 Agent 讲题同一个顺序），细枝末节才折叠
+  if (f && choice && showLoc) {
+    const stem = stemOf(f.reasoning);
+    const rest = f.reasoning ? restAfterBrief(f.reasoning.slice(stem.length).trim(), brief) : "";
+    const valid = new Set((q.options ?? []).map((o) => o.key));
+    const wrong = Object.entries(f.options ?? {}).filter(([k]) => k !== q.answer && (!valid.size || valid.has(k)));
+    const more = !!f.mapping?.length || !!f.vocab?.length || !!official;
+    let n = 0;
+    return (
+      <article className={cn("text-[14px] leading-[1.7] text-[var(--ink-700)]", className)}>
+        {header}
+        <div className={cn("space-y-3.5", head && "mt-2.5")}>
+          {stem && <CardSection label={<Step n={++n}>读题</Step>}>{stem}</CardSection>}
+          {(f.signal || loc!.where) && (
+            <CardSection label={<Step n={++n}>定位思路</Step>} action={f.signal && ctx ? <SaveSignal q={q} kind={f.kind} signal={f.signal} /> : undefined}>
+              {f.signal || `回到${loc!.where}`}
+              {f.signal && loc!.where && <span className="text-[var(--ink-500)]">（{loc!.where}）</span>}
+            </CardSection>
+          )}
+          <CardSection label={<Step n={++n}>定位句</Step>}>
+            <QuoteBlock
+              caption={loc!.where || "原文"}
+              actions={
+                <>
+                  {canFlash && (
+                    <QuoteAction onClick={() => ctx!.flashWords!(loc!.page!, loc!.words!)} icon={<Crosshair className="size-3.5" />}>
+                      在卷面上标出
+                    </QuoteAction>
+                  )}
+                  {canListen && (
+                    <QuoteAction onClick={() => ctx!.listen!(q, loc!)} icon={<Play className="size-3.5" weight="fill" />}>
+                      听这一句
+                    </QuoteAction>
+                  )}
+                </>
+              }
+              sub={f.translation}
+            >
+              {loc!.quote}
+            </QuoteBlock>
+          </CardSection>
+          <CardSection label={<Step n={++n}>解题和排除</Step>}>
+            <div className="space-y-2">
+              {brief && <p className="text-[15px] leading-[1.65] font-medium text-[var(--ink)]">{brief}</p>}
+              {!official && f.grammar && <p><b className="mr-1.5 font-semibold text-[var(--ink)]">语法</b>{f.grammar}</p>}
+              {!official && f.meaning && <p><b className="mr-1.5 font-semibold text-[var(--ink)]">语义</b>{f.meaning}</p>}
+              {!f.grammar && !f.meaning && rest && <p>{rest}</p>}
+              {wrong.length > 0 && (
+                <ul className="space-y-1.5 pt-0.5">
+                  {wrong.map(([k, v]) => (
+                    <li key={k} className="flex gap-2.5">
+                      <span className="num mt-[3px] grid size-[22px] flex-none place-items-center rounded-full bg-[var(--paper-200)] text-[12px] font-semibold text-[var(--ink-700)]">{k}</span>
+                      <span className="min-w-0">
+                        {f.traps?.[k] && <span className="mr-1.5 inline-block rounded-[5px] bg-[var(--red)]/10 px-1.5 text-[12px] leading-[20px] font-medium text-[var(--red)]">{f.traps[k]}</span>}
+                        {v}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </CardSection>
+          {more && (
+            <>
+              <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                aria-expanded={open}
+                className="flex min-h-9 w-full items-center gap-2 rounded-[8px] text-left text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]"
+              >
+                <CaretDown className={cn("size-4 flex-none transition-transform duration-150", open && "rotate-180")} />
+                {[f.mapping?.length && "题干和原文对照", f.vocab?.length && `生词 ${f.vocab.length}`, official && "官方解析原文"].filter(Boolean).join(" · ")}
+              </button>
+              {open && (
+                <div className="space-y-4 border-t border-[var(--line-soft)] pt-3">
+                  {!!f.mapping?.length && (
+                    <CardSection label="题干和原文对照">
+                      <table className="w-full text-[14px] leading-[1.5]">
+                        <tbody>
+                          {f.mapping.map((m, i) => (
+                            <tr key={i} className="border-t border-[var(--line-soft)] first:border-t-0">
+                              <td className="serif w-1/2 py-1.5 pr-3 align-top text-[var(--ink-700)]">{m.stem}</td>
+                              <td className="serif py-1.5 align-top text-[var(--ink)]">{m.text}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </CardSection>
+                  )}
+                  {!!f.vocab?.length && <VocabSection list={f.vocab} sentence={loc!.quote} />}
+                  {official && <OfficialText text={official} />}
+                </div>
+              )}
+            </>
+          )}
+          {official && <p className="text-[12px] leading-5 text-[var(--ink-500)]">读题、定位、排除由 AI 按官方解析整理，仅供参考。</p>}
+          <div className="flex justify-end">
+            <Report q={q} />
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className={cn("text-[14px] leading-[1.7] text-[var(--ink-700)]", className)}>
