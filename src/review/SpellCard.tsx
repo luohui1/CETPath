@@ -111,7 +111,7 @@ export function SpellCard({ word, entry, mode, onResult }: { word: string; entry
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
             e.preventDefault();
             check();
           }

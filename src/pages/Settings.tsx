@@ -171,12 +171,7 @@ export function SettingsPage() {
 
       <Group title="备考目标">
         <Row title="目标考试" desc="显示在首页和真题训练">
-          <input
-            value={s.examName}
-            onChange={(e) => setSetting("examName", e.target.value)}
-            placeholder="如：考研英语一"
-            className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)] w-40"
-          />
+          <SettingText value={s.examName} onSave={(v) => setSetting("examName", v)} />
         </Row>
         <Row title="考试日期" desc="设置后显示倒计时">
           <input
@@ -283,5 +278,31 @@ function AgentMemory() {
         </Button>
       </Row>
     </>
+  );
+}
+
+/** 设置里的文字框：输入时只改本地，设置存进本地库是异步的，直接绑设置值会在中文输入法拼字时把拼音也写进去 */
+function SettingText({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(value);
+  }, [value]);
+  return (
+    <input
+      value={text}
+      onFocus={() => (editing.current = true)}
+      onBlur={() => {
+        editing.current = false;
+        onSave(text);
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (!(e.nativeEvent as InputEvent).isComposing) onSave(e.target.value);
+      }}
+      onCompositionEnd={(e) => onSave(e.currentTarget.value)}
+      placeholder="如：考研英语一"
+      className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)] w-40"
+    />
   );
 }

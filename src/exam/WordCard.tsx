@@ -51,9 +51,11 @@ function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
     setRoots(null);
     hit.el?.classList.add("is-active");
     // 词根和释义一起出来：分两次出来卡片要变两次高
+    // 词根分片和词典分片同时取，不用一个等另一个
+    const early = getRoots(word);
     lookup(word).then(
       async (r) => {
-        const rt = r && !r.parts ? await getRoots(r.entry.w) : null;
+        const rt = r && !r.parts ? (r.entry.w.toLowerCase() === word.trim().toLowerCase() ? await early : await getRoots(r.entry.w)) : null;
         if (cancelled) return;
         setResult(r);
         setRoots(rt);

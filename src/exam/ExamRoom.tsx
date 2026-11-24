@@ -32,6 +32,7 @@ import { Sparkle,
   SidebarSimple,
   TextUnderline,
   type Icon,
+  BookOpen,
 } from "@phosphor-icons/react";
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
@@ -47,6 +48,7 @@ import { markSeen } from "@/lib/learning";
 import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
 import { prefetchAudio, touchAudio } from "@/lib/audioCache";
+import { warmDict } from "@/lib/dict";
 import { findTrans, loadTrans, sentenceKey, type TransFile, type TransLookup } from "@/lib/trans";
 import { loadSyntax, type SyntaxFile } from "@/lib/syntax";
 import { ExamPage, questionCue, wordNth, wordRect, type Answers, type PageItems, type Timing } from "./PaperPages";
@@ -254,7 +256,7 @@ function PageJump({ store, first, last, onJump }: { store: ScrollStore; first: n
           onBlur={() => setEdit(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") setEdit(false);
-            if (e.key !== "Enter") return;
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             const n = parseInt(e.currentTarget.value, 10);
             if (n) onJump(Math.max(first, Math.min(last, n)));
             setEdit(false);
@@ -396,6 +398,16 @@ export function ExamRoom({
   // 听力录音在后台下载的进度（0–1）；没在下（没有录音、已在缓存里、下完了、离线）是 null
   const [audioPct, setAudioPct] = useState<number | null>(null);
   const [pages, setPages] = useState<PdfWordsPage[] | null>(null);
+  // 卷面单词到手、原卷画出来以后，后台把词典取进缓存：点词时释义马上出来
+  useEffect(() => {
+    if (!pages) return;
+    const ac = new AbortController();
+    const t = setTimeout(() => void warmDict(pages.flatMap((p) => p.w.map((w) => w[0])), ac.signal), 3000);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [pages]);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [winWidth, setWinWidth] = useState(innerWidth);
@@ -604,10 +616,15 @@ export function ExamRoom({
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
   const single = Math.min(PAGE_WIDTH, Math.max(avail, 480)) * zoom;
-  // 双页视图：横屏、整套卷、一页还不到半个屏幕宽（两页并排也不会缩得太小）时才可选
-  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && single < winWidth / 2 && (avail - 20) / 2 >= single * 0.8;
+  // 双页视图：横屏、整套卷、两页并排每页还有 420 宽（字不会太小）时可选
+  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && (avail - 20) / 2 >= 420;
   const twoUp = settings.twoUpPages && twoUpOk;
   const scale = (twoUp ? Math.min(single, (avail - 20) / 2) : single) / pageWidth;
+  // 同一套卷子里页面宽窄不一（拼进来的听力页等）：每页按自己的宽度缩放，显示出来一样宽
+  const scaleOf = (k: number, n: number) => (pages?.[n - 1]?.width ? (k * pageWidth) / pages[n - 1].width : k);
+  const pageScale = (n: number) => scaleOf(scale, n);
+  const scaleOfRef = useRef(scaleOf);
+  scaleOfRef.current = scaleOf;
   const clips = useMemo(() => {
     const map = new Map<number, { top: number; bottom: number | null }>();
     if (range) {
@@ -701,10 +718,10 @@ export function ExamRoom({
     (page: number, y: number) => {
       const el = document.getElementById(`pdf-page-${page}`);
       if (!el || !stage) return Infinity;
-      return el.getBoundingClientRect().top - stage.getBoundingClientRect().top + stage.scrollTop + y * scale;
+      return el.getBoundingClientRect().top - stage.getBoundingClientRect().top + stage.scrollTop + y * pageScale(page);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stage, scale, twoUp],
+    [stage, scale, twoUp, pages],
   );
   const ready = !!(doc && pages && stage);
 
@@ -1087,12 +1104,12 @@ export function ExamRoom({
         const r = el?.getBoundingClientRect();
         if (!el || !r || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
         const data = pages[n - 1];
-        const k = wordAt(data.w, (cx - r.left) / scale, (cy - r.top) / scale);
+        const k = wordAt(data.w, (cx - r.left) / pageScale(n), (cy - r.top) / pageScale(n));
         if (k < 0) break;
         gesture.touchLookupAt = Date.now();
         setOpenQ(null);
         setSent(null);
-        setHit({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(n, data, k, scale), page: n, index: k, nth: wordNth(data, k) });
+        setHit({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(n, data, k, pageScale(n)), page: n, index: k, nth: wordNth(data, k) });
         return;
       }
       // 点在卷面空白处：收起
@@ -1113,7 +1130,7 @@ export function ExamRoom({
         const r = document.getElementById(`pdf-page-${n}`)?.getBoundingClientRect();
         if (!r || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
         const data = pages[n - 1];
-        const k = wordAt(data.w, (cx - r.left) / scale, (cy - r.top) / scale);
+        const k = wordAt(data.w, (cx - r.left) / pageScale(n), (cy - r.top) / pageScale(n));
         const sid = k >= 0 ? data.w[k][5] : -1;
         const sentence = data.s[sid];
         if (!sentence) return false;
@@ -1229,7 +1246,9 @@ export function ExamRoom({
       for (const el of content.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
         const r = el.getBoundingClientRect();
         if (m[1] < r.top || m[1] > r.bottom) continue;
-        anchor = { n: Number(el.id.slice(9)), px: (m[0] - r.left) / scaleRef.current, py: (m[1] - r.top) / scaleRef.current };
+        const n = Number(el.id.slice(9));
+        const k = scaleOfRef.current(scaleRef.current, n);
+        anchor = { n, px: (m[0] - r.left) / k, py: (m[1] - r.top) / k };
         break;
       }
       const cr = content.getBoundingClientRect();
@@ -1292,7 +1311,9 @@ export function ExamRoom({
     for (const el of stage.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
       const r = el.getBoundingClientRect();
       if (cy < r.top || cy > r.bottom) continue;
-      return { n: Number(el.id.slice(9)), px: (cx - r.left) / k, py: (cy - r.top) / k, cx, cy, center: true, fitX: zoomRef.current === 1 };
+      const n = Number(el.id.slice(9));
+      const kk = scaleOfRef.current(k, n);
+      return { n, px: (cx - r.left) / kk, py: (cy - r.top) / kk, cx, cy, center: true, fitX: zoomRef.current === 1 };
     }
     return null;
   };
@@ -1321,9 +1342,9 @@ export function ExamRoom({
       cx = s.left + stage.clientWidth / 2;
       cy = s.top + stage.clientHeight / 2;
     }
-    stage.scrollTop += r.top + a.py * scale - cy;
+    stage.scrollTop += r.top + a.py * pageScale(a.n) - cy;
     if (a.fitX) stage.scrollLeft = 0;
-    else stage.scrollLeft += r.left + a.px * scale - cx;
+    else stage.scrollLeft += r.left + a.px * pageScale(a.n) - cx;
   }, [scale, stage, winWidth, winHeight, dockSpace]);
 
   // 画布上一次排好时的大小：窗口变了以后，用它找回变之前画布中间是哪一点
@@ -1349,7 +1370,9 @@ export function ExamRoom({
         for (const el of stage.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
           const r = el.getBoundingClientRect();
           if (cy < r.top || cy > r.bottom) continue;
-          anchorRef.current = { n: Number(el.id.slice(9)), px: (cx - r.left) / scaleRef.current, py: (cy - r.top) / scaleRef.current, cx, cy, center: true, fitX: zoomRef.current === 1 };
+          const n = Number(el.id.slice(9));
+          const k = scaleOfRef.current(scaleRef.current, n);
+          anchorRef.current = { n, px: (cx - r.left) / k, py: (cy - r.top) / k, cx, cy, center: true, fitX: zoomRef.current === 1 };
           break;
         }
       }
@@ -1477,9 +1500,9 @@ export function ExamRoom({
     };
     if (hit.page != null && hit.index != null && pages) {
       const data = pages[hit.page - 1];
-      const word = wordRect(hit.page, data, hit.index, scale);
+      const word = wordRect(hit.page, data, hit.index, pageScale(hit.page));
       const ks = cardTrans && wordCtx?.ids ? wordCtx.ids : (phraseWords ?? []);
-      return { word, avoid: ks.reduce((r, k) => union(r, wordRect(hit.page!, data, k, scale)), word) };
+      return { word, avoid: ks.reduce((r, k) => union(r, wordRect(hit.page!, data, k, pageScale(hit.page!))), word) };
     }
     const word = hit.el?.isConnected ? hit.el.getBoundingClientRect() : hit.rect;
     const row = cardTrans ? hit.el?.closest("p, li")?.getBoundingClientRect() : undefined;
@@ -1716,7 +1739,7 @@ export function ExamRoom({
       else if (r.bottom > bottom) stage.scrollBy({ top: Math.min(r.bottom - bottom, r.top - top), behavior: "smooth" });
       return;
     }
-    const r = hit?.page && hit.index != null && pages ? wordRect(hit.page, pages[hit.page - 1], hit.index, scale) : undefined;
+    const r = hit?.page && hit.index != null && pages ? wordRect(hit.page, pages[hit.page - 1], hit.index, pageScale(hit.page)) : undefined;
     if (!r) return;
     if (r.bottom < top || r.top > bottom) stage.scrollBy({ top: r.top - (top + (bottom - top) * 0.3), behavior: "smooth" });
     else if (r.bottom > bottom) stage.scrollBy({ top: Math.min(r.bottom - bottom, r.top - top), behavior: "smooth" });
@@ -2179,6 +2202,7 @@ export function ExamRoom({
                       ),
                     },
                     tool$("放大", <MagnifyingGlassPlus className="size-[19px]" />, zoomIn, { disabled: zoom >= MAX_ZOOM }),
+                    ...(twoUpOk ? [tool$(twoUp ? "换回单页" : "双页并排：左右两页一起看", <BookOpen className="size-[19px]" weight={twoUp ? "fill" : "duotone"} />, () => void setSetting("twoUpPages", !settings.twoUpPages), { active: twoUp, soft: true, text: "双页" })] : []),
                   ],
                 ]),
           ]}
@@ -2385,7 +2409,7 @@ export function ExamRoom({
                       doc={doc}
                       index={firstPage - 1 + k}
                       clip={clips.get(firstPage + k)}
-                      scale={scale}
+                      scale={pageScale(firstPage + k)}
                       data={p}
                       root={stage!}
                       placeholder={firstPage + k === 1 && !range ? cover : undefined}
