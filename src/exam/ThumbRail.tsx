@@ -75,16 +75,15 @@ function PartSlider({ parts, current }: { parts: Part[]; current?: string }) {
       }}
       className="relative mx-auto mt-3 w-full cursor-pointer touch-none rounded-[8px] py-[11px] outline-none select-none focus-visible:ring-2 focus-visible:ring-[var(--blue-line)]"
     >
-      <div ref={track} className="relative ml-[17px]" style={{ height: last * STEP }}>
+      <div ref={track} className="relative ml-[14px]" style={{ height: last * STEP }}>
         <div className="absolute inset-y-0 left-0 w-[4px] -translate-x-1/2 rounded-full bg-[var(--line)]">
           <div className={cn("w-full rounded-full bg-[var(--blue)]", drag === null && "transition-[height] duration-200")} style={{ height: idx * STEP }} />
         </div>
         {parts.map((x, i) => (
           <span key={x.id} title={`${x.label}${x.sub ? ` · Section ${x.sub}` : ""}，第 ${x.page} 页`} className="absolute left-0 flex -translate-y-1/2 items-center" style={{ top: i * STEP }}>
-            <span aria-hidden className={cn("size-[6px] -translate-x-1/2 rounded-full", i <= idx ? "bg-white" : "bg-[var(--ink-300)]")} />
-            <span className={cn("ml-2.5 text-[11px] leading-4 whitespace-nowrap transition-colors", i === idx ? "font-semibold text-[var(--blue)]" : "text-[var(--ink-500)]")}>
+            <span aria-hidden className={cn("size-[6px] -translate-x-1/2 rounded-full", i <= idx ? "bg-[var(--blue)]" : "bg-[var(--ink-300)]")} />
+            <span className={cn("ml-2 text-[11px] leading-4 whitespace-nowrap transition-colors", i === idx ? "font-semibold text-[var(--blue)]" : "text-[var(--ink-500)]")}>
               {x.label.slice(0, 2)}
-              {x.sub && <span className="num ml-px text-[9px] font-normal opacity-70">{x.sub}</span>}
             </span>
           </span>
         ))}
