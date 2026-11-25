@@ -73,7 +73,7 @@ const Thumb = memo(function Thumb({ doc, cover, page, root, current, marked, onJ
       aria-current={current ? "page" : undefined}
       data-page={page.n}
       className={cn(
-        "relative mx-auto block w-[80px] overflow-hidden rounded-[3px] bg-white transition-shadow",
+        "relative mx-auto block w-[96px] overflow-hidden rounded-[3px] bg-white transition-shadow",
         current ? "shadow-[0_0_0_2px_var(--blue),var(--elev-1)]" : "shadow-[var(--elev-1)] hover:shadow-[0_0_0_1px_var(--blue-line),var(--elev-1)]",
       )}
       style={{ aspectRatio: `${page.width} / ${page.height}` }}
@@ -92,7 +92,8 @@ export function ThumbRail({
   pages,
   current,
   marked,
-  floating,
+  open,
+  onClose,
   inset = 0,
   onJump,
   parts,
@@ -103,13 +104,22 @@ export function ThumbRail({
   pages: RailPage[];
   current: number;
   marked: Set<number>;
-  floating: boolean;
+  open: boolean;
+  onClose: () => void;
   inset?: number; // 上面浮着工具栏时让出的高度
   onJump: (n: number) => void;
   parts?: { id: string; label: string; sub?: string; page: number; onClick: () => void }[]; // 题型导航：一点跳到那一部分
   currentPart?: string;
 }) {
   const [root, setRoot] = useState<HTMLElement | null>(null);
+  const from = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", esc);
+    return () => removeEventListener("keydown", esc);
+  }, [open, onClose]);
   // 当前页滚出缩略图栏时，把它带回视野里（只动这一栏）
   useEffect(() => {
     const el = root?.querySelector<HTMLElement>(`[data-page="${current}"]`);
@@ -123,9 +133,17 @@ export function ThumbRail({
       ref={setRoot}
       aria-label="页面缩略图"
       style={inset ? { paddingTop: inset } : undefined}
+      aria-hidden={!open}
+      inert={!open}
+      onPointerDown={(e) => (from.current = { x: e.clientX, y: e.clientY })}
+      onPointerUp={(e) => {
+        const f = from.current;
+        from.current = null;
+        if (f && f.x - e.clientX > 48 && Math.abs(e.clientY - f.y) < f.x - e.clientX) onClose();
+      }}
       className={cn(
-        "scrollbar-none no-print w-[112px] shrink-0 space-y-3 overflow-y-auto overscroll-contain rounded-[10px] bg-[var(--paper-100)] py-3",
-        floating ? "absolute top-0 bottom-1.5 left-1.5 z-30 shadow-[var(--elev-3)]" : "mb-1.5 ml-1.5",
+        "scrollbar-none no-print absolute top-0 bottom-1.5 left-1.5 z-30 w-[132px] space-y-3 overflow-y-auto overscroll-contain rounded-[12px] bg-[var(--paper-100)] py-3 shadow-[var(--elev-3)] transition-[translate,opacity] duration-200 ease-out",
+        open ? "translate-x-0" : "pointer-events-none -translate-x-[calc(100%+16px)] opacity-0",
       )}
     >
       {parts && (

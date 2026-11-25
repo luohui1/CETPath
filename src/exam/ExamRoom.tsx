@@ -166,7 +166,6 @@ const SET_KINDS = new Set<SectionKind>(["banked", "matching", "cloze", "order"])
 const NO_MARKS: MarkRow[] = [];
 const NO_STRUCK: Record<string, string[]> = {};
 const FLASH_MS = 3000; // 解析定位句在卷面上亮多久
-const RAIL_WIDTH = 118; // 缩略图栏连同间距
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const NO_HITS: FindHit[] = [];
@@ -228,6 +227,31 @@ type ScrollStore = ReturnType<typeof createScrollStore>;
 const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => useSyncExternalStore(store.subscribe, () => pick(store.get()));
 
 /** 缩略图栏：当前页跟着滚动走 */
+// 卷面左边缘的把手：点一下或往右一拉，缩略图滑块就出来
+function RailHandle({ onOpen }: { onOpen: () => void }) {
+  const from = useRef<{ x: number; y: number } | null>(null);
+  return (
+    <button
+      type="button"
+      aria-label="页面缩略图"
+      title="页面缩略图（T）"
+      onClick={onOpen}
+      onPointerDown={(e) => (from.current = { x: e.clientX, y: e.clientY })}
+      onPointerMove={(e) => {
+        const f = from.current;
+        if (f && e.clientX - f.x > 24 && Math.abs(e.clientY - f.y) < e.clientX - f.x) {
+          from.current = null;
+          onOpen();
+        }
+      }}
+      onPointerUp={() => (from.current = null)}
+      className="no-print group absolute top-1/2 left-0 z-30 flex h-20 w-5 -translate-y-1/2 touch-none items-center justify-center rounded-r-[10px] bg-white/90 shadow-[var(--elev-2)] backdrop-blur transition-[width] hover:w-6"
+    >
+      <span className="h-8 w-[3px] rounded-full bg-[var(--ink-300)] transition-colors group-hover:bg-[var(--blue)]" />
+    </button>
+  );
+}
+
 function LiveRail({ store, ...rest }: Omit<Parameters<typeof ThumbRail>[0], "current"> & { store: ScrollStore }) {
   const current = useScrollState(store, (s) => s.page);
   const part = useScrollState(store, (s) => s.part);
@@ -417,6 +441,8 @@ export function ExamRoom({
   // 缩略图栏：平板竖屏、窄屏默认收起
   // 缩略图栏默认收起，把宽度留给卷面；工具栏按钮或 T 键打开
   const [rail, setRail] = useState(false);
+  // 侧边滑块第一次拉出来才挂上，之后一直留着，收起时缩略图不用重画
+  const railSeen = useRef(false);
   // 卷面查找：focusKey 每按一次 Ctrl+F 加一，回到输入框
   const [find, setFind] = useState({ open: false, query: "", index: 0, focusKey: 0 });
   const findOpen = find.open;
@@ -597,8 +623,6 @@ export function ExamRoom({
   const firstPage = range?.first ?? 1;
   const lastPage = range?.last ?? pages?.length ?? 1;
 
-  // 平板竖屏、小屏：缩略图栏浮在卷面上，不挤占卷面宽度
-  const floating = winWidth < 1100;
   // 平板横屏这类矮屏：顶栏和工具栏并成一行，浮在卷面上，往下滚时收起
   const compact = winWidth > winHeight && winHeight < 900;
   // 停靠区：横屏或宽 ≥ 1100 在右侧一栏（宽 360，把卷面挤窄）；竖屏窄屏是听力条上面的底部抽屉（把卷面挤矮）
@@ -606,7 +630,7 @@ export function ExamRoom({
   // 存的宽度按当前窗口再限一次（窄窗口里不能把卷面挤没）
   const agentWidth = Math.min(agentW, Math.max(320, Math.round(winWidth * 0.6)));
   const dockSpace = !sideDock ? 0 : agentOpen ? agentWidth + 8 : panel ? DOCK_WIDTH + 8 : 0;
-  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && !floating ? RAIL_WIDTH : 0) - 16;
+  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
   const pagePad = tightPad ? 32 : 96;
@@ -836,9 +860,9 @@ export function ExamRoom({
   const jumpPage = useCallback(
     (n: number) => {
       stage?.scrollTo({ top: topOf(n, clips.get(n)?.top ?? 0) - 12, behavior: "smooth" });
-      if (floating) setRail(false);
+      setRail(false);
     },
-    [stage, topOf, clips, floating],
+    [stage, topOf, clips],
   );
 
   // 卷面查找：每页的词拼成一行再找，命中按页分好交给各页的单词层
@@ -1404,20 +1428,6 @@ export function ExamRoom({
       removeEventListener("orientationchange", soon);
     };
   }, [stage]);
-
-  // 转成竖屏（缩略图栏要浮在卷面上）时先收起它，免得盖住卷面左边；转回来再按原样打开
-  const railBefore = useRef(false);
-  useLayoutEffect(() => {
-    if (floating) {
-      railBefore.current = rail;
-      if (rail) setRail(false);
-    } else if (railBefore.current) {
-      railBefore.current = false;
-      setRail(true);
-    }
-    // 只在浮不浮切换时处理
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floating]);
 
   const ct = colorTool(tool);
   const { add, remove, update, replace } = history;
@@ -2375,26 +2385,32 @@ export function ExamRoom({
             )}
 
             <div className="relative flex min-h-0 flex-1">
-            {rail && doc && pages && (
+            {doc && pages && (railSeen.current ||= rail) && (
               <LiveRail
                 store={scrollStore}
                 doc={doc}
                 cover={range ? undefined : cover}
                 pages={pages.slice(firstPage - 1, lastPage).map((p, k) => ({ n: firstPage + k, width: p.width, height: p.height }))}
                 marked={markedPages}
-                floating={floating}
+                open={rail}
+                onClose={() => setRail(false)}
                 inset={compact ? 56 : 0}
                 onJump={jumpPage}
                 parts={
                   !scope && !retry && partAnchors.length > 1
                     ? partAnchors.map((a) => {
                         const sec = paper.sections.find((x) => x.id === a.id);
-                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
+                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => { setRail(false); scrollToY(topOf(a.page, a.y) - 120); } };
                       })
                     : undefined
                 }
               />
             )}
+            {doc && pages && (rail ? (
+              <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />
+            ) : (
+              <RailHandle onOpen={() => setRail(true)} />
+            ))}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
             <div className="flex min-w-0 flex-1 flex-col">
             {/* 卷面上不要浏览器自己的捏合放大（整页），双指缩放由上面的手势处理；长按出译文时不要系统的长按菜单 */}
