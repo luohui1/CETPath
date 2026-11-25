@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { SidebarSimple } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NOTE_COLOR } from "@/lib/marks";
 import { gate, getThumb, onThumb, queueThumb, setThumb, thumbKey } from "./pagePool";
@@ -96,6 +97,7 @@ export function ThumbRail({
   current,
   marked,
   open,
+  docked,
   onClose,
   inset = 0,
   onJump,
@@ -108,6 +110,7 @@ export function ThumbRail({
   current: number;
   marked: Set<number>;
   open: boolean;
+  docked: boolean;
   onClose: () => void;
   inset?: number; // 上面浮着工具栏时让出的高度
   onJump: (n: number) => void;
@@ -116,6 +119,7 @@ export function ThumbRail({
 }) {
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const from = useRef<{ x: number; y: number } | null>(null);
+  const width = railWidth(!!parts);
 
   useEffect(() => {
     if (!open) return;
@@ -133,7 +137,7 @@ export function ThumbRail({
 
   return (
     <div
-      style={{ width: railWidth(!!parts), ...(inset ? { paddingTop: inset } : {}) }}
+      style={{ width: docked && !open ? 0 : width, ...(inset ? { paddingTop: inset } : {}) }}
       aria-hidden={!open}
       inert={!open}
       onPointerDown={(e) => (from.current = { x: e.clientX, y: e.clientY })}
@@ -143,17 +147,33 @@ export function ThumbRail({
         if (f && f.x - e.clientX > 48 && Math.abs(e.clientY - f.y) < f.x - e.clientX) onClose();
       }}
       className={cn(
-        "no-print absolute top-0 bottom-1.5 left-1.5 z-30 flex overflow-hidden rounded-[12px] bg-[var(--paper-100)] shadow-[var(--elev-3)] transition-[translate,opacity] duration-200 ease-out",
-        open ? "translate-x-0" : "pointer-events-none -translate-x-[calc(100%+16px)] opacity-0",
+        "no-print flex flex-none flex-col overflow-hidden rounded-[12px] bg-[var(--paper-100)] duration-200 ease-out",
+        docked
+          ? cn("mb-1.5 transition-[width,margin,opacity]", open ? "ml-1.5" : "ml-0 opacity-0")
+          : cn("absolute top-0 bottom-1.5 left-1.5 z-30 shadow-[var(--elev-3)] transition-[translate,opacity]", !open && "-translate-x-[calc(100%+16px)] opacity-0"),
+        !open && "pointer-events-none",
       )}
     >
-      <nav ref={setRoot} aria-label="页面缩略图" className="scrollbar-none w-[120px] flex-none space-y-3 overflow-y-auto overscroll-contain py-3">
+      <div className="flex flex-none items-center justify-between py-1.5 pr-1.5 pl-3" style={{ width }}>
+        <span className="text-[12px] font-medium text-[var(--ink-500)]">页面</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="收起缩略图"
+          title="收起缩略图（T）"
+          className="grid size-8 place-items-center rounded-[8px] text-[var(--ink-500)] transition-colors hover:bg-[var(--paper-200)] hover:text-[var(--ink)]"
+        >
+          <SidebarSimple className="size-[19px]" weight="fill" />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1" style={{ width }}>
+      <nav ref={setRoot} aria-label="页面缩略图" className="scrollbar-none w-[120px] flex-none space-y-3 overflow-y-auto overscroll-contain pt-1 pb-3">
         {pages.map((p) => (
           <Thumb key={p.n} doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
         ))}
       </nav>
       {parts && (
-        <nav aria-label="题型目录" className="scrollbar-none min-w-0 flex-1 overflow-y-auto border-l border-[var(--line-soft)] px-1.5 py-3">
+        <nav aria-label="题型目录" className="scrollbar-none min-w-0 flex-1 overflow-y-auto border-l border-[var(--line-soft)] px-1.5 pt-1 pb-3">
           <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-[var(--ink-subtle)]">目录</p>
           <ol className="relative space-y-px before:absolute before:top-2 before:bottom-2 before:left-[5px] before:w-px before:bg-[var(--line)]">
             {parts.map((x) => {
@@ -177,6 +197,7 @@ export function ThumbRail({
           </ol>
         </nav>
       )}
+      </div>
     </div>
   );
 }

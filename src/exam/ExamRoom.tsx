@@ -227,47 +227,6 @@ type ScrollStore = ReturnType<typeof createScrollStore>;
 const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => useSyncExternalStore(store.subscribe, () => pick(store.get()));
 
 /** 缩略图栏：当前页跟着滚动走 */
-// 缩略图滑块的把手：收起时在卷面左边缘，拉开后贴在栏的右边跟着走。点一下开关，往右拉打开，往左推收回
-function RailHandle({ open, offset, onToggle }: { open: boolean; offset: number; onToggle: (open: boolean) => void }) {
-  const from = useRef<{ x: number; y: number } | null>(null);
-  // 拖过一下就不再算点击，免得松手时又把刚拉开或收回的栏切回去
-  const dragged = useRef(false);
-  return (
-    <button
-      type="button"
-      aria-label={open ? "收起缩略图" : "页面缩略图"}
-      aria-expanded={open}
-      title={open ? "收起缩略图（T）" : "页面缩略图（T）"}
-      onClick={() => {
-        if (!dragged.current) onToggle(!open);
-        dragged.current = false;
-      }}
-      onPointerDown={(e) => {
-        dragged.current = false;
-        from.current = { x: e.clientX, y: e.clientY };
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        const f = from.current;
-        const dx = e.clientX - (f?.x ?? 0);
-        if (f && Math.abs(dx) > 24 && Math.abs(e.clientY - f.y) < Math.abs(dx)) {
-          from.current = null;
-          dragged.current = true;
-          onToggle(dx > 0);
-        }
-      }}
-      onPointerUp={() => (from.current = null)}
-      className={cn(
-        "no-print group absolute top-1/2 left-0 z-30 flex h-20 w-5 -translate-y-1/2 touch-none items-center justify-center rounded-r-[10px] shadow-[var(--elev-2)] backdrop-blur transition-[translate,width,background-color] duration-200 ease-out hover:w-6",
-        open ? "bg-[var(--paper-100)]" : "bg-white/90",
-      )}
-      style={open ? { translate: `${offset}px -50%` } : undefined}
-    >
-      <span className="h-8 w-[3px] rounded-full bg-[var(--ink-300)] transition-colors group-hover:bg-[var(--blue)]" />
-    </button>
-  );
-}
-
 function LiveRail({ store, ...rest }: Omit<Parameters<typeof ThumbRail>[0], "current"> & { store: ScrollStore }) {
   const current = useScrollState(store, (s) => s.page);
   const part = useScrollState(store, (s) => s.part);
@@ -646,7 +605,10 @@ export function ExamRoom({
   // 存的宽度按当前窗口再限一次（窄窗口里不能把卷面挤没）
   const agentWidth = Math.min(agentW, Math.max(320, Math.round(winWidth * 0.6)));
   const dockSpace = !sideDock ? 0 : agentOpen ? agentWidth + 8 : panel ? DOCK_WIDTH + 8 : 0;
-  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - 16;
+  // 缩略图侧栏：宽屏停靠在左边，把卷面挤窄；窄屏盖在卷面上
+  const railDocked = winWidth >= 1100;
+  const railParts = !scope && !retry && paper.sections.length > 1;
+  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && railDocked ? railWidth(railParts) + 6 : 0) - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
   const pagePad = tightPad ? 32 : 96;
@@ -876,9 +838,9 @@ export function ExamRoom({
   const jumpPage = useCallback(
     (n: number) => {
       stage?.scrollTo({ top: topOf(n, clips.get(n)?.top ?? 0) - 12, behavior: "smooth" });
-      setRail(false);
+      if (!railDocked) setRail(false);
     },
-    [stage, topOf, clips],
+    [stage, topOf, clips, railDocked],
   );
 
   // 卷面查找：每页的词拼成一行再找，命中按页分好交给各页的单词层
@@ -2409,21 +2371,21 @@ export function ExamRoom({
                 pages={pages.slice(firstPage - 1, lastPage).map((p, k) => ({ n: firstPage + k, width: p.width, height: p.height }))}
                 marked={markedPages}
                 open={rail}
+                docked={railDocked}
                 onClose={() => setRail(false)}
                 inset={compact ? 56 : 0}
                 onJump={jumpPage}
                 parts={
-                  !scope && !retry && partAnchors.length > 1
+                  railParts
                     ? partAnchors.map((a) => {
                         const sec = paper.sections.find((x) => x.id === a.id);
-                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => { setRail(false); scrollToY(topOf(a.page, a.y) - 120); } };
+                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => { if (!railDocked) setRail(false); scrollToY(topOf(a.page, a.y) - 120); } };
                       })
                     : undefined
                 }
               />
             )}
-            {doc && pages && rail && <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />}
-            {doc && pages && <RailHandle open={rail} offset={6 + railWidth(!scope && !retry && partAnchors.length > 1)} onToggle={setRail} />}
+            {doc && pages && rail && !railDocked && <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
             <div className="flex min-w-0 flex-1 flex-col">
             {/* 卷面上不要浏览器自己的捏合放大（整页），双指缩放由上面的手势处理；长按出译文时不要系统的长按菜单 */}
