@@ -619,10 +619,10 @@ export function ExamRoom({
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
   const single = Math.min(PAGE_WIDTH, Math.max(avail, 480)) * zoom;
-  // 双页视图：横屏、整套卷，收起右侧栏后两页并排每页还有 380 宽（字不会太小）时可选；
+  // 双页视图：整套卷，收起右侧栏后两页并排每页还有 340 宽（平板竖屏也放得下）时可选；
   // 右侧栏开着放不下就先单页，打开双页时顺手收起右侧栏
-  const twoUpMin = (w: number) => (w - 20) / 2 >= 380;
-  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && twoUpMin(canvasWidth + dockSpace - 12 - (canvasWidth + dockSpace < 900 ? 32 : 96));
+  const twoUpMin = (w: number) => (w - 20) / 2 >= 340;
+  const twoUpOk = !scope && lastPage > firstPage && twoUpMin(canvasWidth + dockSpace - 12 - (canvasWidth + dockSpace < 900 ? 32 : 96));
   const twoUp = settings.twoUpPages && twoUpOk && twoUpMin(avail);
   const toggleTwoUp = () => {
     if (!twoUp && !twoUpMin(avail)) {
