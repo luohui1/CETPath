@@ -30,94 +30,70 @@ function renderThumb(doc: PDFDocumentProxy, key: string, page: number, alive: ()
 }
 
 // 滑块宽度：缩略图一列，有题型目录时右边再并一列
-export const railWidth = (parts: boolean) => (parts ? 330 : 120);
+export const railWidth = (parts: boolean) => (parts ? 180 : 120);
 
 type Part = { id: string; label: string; sub?: string; page: number; onClick: () => void };
 
-// 题型分档滑条：每个题型一个挡位，拖动或点挡位跳到那一部分，翻卷子时滑块跟着走
+// 题型分档滑条（竖着）：每个题型一个挡位，拖动或点挡位跳到那一部分，翻卷子时滑块跟着走
+const STEP = 40;
 function PartSlider({ parts, current }: { parts: Part[]; current?: string }) {
   const track = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const at = Math.max(0, parts.findIndex((x) => x.id === current));
   const idx = drag ?? at;
   const last = parts.length - 1;
-  const pct = (i: number) => (last ? (i / last) * 100 : 50);
-  const stopAt = (x: number) => {
+  const stopAt = (y: number) => {
     const r = track.current!.getBoundingClientRect();
-    return Math.round(Math.min(1, Math.max(0, (x - r.left) / r.width)) * last);
+    return Math.round(Math.min(1, Math.max(0, (y - r.top) / (r.height || 1))) * last);
   };
   const go = (i: number) => {
     setDrag(null);
     parts[i]?.onClick();
   };
-  const cur = parts[idx];
   return (
-    <div>
-      <p className="pb-3 text-[10px] font-semibold tracking-[0.14em] text-[var(--ink-subtle)]">题型</p>
-      <div
-        role="slider"
-        tabIndex={0}
-        aria-label="题型"
-        aria-valuemin={1}
-        aria-valuemax={parts.length}
-        aria-valuenow={idx + 1}
-        aria-valuetext={cur?.label}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          setDrag(stopAt(e.clientX));
-        }}
-        onPointerMove={(e) => drag !== null && setDrag(stopAt(e.clientX))}
-        onPointerUp={(e) => drag !== null && go(stopAt(e.clientX))}
-        onPointerCancel={() => setDrag(null)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowRight" || e.key === "ArrowDown") go(Math.min(last, idx + 1));
-          else if (e.key === "ArrowLeft" || e.key === "ArrowUp") go(Math.max(0, idx - 1));
-          else return;
-          e.preventDefault();
-        }}
-        className="relative mx-[11px] h-6 cursor-pointer touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-line)]"
-      >
-        <div ref={track} className="absolute inset-x-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[var(--paper-300,var(--line))]">
-          <div className={cn("h-full rounded-full bg-[var(--blue)]", drag === null && "transition-[width] duration-200")} style={{ width: `${pct(idx)}%` }} />
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="题型"
+      aria-orientation="vertical"
+      aria-valuemin={1}
+      aria-valuemax={parts.length}
+      aria-valuenow={idx + 1}
+      aria-valuetext={parts[idx]?.label}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrag(stopAt(e.clientY));
+      }}
+      onPointerMove={(e) => drag !== null && setDrag(stopAt(e.clientY))}
+      onPointerUp={(e) => drag !== null && go(stopAt(e.clientY))}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") go(Math.min(last, idx + 1));
+        else if (e.key === "ArrowUp" || e.key === "ArrowLeft") go(Math.max(0, idx - 1));
+        else return;
+        e.preventDefault();
+      }}
+      className="relative mx-auto mt-3 w-full cursor-pointer touch-none rounded-[8px] py-[11px] outline-none select-none focus-visible:ring-2 focus-visible:ring-[var(--blue-line)]"
+    >
+      <div ref={track} className="relative ml-[17px]" style={{ height: last * STEP }}>
+        <div className="absolute inset-y-0 left-0 w-[4px] -translate-x-1/2 rounded-full bg-[var(--line)]">
+          <div className={cn("w-full rounded-full bg-[var(--blue)]", drag === null && "transition-[height] duration-200")} style={{ height: idx * STEP }} />
         </div>
         {parts.map((x, i) => (
-          <span
-            key={x.id}
-            aria-hidden
-            className={cn("absolute top-1/2 size-[6px] -translate-1/2 rounded-full", i <= idx ? "bg-white/90" : "bg-[var(--ink-300)]")}
-            style={{ left: `${pct(i)}%` }}
-          />
+          <span key={x.id} title={`${x.label}${x.sub ? ` · Section ${x.sub}` : ""}，第 ${x.page} 页`} className="absolute left-0 flex -translate-y-1/2 items-center" style={{ top: i * STEP }}>
+            <span aria-hidden className={cn("size-[6px] -translate-x-1/2 rounded-full", i <= idx ? "bg-white" : "bg-[var(--ink-300)]")} />
+            <span className={cn("ml-2.5 text-[11px] leading-4 whitespace-nowrap transition-colors", i === idx ? "font-semibold text-[var(--blue)]" : "text-[var(--ink-500)]")}>
+              {x.label.slice(0, 2)}
+              {x.sub && <span className="num ml-px text-[9px] font-normal opacity-70">{x.sub}</span>}
+            </span>
+          </span>
         ))}
         <span
           aria-hidden
-          className={cn("absolute top-1/2 size-[22px] -translate-1/2 rounded-full bg-white shadow-[0_0_0_1px_var(--line),var(--elev-2)]", drag === null ? "transition-[left] duration-200 ease-out" : "scale-110")}
-          style={{ left: `${pct(idx)}%` }}
+          className={cn("absolute left-0 size-[18px] -translate-1/2 rounded-full bg-white shadow-[0_0_0_1px_var(--line),var(--elev-2)]", drag === null ? "transition-[top] duration-200 ease-out" : "scale-110")}
+          style={{ top: idx * STEP }}
         />
       </div>
-      <div className="relative mx-[11px] mt-2 h-4">
-        {parts.map((x, i) => (
-          <button
-            key={x.id}
-            type="button"
-            tabIndex={-1}
-            onClick={() => go(i)}
-            title={`${x.label}${x.sub ? ` · Section ${x.sub}` : ""}，第 ${x.page} 页`}
-            className={cn("absolute top-0 -translate-x-1/2 text-[11px] leading-4 whitespace-nowrap transition-colors", i === idx ? "font-semibold text-[var(--blue)]" : "text-[var(--ink-500)] hover:text-[var(--ink)]")}
-            style={{ left: `${pct(i)}%` }}
-          >
-            {x.label.slice(0, 2)}
-          </button>
-        ))}
-      </div>
-      {cur && (
-        <div className="mt-4 rounded-[8px] bg-white px-2.5 py-2 shadow-[var(--elev-1)]">
-          <p className="text-[13px] font-medium text-[var(--ink)]">
-            {cur.label}
-            {cur.sub && <span className="num ml-1.5 text-[11px] font-normal text-[var(--ink-500)]">Section {cur.sub}</span>}
-          </p>
-          <p className="num mt-0.5 text-[11px] text-[var(--ink-subtle)]">第 {cur.page} 页起 · {idx + 1}/{parts.length}</p>
-        </div>
-      )}
     </div>
   );
 }
@@ -263,7 +239,7 @@ export function ThumbRail({
         ))}
       </nav>
       {parts && (
-        <div className="min-w-0 flex-1 border-l border-[var(--line-soft)] px-3 pt-2 pb-3">
+        <div className="scrollbar-none min-w-0 flex-1 overflow-y-auto border-l border-[var(--line-soft)] pr-1 pb-3">
           <PartSlider parts={parts} current={currentPart} />
         </div>
       )}
