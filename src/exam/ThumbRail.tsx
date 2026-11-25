@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { SidebarSimple } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -233,9 +233,29 @@ export function ThumbRail({
       </div>
       <div className="flex min-h-0 flex-1" style={{ width }}>
       <nav ref={setRoot} aria-label="页面缩略图" className="scrollbar-none w-[120px] flex-none space-y-3 overflow-y-auto overscroll-contain pt-1 pb-3">
-        {pages.map((p) => (
-          <Thumb key={p.n} doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
-        ))}
+        {pages.map((p) => {
+          const starts = parts?.filter((x) => x.page === p.n) ?? [];
+          const on = starts.some((x) => x.id === currentPart);
+          return (
+            <Fragment key={p.n}>
+              {starts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={starts[0].onClick}
+                  title={starts.map((x) => x.label).join("、")}
+                  className="group flex w-full items-center gap-1.5 px-2.5 pt-1"
+                >
+                  <span aria-hidden className={cn("size-[6px] flex-none rounded-full", on ? "bg-[var(--blue)]" : "bg-[var(--ink-300)] group-hover:bg-[var(--ink-500)]")} />
+                  <span className={cn("text-[10px] leading-3 whitespace-nowrap", on ? "font-semibold text-[var(--blue)]" : "text-[var(--ink-500)] group-hover:text-[var(--ink)]")}>
+                    {starts.map((x) => x.label.slice(0, 2)).join(" · ")}
+                  </span>
+                  <span aria-hidden className={cn("h-px min-w-2 flex-1", on ? "bg-[var(--blue-line)]" : "bg-[var(--line)]")} />
+                </button>
+              )}
+              <Thumb doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
+            </Fragment>
+          );
+        })}
       </nav>
       {parts && (
         <div className="scrollbar-none min-w-0 flex-1 overflow-y-auto border-l border-[var(--line-soft)] pr-1 pb-3">
