@@ -61,7 +61,7 @@ import { ExamTimer } from "./ExamTimer";
 import { Stopwatch, useQuestionTimer } from "./Stopwatch";
 import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
-import { ThumbRail } from "./ThumbRail";
+import { ThumbRail, railWidth } from "./ThumbRail";
 import { AgentSplit } from "./AgentSplit";
 import { PaperLinkCtx, type PaperLink } from "./paperLink";
 import { findText } from "@/lib/agentTools";
@@ -228,7 +228,7 @@ const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => 
 
 /** 缩略图栏：当前页跟着滚动走 */
 // 缩略图滑块的把手：收起时在卷面左边缘，拉开后贴在栏的右边跟着走。点一下开关，往右拉打开，往左推收回
-function RailHandle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+function RailHandle({ open, offset, onToggle }: { open: boolean; offset: number; onToggle: (open: boolean) => void }) {
   const from = useRef<{ x: number; y: number } | null>(null);
   // 拖过一下就不再算点击，免得松手时又把刚拉开或收回的栏切回去
   const dragged = useRef(false);
@@ -259,8 +259,9 @@ function RailHandle({ open, onToggle }: { open: boolean; onToggle: (open: boolea
       onPointerUp={() => (from.current = null)}
       className={cn(
         "no-print group absolute top-1/2 left-0 z-30 flex h-20 w-5 -translate-y-1/2 touch-none items-center justify-center rounded-r-[10px] shadow-[var(--elev-2)] backdrop-blur transition-[translate,width,background-color] duration-200 ease-out hover:w-6",
-        open ? "translate-x-[138px] bg-[var(--paper-100)]" : "bg-white/90",
+        open ? "bg-[var(--paper-100)]" : "bg-white/90",
       )}
+      style={open ? { translate: `${offset}px -50%` } : undefined}
     >
       <span className="h-8 w-[3px] rounded-full bg-[var(--ink-300)] transition-colors group-hover:bg-[var(--blue)]" />
     </button>
@@ -2422,7 +2423,7 @@ export function ExamRoom({
               />
             )}
             {doc && pages && rail && <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />}
-            {doc && pages && <RailHandle open={rail} onToggle={setRail} />}
+            {doc && pages && <RailHandle open={rail} offset={6 + railWidth(!scope && !retry && partAnchors.length > 1)} onToggle={setRail} />}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
             <div className="flex min-w-0 flex-1 flex-col">
             {/* 卷面上不要浏览器自己的捏合放大（整页），双指缩放由上面的手势处理；长按出译文时不要系统的长按菜单 */}

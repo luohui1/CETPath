@@ -28,6 +28,9 @@ function renderThumb(doc: PDFDocumentProxy, key: string, page: number, alive: ()
   });
 }
 
+// 滑块宽度：缩略图一列，有题型目录时右边再并一列
+export const railWidth = (parts: boolean) => (parts ? 224 : 120);
+
 export interface RailPage {
   n: number; // 原卷页码，从 1 开始
   width: number;
@@ -129,10 +132,8 @@ export function ThumbRail({
   }, [current, root]);
 
   return (
-    <nav
-      ref={setRoot}
-      aria-label="页面缩略图"
-      style={inset ? { paddingTop: inset } : undefined}
+    <div
+      style={{ width: railWidth(!!parts), ...(inset ? { paddingTop: inset } : {}) }}
       aria-hidden={!open}
       inert={!open}
       onPointerDown={(e) => (from.current = { x: e.clientX, y: e.clientY })}
@@ -142,12 +143,17 @@ export function ThumbRail({
         if (f && f.x - e.clientX > 48 && Math.abs(e.clientY - f.y) < f.x - e.clientX) onClose();
       }}
       className={cn(
-        "scrollbar-none no-print absolute top-0 bottom-1.5 left-1.5 z-30 w-[132px] space-y-3 overflow-y-auto overscroll-contain rounded-[12px] bg-[var(--paper-100)] py-3 shadow-[var(--elev-3)] transition-[translate,opacity] duration-200 ease-out",
+        "no-print absolute top-0 bottom-1.5 left-1.5 z-30 flex overflow-hidden rounded-[12px] bg-[var(--paper-100)] shadow-[var(--elev-3)] transition-[translate,opacity] duration-200 ease-out",
         open ? "translate-x-0" : "pointer-events-none -translate-x-[calc(100%+16px)] opacity-0",
       )}
     >
+      <nav ref={setRoot} aria-label="页面缩略图" className="scrollbar-none w-[120px] flex-none space-y-3 overflow-y-auto overscroll-contain py-3">
+        {pages.map((p) => (
+          <Thumb key={p.n} doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
+        ))}
+      </nav>
       {parts && (
-        <div className="mx-2 border-b border-[var(--line-soft)] pb-3">
+        <nav aria-label="题型目录" className="scrollbar-none min-w-0 flex-1 overflow-y-auto border-l border-[var(--line-soft)] px-1.5 py-3">
           <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-[var(--ink-subtle)]">目录</p>
           <ol className="relative space-y-px before:absolute before:top-2 before:bottom-2 before:left-[5px] before:w-px before:bg-[var(--line)]">
             {parts.map((x) => {
@@ -159,7 +165,7 @@ export function ThumbRail({
                     onClick={x.onClick}
                     aria-current={on ? "true" : undefined}
                     title={`${x.label}${x.sub ? ` · Section ${x.sub}` : ""}，第 ${x.page} 页`}
-                    className={cn("group relative flex w-full items-center gap-1.5 rounded-[6px] py-1 pr-1 pl-4 text-left text-[12px] leading-[16px] transition-colors", on ? "bg-white font-medium text-[var(--ink)] shadow-[var(--elev-1)]" : "text-[var(--ink-500)] hover:text-[var(--ink)]")}
+                    className={cn("group relative flex w-full items-center gap-1 rounded-[6px] py-1 pr-1 pl-4 text-left text-[12px] leading-[16px] transition-colors", on ? "bg-white font-medium text-[var(--ink)] shadow-[var(--elev-1)]" : "text-[var(--ink-500)] hover:text-[var(--ink)]")}
                   >
                     <span aria-hidden className={cn("absolute top-1/2 left-[2px] size-[7px] -translate-y-1/2 rounded-full ring-2 ring-[var(--paper-100)]", on ? "bg-[var(--blue)]" : "bg-[var(--ink-300)] group-hover:bg-[var(--ink-500)]")} />
                     <span className="min-w-0 flex-1 truncate whitespace-nowrap">{x.label}</span>
@@ -169,11 +175,8 @@ export function ThumbRail({
               );
             })}
           </ol>
-        </div>
+        </nav>
       )}
-      {pages.map((p) => (
-        <Thumb key={p.n} doc={doc} cover={cover} page={p} root={root} current={p.n === current} marked={marked.has(p.n)} onJump={onJump} />
-      ))}
-    </nav>
+    </div>
   );
 }
