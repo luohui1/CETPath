@@ -5,6 +5,7 @@ import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icon
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
 import { setSetting, useSettings } from "@/lib/settings";
 import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
+import { voiceMatchesAccent } from "@/lib/voice";
 import { downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
 import { AgentModel } from "@/components/AgentModel";
@@ -67,6 +68,9 @@ function Account() {
 export function SettingsPage() {
   const s = useSettings();
   const voices = useEnglishVoices();
+  // 发音人只列和当前口音一致的语音；换口音时旧发音人不删，切回来还在
+  const accentVoices = voices.filter((v) => voiceMatchesAccent(v.lang, s.accent));
+  const currentVoice = s.voiceURI && accentVoices.some((v) => v.voiceURI === s.voiceURI) ? s.voiceURI : "";
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -131,11 +135,11 @@ export function SettingsPage() {
         <Row title="自动发音" desc="查词和背词时自动读出单词">
           <Switch label="自动发音" checked={s.autoSpeak} onChange={(v) => setSetting("autoSpeak", v)} />
         </Row>
-        <Row title="单词口音" desc="词书里的词播真人录音">
+        <Row title="单词口音" desc="真人录音、在线发音和浏览器语音都按它选；换口音时按新口音重新选发音人">
           <Segmented
             label="单词口音"
             value={s.accent}
-            onChange={(v) => setSetting("accent", v)}
+            onChange={(v) => setSetting("accent", v === "uk" ? "uk" : "us")}
             options={[
               { value: "us", label: "美音" },
               { value: "uk", label: "英音" },
@@ -145,14 +149,14 @@ export function SettingsPage() {
             <SpeakerHigh className="size-[18px]" />
           </Button>
         </Row>
-        <Row title="句子和其他词" desc={speechSupported() ? "没有真人录音的词和句子用浏览器自带的语音，不同系统可选的声音不同" : "当前浏览器不支持语音合成"}>
+        <Row title="句子和其他词" desc={speechSupported() ? "没有真人录音的词和句子用浏览器自带的语音，只列与所选口音一致的语音" : "当前浏览器不支持语音合成"}>
           <select
-            value={s.voiceURI ?? ""}
+            value={currentVoice ?? ""}
             onChange={(e) => setSetting("voiceURI", e.target.value || null)}
             className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)] max-w-52"
           >
             <option value="">自动选择</option>
-            {voices.map((v) => (
+            {accentVoices.map((v) => (
               <option key={v.voiceURI} value={v.voiceURI}>
                 {v.name} ({v.lang})
               </option>
