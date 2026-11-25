@@ -236,7 +236,10 @@ function RailHandle({ onOpen }: { onOpen: () => void }) {
       aria-label="页面缩略图"
       title="页面缩略图（T）"
       onClick={onOpen}
-      onPointerDown={(e) => (from.current = { x: e.clientX, y: e.clientY })}
+      onPointerDown={(e) => {
+        from.current = { x: e.clientX, y: e.clientY };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
       onPointerMove={(e) => {
         const f = from.current;
         if (f && e.clientX - f.x > 24 && Math.abs(e.clientY - f.y) < e.clientX - f.x) {
