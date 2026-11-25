@@ -227,28 +227,33 @@ type ScrollStore = ReturnType<typeof createScrollStore>;
 const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => useSyncExternalStore(store.subscribe, () => pick(store.get()));
 
 /** 缩略图栏：当前页跟着滚动走 */
-// 卷面左边缘的把手：点一下或往右一拉，缩略图滑块就出来
-function RailHandle({ onOpen }: { onOpen: () => void }) {
+// 缩略图滑块的把手：收起时在卷面左边缘，拉开后贴在栏的右边跟着走。点一下开关，往右拉打开，往左推收回
+function RailHandle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
   const from = useRef<{ x: number; y: number } | null>(null);
   return (
     <button
       type="button"
-      aria-label="页面缩略图"
-      title="页面缩略图（T）"
-      onClick={onOpen}
+      aria-label={open ? "收起缩略图" : "页面缩略图"}
+      aria-expanded={open}
+      title={open ? "收起缩略图（T）" : "页面缩略图（T）"}
+      onClick={() => onToggle(!open)}
       onPointerDown={(e) => {
         from.current = { x: e.clientX, y: e.clientY };
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
         const f = from.current;
-        if (f && e.clientX - f.x > 24 && Math.abs(e.clientY - f.y) < e.clientX - f.x) {
+        const dx = e.clientX - (f?.x ?? 0);
+        if (f && Math.abs(dx) > 24 && Math.abs(e.clientY - f.y) < Math.abs(dx)) {
           from.current = null;
-          onOpen();
+          onToggle(dx > 0);
         }
       }}
       onPointerUp={() => (from.current = null)}
-      className="no-print group absolute top-1/2 left-0 z-30 flex h-20 w-5 -translate-y-1/2 touch-none items-center justify-center rounded-r-[10px] bg-white/90 shadow-[var(--elev-2)] backdrop-blur transition-[width] hover:w-6"
+      className={cn(
+        "no-print group absolute top-1/2 left-0 z-30 flex h-20 w-5 -translate-y-1/2 touch-none items-center justify-center rounded-r-[10px] shadow-[var(--elev-2)] backdrop-blur transition-[translate,width,background-color] duration-200 ease-out hover:w-6",
+        open ? "translate-x-[138px] bg-[var(--paper-100)]" : "bg-white/90",
+      )}
     >
       <span className="h-8 w-[3px] rounded-full bg-[var(--ink-300)] transition-colors group-hover:bg-[var(--blue)]" />
     </button>
@@ -2409,11 +2414,8 @@ export function ExamRoom({
                 }
               />
             )}
-            {doc && pages && (rail ? (
-              <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />
-            ) : (
-              <RailHandle onOpen={() => setRail(true)} />
-            ))}
+            {doc && pages && rail && <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />}
+            {doc && pages && <RailHandle open={rail} onToggle={setRail} />}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
             <div className="flex min-w-0 flex-1 flex-col">
             {/* 卷面上不要浏览器自己的捏合放大（整页），双指缩放由上面的手势处理；长按出译文时不要系统的长按菜单 */}
