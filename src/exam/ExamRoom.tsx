@@ -230,14 +230,20 @@ const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => 
 // 缩略图滑块的把手：收起时在卷面左边缘，拉开后贴在栏的右边跟着走。点一下开关，往右拉打开，往左推收回
 function RailHandle({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
   const from = useRef<{ x: number; y: number } | null>(null);
+  // 拖过一下就不再算点击，免得松手时又把刚拉开或收回的栏切回去
+  const dragged = useRef(false);
   return (
     <button
       type="button"
       aria-label={open ? "收起缩略图" : "页面缩略图"}
       aria-expanded={open}
       title={open ? "收起缩略图（T）" : "页面缩略图（T）"}
-      onClick={() => onToggle(!open)}
+      onClick={() => {
+        if (!dragged.current) onToggle(!open);
+        dragged.current = false;
+      }}
       onPointerDown={(e) => {
+        dragged.current = false;
         from.current = { x: e.clientX, y: e.clientY };
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
@@ -246,6 +252,7 @@ function RailHandle({ open, onToggle }: { open: boolean; onToggle: (open: boolea
         const dx = e.clientX - (f?.x ?? 0);
         if (f && Math.abs(dx) > 24 && Math.abs(e.clientY - f.y) < Math.abs(dx)) {
           from.current = null;
+          dragged.current = true;
           onToggle(dx > 0);
         }
       }}
