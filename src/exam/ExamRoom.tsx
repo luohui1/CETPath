@@ -2379,7 +2379,7 @@ export function ExamRoom({
                   railParts
                     ? partAnchors.map((a) => {
                         const sec = paper.sections.find((x) => x.id === a.id);
-                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => { if (!railDocked) setRail(false); scrollToY(topOf(a.page, a.y) - 120); } };
+                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
                       })
                     : undefined
                 }
