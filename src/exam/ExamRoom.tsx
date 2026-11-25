@@ -230,7 +230,8 @@ const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => 
 /** 缩略图栏：当前页跟着滚动走 */
 function LiveRail({ store, ...rest }: Omit<Parameters<typeof ThumbRail>[0], "current"> & { store: ScrollStore }) {
   const current = useScrollState(store, (s) => s.page);
-  return <ThumbRail current={current} {...rest} />;
+  const part = useScrollState(store, (s) => s.part);
+  return <ThumbRail current={current} currentPart={part} {...rest} />;
 }
 
 /** 顶栏的部分切换：高亮当前读到的部分 */
@@ -2388,7 +2389,7 @@ export function ExamRoom({
                   !scope && !retry && partAnchors.length > 1
                     ? partAnchors.map((a) => {
                         const sec = paper.sections.find((x) => x.id === a.id);
-                        return { label: kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : ""), onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
+                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
                       })
                     : undefined
                 }

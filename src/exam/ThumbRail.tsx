@@ -96,6 +96,7 @@ export function ThumbRail({
   inset = 0,
   onJump,
   parts,
+  currentPart,
 }: {
   doc: PDFDocumentProxy;
   cover?: string; // 试卷封面小图（第一页）
@@ -105,7 +106,8 @@ export function ThumbRail({
   floating: boolean;
   inset?: number; // 上面浮着工具栏时让出的高度
   onJump: (n: number) => void;
-  parts?: { label: string; onClick: () => void }[]; // 题型导航：一点跳到那一部分
+  parts?: { id: string; label: string; sub?: string; page: number; onClick: () => void }[]; // 题型导航：一点跳到那一部分
+  currentPart?: string;
 }) {
   const [root, setRoot] = useState<HTMLElement | null>(null);
   // 当前页滚出缩略图栏时，把它带回视野里（只动这一栏）
@@ -122,18 +124,33 @@ export function ThumbRail({
       aria-label="页面缩略图"
       style={inset ? { paddingTop: inset } : undefined}
       className={cn(
-        "no-print w-[112px] shrink-0 space-y-3 overflow-y-auto overscroll-contain rounded-[10px] bg-[var(--paper-100)] py-3",
+        "scrollbar-none no-print w-[112px] shrink-0 space-y-3 overflow-y-auto overscroll-contain rounded-[10px] bg-[var(--paper-100)] py-3",
         floating ? "absolute top-0 bottom-1.5 left-1.5 z-30 shadow-[var(--elev-3)]" : "mb-1.5 ml-1.5",
       )}
     >
       {parts && (
-        <div className="mx-1.5 space-y-0.5 border-b border-[var(--line-soft)] pb-2">
-          <p className="px-1.5 pb-0.5 text-[11px] font-medium text-[var(--ink-500)]">题型</p>
-          {parts.map((x) => (
-            <button key={x.label} type="button" onClick={x.onClick} className="block w-full rounded-[6px] px-1.5 py-1 text-left text-[12px] leading-[16px] text-[var(--ink-700)] hover:bg-white hover:text-[var(--blue)]">
-              {x.label}
-            </button>
-          ))}
+        <div className="mx-2 border-b border-[var(--line-soft)] pb-3">
+          <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-[var(--ink-subtle)]">目录</p>
+          <ol className="relative space-y-px before:absolute before:top-2 before:bottom-2 before:left-[5px] before:w-px before:bg-[var(--line)]">
+            {parts.map((x) => {
+              const on = x.id === currentPart;
+              return (
+                <li key={x.id}>
+                  <button
+                    type="button"
+                    onClick={x.onClick}
+                    aria-current={on ? "true" : undefined}
+                    title={`${x.label}${x.sub ? ` · Section ${x.sub}` : ""}，第 ${x.page} 页`}
+                    className={cn("group relative flex w-full items-center gap-1.5 rounded-[6px] py-1 pr-1 pl-4 text-left text-[12px] leading-[16px] transition-colors", on ? "bg-white font-medium text-[var(--ink)] shadow-[var(--elev-1)]" : "text-[var(--ink-500)] hover:text-[var(--ink)]")}
+                  >
+                    <span aria-hidden className={cn("absolute top-1/2 left-[2px] size-[7px] -translate-y-1/2 rounded-full ring-2 ring-[var(--paper-100)]", on ? "bg-[var(--blue)]" : "bg-[var(--ink-300)] group-hover:bg-[var(--ink-500)]")} />
+                    <span className="min-w-0 flex-1 truncate whitespace-nowrap">{x.label}</span>
+                    {x.sub && <span className={cn("num flex-none text-[10px]", on ? "text-[var(--blue)]" : "text-[var(--ink-subtle)]")}>{x.sub}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       )}
       {pages.map((p) => (
