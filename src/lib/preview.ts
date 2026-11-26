@@ -158,7 +158,9 @@ const streamOf = (run: (push: (d: unknown) => void) => Promise<void>) => {
         try {
           await run(push);
         } catch (e) {
-          if ((e as Error).name !== "AbortError") push({ error: (e as Error).message });
+          // 学习者点了停止：让读流的一端也收到 AbortError，恢复问题而不是把半截回答存成完整的
+          if ((e as Error).name === "AbortError") return ctrl.error(e);
+          push({ error: (e as Error).message });
         }
         push("[DONE]");
         ctrl.close();
@@ -179,6 +181,7 @@ async function chat(data: Ctx, signal?: AbortSignal | null) {
   if (!c)
     return streamOf(async (push) => {
       for (const piece of DEMO.match(/[\s\S]{1,6}/g) ?? []) {
+        signal?.throwIfAborted();
         push({ t: piece });
         await new Promise((r) => setTimeout(r, 18));
       }
