@@ -631,7 +631,7 @@ export function ExamRoom({
     }
     void setSetting("twoUpPages", !twoUp);
   };
-  const scale = (twoUp ? Math.min(single, (avail - 20) / 2) : single) / pageWidth;
+  const scale = (twoUp ? Math.min(PAGE_WIDTH, (avail - 20) / 2) * zoom : single) / pageWidth;
   // 同一套卷子里页面宽窄不一（拼进来的听力页等）：每页按自己的宽度缩放，显示出来一样宽
   const scaleOf = (k: number, n: number) => (pages?.[n - 1]?.width ? (k * pageWidth) / pages[n - 1].width : k);
   const pageScale = (n: number) => scaleOf(scale, n);
