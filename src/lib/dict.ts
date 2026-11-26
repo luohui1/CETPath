@@ -215,9 +215,29 @@ export interface BookInfo {
   count: number;
 }
 
-export async function loadBookMeta(): Promise<BookInfo[]> {
-  const meta = await getJson<{ books: BookInfo[] }>("/dict/meta.json");
-  return meta.books;
+let bookMetaCache: Promise<BookInfo[]> | null = null;
+export function loadBookMeta(): Promise<BookInfo[]> {
+  if (!bookMetaCache) {
+    bookMetaCache = (async () => {
+      const meta = await getJson<{ books: BookInfo[] }>("/dict/meta.json");
+      const books = [...meta.books];
+      if (!books.some((b) => b.id === "ielts")) {
+        try {
+          const ieltsEntries = await loadBook("ielts");
+          if (Array.isArray(ieltsEntries) && ieltsEntries.length > 0) {
+            books.push({ id: "ielts", name: "雅思核心词汇", count: ieltsEntries.length });
+          }
+        } catch {
+          // 未解压雅思数据包时不显示雅思词书
+        }
+      }
+      return books;
+    })();
+    bookMetaCache.catch(() => {
+      bookMetaCache = null;
+    });
+  }
+  return bookMetaCache;
 }
 
 const bookCache = new Map<string, Promise<DictEntry[]>>();

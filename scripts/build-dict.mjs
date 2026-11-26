@@ -19,6 +19,7 @@ const BOOKS = [
   { id: "cet4", name: "大学英语四级", tag: "cet4" },
   { id: "cet6", name: "大学英语六级", tag: "cet6" },
   { id: "ky", name: "考研英语", tag: "ky" },
+  { id: "ielts", name: "雅思核心词汇", tag: "ielts" },
 ];
 const FREQ_LIMIT = 30000;
 
@@ -66,7 +67,10 @@ async function corpusWords() {
       if (w.includes("-")) for (const p of w.split("-")) words.add(p);
     }
   };
-  const idx = JSON.parse(await readFile(path.join(root, "public/papers/index.json"), "utf8"));
+  let idx = [];
+  try {
+    idx = JSON.parse(await readFile(path.join(root, "public/papers/index.json"), "utf8"));
+  } catch {}
   for (const { id } of idx) {
     try {
       for (const p of JSON.parse(await readFile(path.join(root, `public/papers/pdf/${id}.words.json`), "utf8")).pages) for (const w of p.w) add(w[0]);
