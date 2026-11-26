@@ -6,7 +6,8 @@
 export const IS_PREVIEW = import.meta.env.VITE_PREVIEW === "1";
 
 export type PreviewModel = { base_url: string; api_key: string; model: string };
-const CFG_KEY = "yz-preview-model";
+export const PREVIEW_MODEL_KEY = "yz-preview-model";
+const CFG_KEY = PREVIEW_MODEL_KEY;
 export const DEMO_MODEL = "演示回答";
 /** 正式版模型下拉里"自己的模型"那一项 */
 export const ownModelName = (c: PreviewModel) => `自定义 · ${c.model}`;

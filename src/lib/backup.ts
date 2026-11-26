@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { savePreviewModel } from "./preview";
 
 const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "aiSyntax"] as const;
 
@@ -22,6 +23,7 @@ export async function importBackup(json: unknown) {
 }
 
 export async function clearAll() {
+  savePreviewModel(null);
   await db.transaction("rw", TABLES.map((t) => db.table(t)), async () => {
     for (const t of TABLES) await db.table(t).clear();
   });
