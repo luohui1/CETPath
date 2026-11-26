@@ -1,3 +1,4 @@
+import { paperPath } from "@/lib/attempts";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -19,7 +20,11 @@ const day = (t: number) => {
   return d.toDateString() === new Date().toDateString() ? `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}` : `${d.getMonth() + 1}月${d.getDate()}日`;
 };
 const shortTitle = (p: PaperIndexItem) => [EXAMS.find((e) => e.id === p.exam)?.short ?? p.exam, p.month ? `${p.year}.${p.month}` : `${p.year}`, p.set ? `第${p.set}套` : p.label].filter(Boolean).join(" ");
-const paperLink = (id: string, chat?: string) => `/paper/${id}?agent=1${chat ? `&chat=${encodeURIComponent(chat)}` : ""}`;
+/** 分节练习的会话回到那一节（会话 id 形如 paper:<卷>#<节>:<交卷时间>） */
+const paperLink = (id: string, chat?: string) => {
+  const sec = chat?.match(/^paper:[^#:]+#([^:]+):/)?.[1];
+  return `${paperPath(id, sec && sec !== "retry" ? sec : undefined)}?agent=1${chat ? `&chat=${encodeURIComponent(chat)}` : ""}`;
+};
 
 /** AI 助教页：左边历史对话按卷子分组（随便问的单独一组），右边是对话；没开对话时中间一个输入框，下面可以挑一套卷子去卷面上问 */
 export function AskPage() {

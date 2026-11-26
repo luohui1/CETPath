@@ -83,7 +83,7 @@ export function AgentSplit({
   const thread: AgentThread = sentence
     ? sentence
     : sid
-      ? sid.startsWith("paper:") // 整卷会话总用最新的作答数据（交卷后前缀会变，旧会话也要看到对错和用时）
+      ? sid.startsWith(prefix.slice(0, prefix.lastIndexOf(":") + 1)) // 这次作答（同一整卷/分节/重做）的会话总用最新的作答数据（交卷后前缀会变，旧会话也要看到对错和用时）；别的作答的会话用它存下的上下文
         ? { id: sid, ctx: paperThread.ctx }
         : { id: sid, ctx: picked?.ctx ?? paperThread.ctx }
       : {
