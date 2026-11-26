@@ -2401,7 +2401,7 @@ export function ExamRoom({
               ) : (
                 <div
                   ref={contentRef}
-                  className={cn(twoUp ? "grid grid-cols-[repeat(2,max-content)] justify-center gap-5" : "space-y-5", tightPad ? "px-4 py-5" : "px-12 py-8", compact && "pt-[68px]")}
+                  className={cn(twoUp ? "grid w-max min-w-full grid-cols-[repeat(2,max-content)] justify-center gap-5" : "space-y-5", tightPad ? "px-4 py-5" : "px-12 py-8", compact && "pt-[68px]")}
                   onClick={(e) => e.target === e.currentTarget && closeBar()}
                 >
                   {pages.slice(firstPage - 1, lastPage).map((p, k) => (
