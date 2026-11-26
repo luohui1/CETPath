@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:lan": "vite --host",
+    "dev": "python -I scripts/export_agent_prompts.py && vite",
+    "dev:lan": "python -I scripts/export_agent_prompts.py && vite --host",
     "build": "python -I scripts/export_agent_prompts.py && tsc -b && vite build",
     "build:preview": "python -I scripts/export_agent_prompts.py && tsc -b && vite build --mode preview",
     "preview": "vite preview",
