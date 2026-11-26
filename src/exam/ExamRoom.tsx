@@ -32,6 +32,7 @@ import { Sparkle,
   SidebarSimple,
   TextUnderline,
   type Icon,
+  BookOpen,
 } from "@phosphor-icons/react";
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
@@ -47,6 +48,7 @@ import { markSeen } from "@/lib/learning";
 import { ConfirmDialog, PaperDialog, Tip } from "@/components/overlay";
 import { Button, EmptyState } from "@/components/ui";
 import { prefetchAudio, touchAudio } from "@/lib/audioCache";
+import { warmDict } from "@/lib/dict";
 import { findTrans, loadTrans, sentenceKey, type TransFile, type TransLookup } from "@/lib/trans";
 import { loadSyntax, type SyntaxFile } from "@/lib/syntax";
 import { ExamPage, questionCue, wordNth, wordRect, type Answers, type PageItems, type Timing } from "./PaperPages";
@@ -59,7 +61,7 @@ import { ExamTimer } from "./ExamTimer";
 import { Stopwatch, useQuestionTimer } from "./Stopwatch";
 import { ExplainContext, type ExplainActions } from "./Explanation";
 import { ReportSheet } from "./ReportSheet";
-import { ThumbRail } from "./ThumbRail";
+import { ThumbRail, railWidth } from "./ThumbRail";
 import { AgentSplit } from "./AgentSplit";
 import { PaperLinkCtx, type PaperLink } from "./paperLink";
 import { findText } from "@/lib/agentTools";
@@ -164,7 +166,6 @@ const SET_KINDS = new Set<SectionKind>(["banked", "matching", "cloze", "order"])
 const NO_MARKS: MarkRow[] = [];
 const NO_STRUCK: Record<string, string[]> = {};
 const FLASH_MS = 3000; // 解析定位句在卷面上亮多久
-const RAIL_WIDTH = 118; // 缩略图栏连同间距
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const NO_HITS: FindHit[] = [];
@@ -228,7 +229,8 @@ const useScrollState = <T,>(store: ScrollStore, pick: (s: ScrollState) => T) => 
 /** 缩略图栏：当前页跟着滚动走 */
 function LiveRail({ store, ...rest }: Omit<Parameters<typeof ThumbRail>[0], "current"> & { store: ScrollStore }) {
   const current = useScrollState(store, (s) => s.page);
-  return <ThumbRail current={current} {...rest} />;
+  const part = useScrollState(store, (s) => s.part);
+  return <ThumbRail current={current} currentPart={part} {...rest} />;
 }
 
 /** 顶栏的部分切换：高亮当前读到的部分 */
@@ -254,7 +256,7 @@ function PageJump({ store, first, last, onJump }: { store: ScrollStore; first: n
           onBlur={() => setEdit(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") setEdit(false);
-            if (e.key !== "Enter") return;
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             const n = parseInt(e.currentTarget.value, 10);
             if (n) onJump(Math.max(first, Math.min(last, n)));
             setEdit(false);
@@ -396,6 +398,16 @@ export function ExamRoom({
   // 听力录音在后台下载的进度（0–1）；没在下（没有录音、已在缓存里、下完了、离线）是 null
   const [audioPct, setAudioPct] = useState<number | null>(null);
   const [pages, setPages] = useState<PdfWordsPage[] | null>(null);
+  // 卷面单词到手、原卷画出来以后，后台把词典取进缓存：点词时释义马上出来
+  useEffect(() => {
+    if (!pages) return;
+    const ac = new AbortController();
+    const t = setTimeout(() => void warmDict(pages.flatMap((p) => p.w.map((w) => w[0])), ac.signal), 3000);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [pages]);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [winWidth, setWinWidth] = useState(innerWidth);
@@ -404,6 +416,8 @@ export function ExamRoom({
   // 缩略图栏：平板竖屏、窄屏默认收起
   // 缩略图栏默认收起，把宽度留给卷面；工具栏按钮或 T 键打开
   const [rail, setRail] = useState(false);
+  // 侧边滑块第一次拉出来才挂上，之后一直留着，收起时缩略图不用重画
+  const railSeen = useRef(false);
   // 卷面查找：focusKey 每按一次 Ctrl+F 加一，回到输入框
   const [find, setFind] = useState({ open: false, query: "", index: 0, focusKey: 0 });
   const findOpen = find.open;
@@ -413,9 +427,9 @@ export function ExamRoom({
   // 停靠区（所有面板放在一处，同一时间一个标签）：平板这类窄屏默认收起，卷面大一些好写字；宽屏打开上次开的标签。
   // 只有写作和翻译的卷（一页纸的第 2、3 套）直接打开作答
   const hasChoiceQ = paper.sections.some((s) => s.groups.some((g) => g.questions.some((q) => q.options?.length)));
-  const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
+  const [panel, setPanel] = useState<DockTab | null>(() => (innerWidth < 1200 || search.get("agent") === "1" ? null : !hasChoiceQ ? "write" : (lastDockTab() ?? "sheet")));
   // Agent 分屏：横屏占右边那一栏（和停靠区的面板二选一），宽度可拖，记在本机
-  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(() => search.get("agent") === "1"); // AI 助教页"回到卷子"带 ?agent=1
   // 交卷单上点了"找 Agent 复盘"：打开整卷会话并自动问复盘（每点一次加一，关掉 Agent 归零）
   const [reviewAsk, setReviewAsk] = useState(0);
   // 工具栏实际放不下（开笔后多出预设、颜色）时逐级收：1 按钮只留图标，2 再收起笔的预设；还放不下就这一行左右滑
@@ -584,8 +598,6 @@ export function ExamRoom({
   const firstPage = range?.first ?? 1;
   const lastPage = range?.last ?? pages?.length ?? 1;
 
-  // 平板竖屏、小屏：缩略图栏浮在卷面上，不挤占卷面宽度
-  const floating = winWidth < 1100;
   // 平板横屏这类矮屏：顶栏和工具栏并成一行，浮在卷面上，往下滚时收起
   const compact = winWidth > winHeight && winHeight < 900;
   // 停靠区：横屏或宽 ≥ 1100 在右侧一栏（宽 360，把卷面挤窄）；竖屏窄屏是听力条上面的底部抽屉（把卷面挤矮）
@@ -593,7 +605,10 @@ export function ExamRoom({
   // 存的宽度按当前窗口再限一次（窄窗口里不能把卷面挤没）
   const agentWidth = Math.min(agentW, Math.max(320, Math.round(winWidth * 0.6)));
   const dockSpace = !sideDock ? 0 : agentOpen ? agentWidth + 8 : panel ? DOCK_WIDTH + 8 : 0;
-  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && !floating ? RAIL_WIDTH : 0) - 16;
+  // 缩略图侧栏：宽屏停靠在左边，把卷面挤窄；窄屏盖在卷面上
+  const railDocked = winWidth >= 1100;
+  const railParts = !scope && !retry && paper.sections.length > 1;
+  const canvasWidth = Math.max(winWidth, MIN_WIDTH) - dockSpace - (rail && railDocked ? railWidth(railParts) + 6 : 0) - 16;
   // 卷面那一栏窄（平板、开着侧栏）时页边距收窄，卷面大一些好写字
   const tightPad = canvasWidth < 900;
   const pagePad = tightPad ? 32 : 96;
@@ -604,10 +619,24 @@ export function ExamRoom({
   const pageWidth = pages?.[0]?.width ?? 595;
   // 100% = 卷面宽 860，放不下就是画布可用宽度；放大超过画布就左右滚动
   const single = Math.min(PAGE_WIDTH, Math.max(avail, 480)) * zoom;
-  // 双页视图：横屏、整套卷、一页还不到半个屏幕宽（两页并排也不会缩得太小）时才可选
-  const twoUpOk = !scope && winWidth > winHeight && lastPage > firstPage && single < winWidth / 2 && (avail - 20) / 2 >= single * 0.8;
-  const twoUp = settings.twoUpPages && twoUpOk;
-  const scale = (twoUp ? Math.min(single, (avail - 20) / 2) : single) / pageWidth;
+  // 双页视图：整套卷，收起右侧栏后两页并排每页还有 340 宽（平板竖屏也放得下）时可选；
+  // 右侧栏开着放不下就先单页，打开双页时顺手收起右侧栏
+  const twoUpMin = (w: number) => (w - 20) / 2 >= 340;
+  const twoUpOk = !scope && lastPage > firstPage && twoUpMin(canvasWidth + dockSpace - 12 - (canvasWidth + dockSpace < 900 ? 32 : 96));
+  const twoUp = settings.twoUpPages && twoUpOk && twoUpMin(avail);
+  const toggleTwoUp = () => {
+    if (!twoUp && !twoUpMin(avail)) {
+      setPanel(null);
+      setAgentOpen(false);
+    }
+    void setSetting("twoUpPages", !twoUp);
+  };
+  const scale = (twoUp ? Math.min(PAGE_WIDTH, (avail - 20) / 2) * zoom : single) / pageWidth;
+  // 同一套卷子里页面宽窄不一（拼进来的听力页等）：每页按自己的宽度缩放，显示出来一样宽
+  const scaleOf = (k: number, n: number) => (pages?.[n - 1]?.width ? (k * pageWidth) / pages[n - 1].width : k);
+  const pageScale = (n: number) => scaleOf(scale, n);
+  const scaleOfRef = useRef(scaleOf);
+  scaleOfRef.current = scaleOf;
   const clips = useMemo(() => {
     const map = new Map<number, { top: number; bottom: number | null }>();
     if (range) {
@@ -701,10 +730,10 @@ export function ExamRoom({
     (page: number, y: number) => {
       const el = document.getElementById(`pdf-page-${page}`);
       if (!el || !stage) return Infinity;
-      return el.getBoundingClientRect().top - stage.getBoundingClientRect().top + stage.scrollTop + y * scale;
+      return el.getBoundingClientRect().top - stage.getBoundingClientRect().top + stage.scrollTop + y * pageScale(page);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stage, scale, twoUp],
+    [stage, scale, twoUp, pages],
   );
   const ready = !!(doc && pages && stage);
 
@@ -809,9 +838,9 @@ export function ExamRoom({
   const jumpPage = useCallback(
     (n: number) => {
       stage?.scrollTo({ top: topOf(n, clips.get(n)?.top ?? 0) - 12, behavior: "smooth" });
-      if (floating) setRail(false);
+      if (!railDocked) setRail(false);
     },
-    [stage, topOf, clips, floating],
+    [stage, topOf, clips, railDocked],
   );
 
   // 卷面查找：每页的词拼成一行再找，命中按页分好交给各页的单词层
@@ -1087,12 +1116,12 @@ export function ExamRoom({
         const r = el?.getBoundingClientRect();
         if (!el || !r || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
         const data = pages[n - 1];
-        const k = wordAt(data.w, (cx - r.left) / scale, (cy - r.top) / scale);
+        const k = wordAt(data.w, (cx - r.left) / pageScale(n), (cy - r.top) / pageScale(n));
         if (k < 0) break;
         gesture.touchLookupAt = Date.now();
         setOpenQ(null);
         setSent(null);
-        setHit({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(n, data, k, scale), page: n, index: k, nth: wordNth(data, k) });
+        setHit({ word: data.w[k][0], sentence: data.s[data.w[k][5]] ?? "", rect: wordRect(n, data, k, pageScale(n)), page: n, index: k, nth: wordNth(data, k) });
         return;
       }
       // 点在卷面空白处：收起
@@ -1113,7 +1142,7 @@ export function ExamRoom({
         const r = document.getElementById(`pdf-page-${n}`)?.getBoundingClientRect();
         if (!r || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
         const data = pages[n - 1];
-        const k = wordAt(data.w, (cx - r.left) / scale, (cy - r.top) / scale);
+        const k = wordAt(data.w, (cx - r.left) / pageScale(n), (cy - r.top) / pageScale(n));
         const sid = k >= 0 ? data.w[k][5] : -1;
         const sentence = data.s[sid];
         if (!sentence) return false;
@@ -1229,7 +1258,9 @@ export function ExamRoom({
       for (const el of content.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
         const r = el.getBoundingClientRect();
         if (m[1] < r.top || m[1] > r.bottom) continue;
-        anchor = { n: Number(el.id.slice(9)), px: (m[0] - r.left) / scaleRef.current, py: (m[1] - r.top) / scaleRef.current };
+        const n = Number(el.id.slice(9));
+        const k = scaleOfRef.current(scaleRef.current, n);
+        anchor = { n, px: (m[0] - r.left) / k, py: (m[1] - r.top) / k };
         break;
       }
       const cr = content.getBoundingClientRect();
@@ -1292,7 +1323,9 @@ export function ExamRoom({
     for (const el of stage.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
       const r = el.getBoundingClientRect();
       if (cy < r.top || cy > r.bottom) continue;
-      return { n: Number(el.id.slice(9)), px: (cx - r.left) / k, py: (cy - r.top) / k, cx, cy, center: true, fitX: zoomRef.current === 1 };
+      const n = Number(el.id.slice(9));
+      const kk = scaleOfRef.current(k, n);
+      return { n, px: (cx - r.left) / kk, py: (cy - r.top) / kk, cx, cy, center: true, fitX: zoomRef.current === 1 };
     }
     return null;
   };
@@ -1321,9 +1354,9 @@ export function ExamRoom({
       cx = s.left + stage.clientWidth / 2;
       cy = s.top + stage.clientHeight / 2;
     }
-    stage.scrollTop += r.top + a.py * scale - cy;
+    stage.scrollTop += r.top + a.py * pageScale(a.n) - cy;
     if (a.fitX) stage.scrollLeft = 0;
-    else stage.scrollLeft += r.left + a.px * scale - cx;
+    else stage.scrollLeft += r.left + a.px * pageScale(a.n) - cx;
   }, [scale, stage, winWidth, winHeight, dockSpace]);
 
   // 画布上一次排好时的大小：窗口变了以后，用它找回变之前画布中间是哪一点
@@ -1349,7 +1382,9 @@ export function ExamRoom({
         for (const el of stage.querySelectorAll<HTMLElement>('[id^="pdf-page-"]')) {
           const r = el.getBoundingClientRect();
           if (cy < r.top || cy > r.bottom) continue;
-          anchorRef.current = { n: Number(el.id.slice(9)), px: (cx - r.left) / scaleRef.current, py: (cy - r.top) / scaleRef.current, cx, cy, center: true, fitX: zoomRef.current === 1 };
+          const n = Number(el.id.slice(9));
+          const k = scaleOfRef.current(scaleRef.current, n);
+          anchorRef.current = { n, px: (cx - r.left) / k, py: (cy - r.top) / k, cx, cy, center: true, fitX: zoomRef.current === 1 };
           break;
         }
       }
@@ -1371,20 +1406,6 @@ export function ExamRoom({
       removeEventListener("orientationchange", soon);
     };
   }, [stage]);
-
-  // 转成竖屏（缩略图栏要浮在卷面上）时先收起它，免得盖住卷面左边；转回来再按原样打开
-  const railBefore = useRef(false);
-  useLayoutEffect(() => {
-    if (floating) {
-      railBefore.current = rail;
-      if (rail) setRail(false);
-    } else if (railBefore.current) {
-      railBefore.current = false;
-      setRail(true);
-    }
-    // 只在浮不浮切换时处理
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floating]);
 
   const ct = colorTool(tool);
   const { add, remove, update, replace } = history;
@@ -1477,9 +1498,9 @@ export function ExamRoom({
     };
     if (hit.page != null && hit.index != null && pages) {
       const data = pages[hit.page - 1];
-      const word = wordRect(hit.page, data, hit.index, scale);
+      const word = wordRect(hit.page, data, hit.index, pageScale(hit.page));
       const ks = cardTrans && wordCtx?.ids ? wordCtx.ids : (phraseWords ?? []);
-      return { word, avoid: ks.reduce((r, k) => union(r, wordRect(hit.page!, data, k, scale)), word) };
+      return { word, avoid: ks.reduce((r, k) => union(r, wordRect(hit.page!, data, k, pageScale(hit.page!))), word) };
     }
     const word = hit.el?.isConnected ? hit.el.getBoundingClientRect() : hit.rect;
     const row = cardTrans ? hit.el?.closest("p, li")?.getBoundingClientRect() : undefined;
@@ -1716,7 +1737,7 @@ export function ExamRoom({
       else if (r.bottom > bottom) stage.scrollBy({ top: Math.min(r.bottom - bottom, r.top - top), behavior: "smooth" });
       return;
     }
-    const r = hit?.page && hit.index != null && pages ? wordRect(hit.page, pages[hit.page - 1], hit.index, scale) : undefined;
+    const r = hit?.page && hit.index != null && pages ? wordRect(hit.page, pages[hit.page - 1], hit.index, pageScale(hit.page)) : undefined;
     if (!r) return;
     if (r.bottom < top || r.top > bottom) stage.scrollBy({ top: r.top - (top + (bottom - top) * 0.3), behavior: "smooth" });
     else if (r.bottom > bottom) stage.scrollBy({ top: Math.min(r.bottom - bottom, r.top - top), behavior: "smooth" });
@@ -1755,6 +1776,11 @@ export function ExamRoom({
     },
     [lowerDrawer],
   );
+  /** "看解析"：在卷子下面打开第一道错题（没错题就第一题）的解析，上一题/下一题接着翻 */
+  const explainFirst = () => {
+    const q = order.find((q) => answers[q.id] !== q.answer) ?? order[0];
+    if (q) explainQ(q);
+  };
   // 新手：一道都没答、也没交卷时，第一题的空圈闪几下，状态栏写一句点哪儿
   const fresh = !submitted && !Object.keys(answers).length && order.length > 0;
   const firstHint = fresh ? idAt(0) : null;
@@ -1987,6 +2013,7 @@ export function ExamRoom({
       times={times}
       limits={limits}
       onReport={() => setReport((r) => ({ ...r, open: true }))}
+      onExplain={explainFirst}
       onWriteFocus={(q) => timeStart(q.id)}
       attempt={attempt}
       answers={answers}
@@ -2157,6 +2184,7 @@ export function ExamRoom({
                 ]
               : []),
             undoRedo,
+            ...(twoUpOk ? [[tool$(twoUp ? "换回单页" : "双页并排：左右两页一起看", <BookOpen className="size-[19px]" weight={twoUp ? "fill" : "duotone"} />, toggleTwoUp, { active: twoUp, soft: true, text: "双页" })]] : []),
             // 窄屏时缩放收进"更多"，工具栏放得下笔的预设
             ...(slim
               ? []
@@ -2250,7 +2278,7 @@ export function ExamRoom({
                     </span>
                   </div>
                 )}
-                {twoUpOk && moreItem("双页视图", () => void setSetting("twoUpPages", !settings.twoUpPages), settings.twoUpPages && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
+                {twoUpOk && moreItem("双页视图", () => (close(), toggleTwoUp()), twoUp && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
                 {moreItem("标出生词本里的词", () => void setSetting("showVocabMarks", !settings.showVocabMarks), settings.showVocabMarks && <Check className="size-4 text-[var(--blue)]" weight="bold" />)}
                 {moreItem("快捷键", () => {
                   close();
@@ -2335,26 +2363,29 @@ export function ExamRoom({
             )}
 
             <div className="relative flex min-h-0 flex-1">
-            {rail && doc && pages && (
+            {doc && pages && (railSeen.current ||= rail) && (
               <LiveRail
                 store={scrollStore}
                 doc={doc}
                 cover={range ? undefined : cover}
                 pages={pages.slice(firstPage - 1, lastPage).map((p, k) => ({ n: firstPage + k, width: p.width, height: p.height }))}
                 marked={markedPages}
-                floating={floating}
+                open={rail}
+                docked={railDocked}
+                onClose={() => setRail(false)}
                 inset={compact ? 56 : 0}
                 onJump={jumpPage}
                 parts={
-                  !scope && !retry && partAnchors.length > 1
+                  railParts
                     ? partAnchors.map((a) => {
                         const sec = paper.sections.find((x) => x.id === a.id);
-                        return { label: kindName(a.kind, paper.exam) + (sec?.subtitle ? ` · ${sec.subtitle}` : ""), onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
+                        return { id: a.id, label: kindName(a.kind, paper.exam), sub: sec?.subtitle?.replace(/^Section\s*/i, ""), page: a.page, onClick: () => scrollToY(topOf(a.page, a.y) - 120) };
                       })
                     : undefined
                 }
               />
             )}
+            {doc && pages && rail && !railDocked && <div aria-hidden className="no-print absolute inset-0 z-20 bg-[rgba(20,24,31,0.06)]" onClick={() => setRail(false)} />}
             {/* 卷面那一栏：卷面在上，查词、解析、译句的底部条排在它下面（不盖在卷面上，卷面跟着变矮） */}
             <div className="flex min-w-0 flex-1 flex-col">
             {/* 卷面上不要浏览器自己的捏合放大（整页），双指缩放由上面的手势处理；长按出译文时不要系统的长按菜单 */}
@@ -2370,7 +2401,7 @@ export function ExamRoom({
               ) : (
                 <div
                   ref={contentRef}
-                  className={cn(twoUp ? "grid grid-cols-[repeat(2,max-content)] justify-center gap-5" : "space-y-5", tightPad ? "px-4 py-5" : "px-12 py-8", compact && "pt-[68px]")}
+                  className={cn(twoUp ? "grid w-max min-w-full grid-cols-[repeat(2,max-content)] justify-center gap-5" : "space-y-5", tightPad ? "px-4 py-5" : "px-12 py-8", compact && "pt-[68px]")}
                   onClick={(e) => e.target === e.currentTarget && closeBar()}
                 >
                   {pages.slice(firstPage - 1, lastPage).map((p, k) => (
@@ -2379,7 +2410,7 @@ export function ExamRoom({
                       doc={doc}
                       index={firstPage - 1 + k}
                       clip={clips.get(firstPage + k)}
-                      scale={scale}
+                      scale={pageScale(firstPage + k)}
                       data={p}
                       root={stage!}
                       placeholder={firstPage + k === 1 && !range ? cover : undefined}
@@ -2423,7 +2454,7 @@ export function ExamRoom({
                       onWrite={onWrite}
                     />
                   ))}
-                  <p className={cn("pt-1 text-center text-[11px] text-subtle", twoUp && "col-span-2")}>{paper.note}</p>
+                  <p className={cn("pt-1 text-center text-[11px] text-subtle", twoUp && "col-span-2 w-0 min-w-full")}>{paper.note}</p>
                 </div>
               )}
             </div>
@@ -2534,10 +2565,7 @@ export function ExamRoom({
           retired={report.retired}
           back={back}
           onExplainQ={explainQ}
-          onExplain={() => {
-            setReport((r) => ({ ...r, open: false }));
-            openTab("explain");
-          }}
+          onExplain={explainFirst}
           onRetry={(ids) => navigate(retryPath(paper.id, ids))}
           onAgent={() => {
             setReport((r) => ({ ...r, open: false }));

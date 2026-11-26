@@ -333,16 +333,20 @@ button:disabled {
 :root {
   --memdb-h: 0px;
 }
-html.yz-memdb {
+html.yz-memdb,
+html.yz-preview {
   --memdb-h: 32px;
 }
-html.yz-memdb body {
+html.yz-memdb body,
+html.yz-preview body {
   padding-top: var(--memdb-h);
 }
-html.yz-memdb .h-dvh {
+html.yz-memdb .h-dvh,
+html.yz-preview .h-dvh {
   height: calc(100dvh - var(--memdb-h));
 }
-html.yz-memdb .min-h-dvh {
+html.yz-memdb .min-h-dvh,
+html.yz-preview .min-h-dvh {
   min-height: calc(100dvh - var(--memdb-h));
 }
 

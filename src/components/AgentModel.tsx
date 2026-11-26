@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { resetAgentStatus } from "@/lib/agent";
+import { pickedModel, resetAgentStatus, setPickedModel } from "@/lib/agent";
 import { Button } from "@/components/ui";
+import { IS_PREVIEW, ownModelName, previewModel, savePreviewModel, testPreviewModel } from "@/lib/preview";
 
 type Cfg = { base_url?: string; model?: string; temperature?: number | null; api_key_set?: boolean; api_key_tail?: string; models?: string[]; access_code?: string; error?: string; reply?: string; ms?: number };
 
@@ -21,8 +22,108 @@ async function api(path: string, body?: unknown, method?: string): Promise<[numb
 
 const field = "h-10 w-full rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)]";
 
+const PRESETS = [
+  { name: "DeepSeek", base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  { name: "硅基流动", base_url: "https://api.siliconflow.cn/v1", model: "deepseek-ai/DeepSeek-V3" },
+  { name: "通义千问", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
+  { name: "OpenRouter", base_url: "https://openrouter.ai/api/v1", model: "deepseek/deepseek-chat" },
+];
+
+/** 预览版：模型存在这台设备的浏览器里，浏览器直接调用；不填就用演示回答 */
+function PreviewAgentModel() {
+  const saved = previewModel();
+  const [f, setF] = useState(saved ?? { base_url: "", model: "", api_key: "" });
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ok = !!(f.base_url.trim() && f.model.trim() && f.api_key.trim());
+  const clean = () => ({ base_url: f.base_url.trim(), model: f.model.trim(), api_key: f.api_key.trim() });
+  const save = () => {
+    const c = clean();
+    if (saved && pickedModel() === ownModelName(saved)) localStorage.removeItem("yz-agent-model");
+    savePreviewModel(c);
+    if (!IS_PREVIEW) setPickedModel(ownModelName(c));
+    resetAgentStatus();
+    setMsg({ ok: true, text: IS_PREVIEW ? "已保存。AI 助教现在用这个模型回答" : `已保存，并切到「${ownModelName(c)}」。在 AI 助教输入框下面的模型下拉里可以随时换回服务器的模型` });
+  };
+  const test = async () => {
+    setBusy(true);
+    setMsg(null);
+    const t0 = performance.now();
+    try {
+      const reply = await testPreviewModel(clean());
+      setMsg({ ok: true, text: `连接成功（${((performance.now() - t0) / 1000).toFixed(1)} 秒）：${reply}` });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    }
+    setBusy(false);
+  };
+  const clear = () => {
+    if (saved && pickedModel() === ownModelName(saved)) localStorage.removeItem("yz-agent-model");
+    savePreviewModel(null);
+    setF({ base_url: "", model: "", api_key: "" });
+    resetAgentStatus();
+    setMsg({ ok: true, text: IS_PREVIEW ? "已清除，AI 助教改回演示回答" : "已清除，AI 助教改回服务器的模型" });
+  };
+  return (
+    <div className="space-y-3 px-5 py-4">
+      <p className="text-[13px] leading-[21px] text-[var(--ink-700)]">
+        {IS_PREVIEW
+          ? "预览版没有后台。填上你自己的 OpenAI 兼容接口，AI 助教就用它回答；API Key 只存在这台设备的浏览器里，由浏览器直接发给你填的接口。不填时 AI 助教只回一段演示说明。"
+          : "想用自己的模型：填上 OpenAI 兼容接口，模型下拉里会多一项「自定义 · 模型名」。API Key 只存在这台设备的浏览器里，由浏览器直接发给你填的接口，不经过本站服务器；接口要允许浏览器跨域调用。"}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {PRESETS.map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            onClick={() => setF({ ...f, base_url: p.base_url, model: p.model })}
+            className={`h-7 rounded-full px-3 text-[12px] font-medium shadow-[var(--elev-1)] ${f.base_url === p.base_url ? "bg-[var(--blue)] text-white" : "bg-white text-[var(--ink-700)]"}`}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+      <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium">接口地址（到 /v1 为止）</span>
+        <input value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} placeholder="https://api.deepseek.com/v1" className={field} />
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium">模型名</span>
+        <input value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} placeholder="deepseek-chat" className={field} />
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium">API Key</span>
+        <input type="password" autoComplete="off" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} placeholder="sk-..." className={field} />
+      </label>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button variant="primary" onClick={save} disabled={!ok}>
+          保存
+        </Button>
+        <Button onClick={() => void test()} loading={busy} disabled={!ok}>
+          测试连接
+        </Button>
+        {saved && <Button onClick={clear}>{IS_PREVIEW ? "清除，改回演示" : "清除"}</Button>}
+      </div>
+      {msg && <p className={`text-[13px] leading-5 ${msg.ok ? "text-[var(--green,#16a34a)]" : "text-[var(--red,#dc2626)]"}`}>{msg.text}</p>}
+    </div>
+  );
+}
+
 /** 设置页的 Agent 模型：OpenAI 兼容接口的地址、模型名、密钥。存在服务器上，改之前要输后台密码 */
 export function AgentModel() {
+  if (IS_PREVIEW) return <PreviewAgentModel />;
+  return (
+    <>
+      <PreviewAgentModel />
+      <details className="group border-t border-[var(--line-soft)]">
+        <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]">站点管理员：服务器默认模型</summary>
+        <ServerAgentModel />
+      </details>
+    </>
+  );
+}
+
+function ServerAgentModel() {
   const [state, setState] = useState<"loading" | "login" | "form" | "off">("loading");
   const [pw, setPw] = useState("");
   const [f, setF] = useState({ base_url: "", model: "", api_key: "", temperature: "", models: "", access_code: "" });

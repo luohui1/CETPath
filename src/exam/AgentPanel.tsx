@@ -12,7 +12,7 @@ import { AgentQuiz } from "./AgentQuiz";
 import { AnswerPick, SaveAnswer } from "./AnswerPick";
 import { AgentVisual, VISUAL_TOOLS } from "./AgentVisuals";
 import { AgentActivate } from "@/components/AgentActivate";
-import { db } from "@/lib/db";
+import { db, type ChatRow } from "@/lib/db";
 import {
   pickedModel,
   remember,
@@ -67,6 +67,12 @@ const firstAsk = (ctx: AgentContext) =>
     ? `「${ctx.word}」在这句里是什么意思、起什么作用？顺便帮我理一下这句的结构。`
     : "这句我没看懂，帮我解析一下。");
 
+/** 对话标题：卷面上问的那句，否则第一句提问 */
+export const chatTitle = (c: Pick<ChatRow, "ctx" | "messages">) => {
+  const first = c.messages.find((m) => m.role === "user")?.content ?? "";
+  return (c.ctx.sentence ? `“${c.ctx.sentence}”` : first || c.ctx.question || "新对话").replace(/\s+/g, " ").slice(0, 40);
+};
+
 const when = (t: number) => {
   const d = new Date(t);
   const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -93,7 +99,11 @@ export function AgentPanel({
     thread ? (threads.get(thread.id) ?? []) : [],
   );
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  // 哪段对话正在回答：回答中切到别的对话，流式内容只写回原来那段，不串到眼前这段
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const busy = busyId !== null && busyId === thread?.id;
+  const viewing = useRef(thread?.id);
+  viewing.current = thread?.id;
   const [think, setThink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [noted, setNoted] = useState<string[]>([]);
@@ -127,7 +137,7 @@ export function AgentPanel({
   }, [msgs, busy]);
 
   const send = async (text: string) => {
-    if (!thread || busy || !text.trim()) return;
+    if (!thread || busyId !== null || !text.trim()) return;
     const id = thread.id;
     const base = [
       ...(threads.get(id) ?? []),
@@ -136,7 +146,7 @@ export function AgentPanel({
     let ctx = thread.ctx; // 存进本机的上下文（识别出手写笔记后换成带笔记的）
     const put = (list: ChatMsg[], persist = false) => {
       threads.set(id, list);
-      setMsgs(list);
+      if (viewing.current === id) setMsgs(list);
       if (persist)
         void (list.length
           ? db.chats.put({ id, ctx, messages: list, updatedAt: Date.now() })
@@ -145,7 +155,7 @@ export function AgentPanel({
     put([...base, { role: "assistant", content: "" }]);
     setDraft("");
     setError(null);
-    setBusy(true);
+    setBusyId(id);
     const ctl = new AbortController();
     abort.current = ctl;
     try {
@@ -208,11 +218,13 @@ export function AgentPanel({
       );
     } catch (e) {
       put(base.slice(0, -1));
-      setDraft(text);
-      if ((e as Error).name !== "AbortError")
-        setError((e as Error).message || "出错了");
+      if (viewing.current === id) {
+        setDraft(text);
+        if ((e as Error).name !== "AbortError")
+          setError((e as Error).message || "出错了");
+      }
     } finally {
-      setBusy(false);
+      setBusyId(null);
       setThink("");
       abort.current = null;
     }
@@ -475,7 +487,7 @@ export function AgentPanel({
             <button
               key={q}
               type="button"
-              disabled={busy}
+              disabled={busyId !== null}
               onClick={() => void send(q)}
               className="pill disabled:opacity-40"
             >

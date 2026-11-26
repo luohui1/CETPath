@@ -24,8 +24,17 @@ export interface LookupResult {
 const shardCache = new Map<string, Promise<Record<string, DictEntry>>>();
 let lemmaPromise: Promise<Record<string, string>> | null = null;
 
+// 后台预取（warmDict）正在取的文件：点词时先等它取完再从缓存读，不重复下载
+const warming = new Map<string, Promise<unknown>>();
+
+/** 取词典类文件：后台正在预取同一个文件就先等它 */
+export async function fetchDict(url: string, init?: RequestInit) {
+  await warming.get(url)?.catch(() => {});
+  return fetch(url, init);
+}
+
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetchDict(url);
   if (!res.ok) throw new Error(`加载 ${url} 失败：${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -220,4 +229,31 @@ export function loadBook(id: string): Promise<DictEntry[]> {
     bookCache.set(id, p);
   }
   return p;
+}
+
+/**
+ * 卷子打开后在后台把查词要用的文件先取进缓存：词形表、短语表，再按卷面单词首字母出现多少依次取词典分片和词根分片。
+ * 只下载不解析（进 Service Worker / 浏览器缓存），点词时就不用现等网络。一个接一个取，不和原卷抢带宽
+ */
+export async function warmDict(words: string[], signal: AbortSignal) {
+  const count = new Map<string, number>();
+  for (const w of words) {
+    const s = shardOf(w.toLowerCase());
+    if (s !== "_") count.set(s, (count.get(s) ?? 0) + 1);
+  }
+  const letters = [...count].sort((a, b) => b[1] - a[1]).map(([s]) => s);
+  const urls = ["/dict/lemma.json", "/dict/phrases.json", ...letters.flatMap((s) => [`/dict/shards/${s}.json`, `/dict/roots/${s}.json`])];
+  for (const u of urls) {
+    if (signal.aborted) return;
+    // 低优先级：点词、翻页的请求先走
+    const p = fetch(u, { signal, priority: "low" } as RequestInit).then((r) => r.blob());
+    warming.set(u, p);
+    try {
+      await p;
+    } catch {
+      return;
+    } finally {
+      warming.delete(u);
+    }
+  }
 }

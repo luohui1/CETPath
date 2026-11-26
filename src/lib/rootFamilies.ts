@@ -1,3 +1,4 @@
+import { fetchDict } from "./dict";
 import { useMemo } from "react";
 import { useCachedLiveQuery } from "@/lib/live";
 import { db } from "@/lib/db";
@@ -16,7 +17,7 @@ let cache: Promise<Family[]> | null = null;
 
 /** 词根家族 public/dict/roots/families.json（scripts/build_roots.py 生成） */
 export function loadFamilies() {
-  cache ??= fetch("/dict/roots/families.json").then((r) => (r.ok ? (r.json() as Promise<Family[]>) : []));
+  cache ??= fetchDict("/dict/roots/families.json").then((r) => (r.ok ? (r.json() as Promise<Family[]>) : []));
   cache.catch(() => (cache = null));
   return cache;
 }

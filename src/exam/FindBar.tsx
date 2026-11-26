@@ -104,7 +104,7 @@ export function FindBar({ query, count, index, onQuery, onStep, onClose, focusKe
         value={query}
         onChange={(e) => onQuery(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
             e.preventDefault();
             if (count) onStep(e.shiftKey ? -1 : 1);
           } else if (e.key === "Escape") {

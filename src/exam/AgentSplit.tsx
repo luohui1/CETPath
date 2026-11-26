@@ -14,9 +14,9 @@ import {
   Trash,
   X,
 } from "@phosphor-icons/react";
-import { db, type ChatRow } from "@/lib/db";
+import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { AgentPanel, forgetThread, type AgentThread } from "./AgentPanel";
+import { AgentPanel, chatTitle as titleOf, forgetThread, type AgentThread } from "./AgentPanel";
 import type { ToolEnv } from "@/lib/agentTools";
 import { useAgentState } from "@/lib/agent";
 import { AgentActivate } from "@/components/AgentActivate";
@@ -26,12 +26,6 @@ const when = (t: number) => {
   return d.toDateString() === new Date().toDateString()
     ? `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`
     : `${d.getMonth() + 1}/${d.getDate()}`;
-};
-const titleOf = (c: ChatRow) => {
-  const first = c.messages.find((m) => m.role === "user")?.content ?? "";
-  return (c.ctx.sentence ? `“${c.ctx.sentence}”` : first || "新对话")
-    .replace(/\s+/g, " ")
-    .slice(0, 40);
 };
 
 /**
@@ -66,7 +60,7 @@ export function AgentSplit({
 }) {
   const self = useRef<HTMLElement>(null);
   const state = useAgentState();
-  const [sid, setSid] = useState<string | null>(null);
+  const [sid, setSid] = useState<string | null>(() => new URLSearchParams(location.search).get("chat")); // AI 助教页"回到卷子"带上那段对话
   const [listOpen, setListOpen] = useState(false);
   const title = paperThread.ctx.paper;
   const chats = useLiveQuery(
@@ -89,7 +83,7 @@ export function AgentSplit({
   const thread: AgentThread = sentence
     ? sentence
     : sid
-      ? sid.startsWith("paper:") // 整卷会话总用最新的作答数据（交卷后前缀会变，旧会话也要看到对错和用时）
+      ? sid.startsWith(prefix.slice(0, prefix.lastIndexOf(":") + 1)) // 这次作答（同一整卷/分节/重做）的会话总用最新的作答数据（交卷后前缀会变，旧会话也要看到对错和用时）；别的作答的会话用它存下的上下文
         ? { id: sid, ctx: paperThread.ctx }
         : { id: sid, ctx: picked?.ctx ?? paperThread.ctx }
       : {

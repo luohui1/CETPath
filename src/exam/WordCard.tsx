@@ -51,9 +51,11 @@ function useLookup(word: string, hit: WordClick, onLookedUp: () => void) {
     setRoots(null);
     hit.el?.classList.add("is-active");
     // 词根和释义一起出来：分两次出来卡片要变两次高
+    // 词根分片和词典分片同时取，不用一个等另一个
+    const early = getRoots(word);
     lookup(word).then(
       async (r) => {
-        const rt = r && !r.parts ? await getRoots(r.entry.w) : null;
+        const rt = r && !r.parts ? (r.entry.w.toLowerCase() === word.trim().toLowerCase() ? await early : await getRoots(r.entry.w)) : null;
         if (cancelled) return;
         setResult(r);
         setRoots(rt);
@@ -213,7 +215,6 @@ export function WordCard({
       (list) => {
         if (cancelled) return;
         setPhrases(list);
-        phraseCb.current?.(list[0] ? list[0].pos : null);
       },
       () => {},
     );
@@ -228,10 +229,12 @@ export function WordCard({
   const pickText = pick && ctx && pick.length > 1 ? pick.map((k) => clean(ctx.tokens[k])).filter(Boolean).join(" ") : "";
   // 显示用：中间隔开的地方写成 …（take … into account）
   const pickShow = pick && ctx && pick.length > 1 ? pick.map((k, i) => (i && k > pick[i - 1] + 1 ? "… " : "") + clean(ctx.tokens[k])).join(" ") : "";
+  // 卷面上只框点的那个词；自己选了短语，或手指/鼠标放在卡片里的某条短语上，才把整个短语框出来
+  const [hoverPhrase, setHoverPhrase] = useState<number[] | null>(null);
+  useEffect(() => setHoverPhrase(null), [ctx]);
   useEffect(() => {
-    if (pick?.length) phraseCb.current?.(pick);
-    else phraseCb.current?.(phrases[0] ? phrases[0].pos : null);
-  }, [pick, phrases]);
+    phraseCb.current?.(pick?.length ? pick : hoverPhrase);
+  }, [pick, hoverPhrase]);
   useEffect(() => {
     let cancelled = false;
     setPicked(undefined);
@@ -392,12 +395,14 @@ export function WordCard({
   const tokens = ctx?.tokens ?? [];
   const win: [number, number] | null = ctx && tokens.length > 1 ? [Math.max(0, ctx.at - 8), Math.min(tokens.length - 1, ctx.at + 8)] : null;
   const tr = showTrans && hit.sentence ? trans(hit.sentence) : null;
-  // 短语：这个词在这句里所在的短语（卷面上整个短语也标出来）。点的是 on、to、as 这类小词时，要的多半是短语：放在词义前面
+  // 短语：这个词在这句里所在的短语（指着这条时卷面上整个短语框出来）。点的是 on、to、as 这类小词时，要的多半是短语：放在词义前面
   const phraseFirst = phrases.length > 0 && FUNCTION_WORDS.has(hit.word.toLowerCase());
   const phraseBox = phrases.length > 0 && !pick && (
     <div className="mt-2.5 space-y-2 rounded-[10px] bg-[var(--blue-tint)] px-3 py-2 shadow-[inset_0_0_0_1px_var(--blue-line)]">
       {phrases.map((p) => (
-        <PhraseRow key={p.phrase} phrase={p.phrase} trans={p.trans} between={p.between} sentence={hit.sentence} source={source} />
+        <div key={p.phrase} onPointerEnter={() => setHoverPhrase(p.pos)} onPointerLeave={() => setHoverPhrase(null)}>
+          <PhraseRow phrase={p.phrase} trans={p.trans} between={p.between} sentence={hit.sentence} source={source} />
+        </div>
       ))}
     </div>
   );

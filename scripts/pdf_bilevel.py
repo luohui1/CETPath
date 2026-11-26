@@ -109,11 +109,11 @@ def rasterize(path):
         bw = Image.fromarray(np.where(a > t, 255, 0).astype(np.uint8)).convert("1")
         data = g4_strip(bw)
         np_ = out.new_page(width=page.rect.width, height=page.rect.height)
-        # 先放一张占位图，再把它的流换成 G4。占位图每页尺寸不同：一样的图 PyMuPDF 会并成一个对象，
+        # 先放一张占位图，再把它的流换成 G4（不保持比例：占位图是 1×n 的细条，保持比例会把整页压成一条）。占位图每页尺寸不同：一样的图 PyMuPDF 会并成一个对象，
         # 那样所有页都指着同一张图、最后一页的内容会盖掉前面所有页
         ph = io.BytesIO()
         Image.new("L", (1, page.number + 1), 255).save(ph, "PNG")
-        xref = np_.insert_image(np_.rect, stream=ph.getvalue())
+        xref = np_.insert_image(np_.rect, stream=ph.getvalue(), keep_proportion=False)
         out.update_stream(xref, data, new=False, compress=False)
         for k, v in (("Filter", "/CCITTFaxDecode"), ("DecodeParms", f"<</K -1/Columns {pix.width}/Rows {pix.height}/BlackIs1 true>>"),
                      ("BitsPerComponent", "1"), ("ColorSpace", "/DeviceGray"), ("Width", str(pix.width)), ("Height", str(pix.height)),

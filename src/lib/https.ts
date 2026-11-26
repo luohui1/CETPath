@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { PREVIEW_MODEL_KEY } from "./preview";
 
 const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats"] as const;
 const MOVED = "yz-moved-https";
@@ -35,6 +36,7 @@ export async function leaveHttp(): Promise<boolean> {
     const ls: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)!;
+      if (k === PREVIEW_MODEL_KEY) continue; // 模型 API Key 不经 http 发出去
       ls[k] = localStorage.getItem(k) ?? "";
     }
     if (Object.values(tables).some((rows) => rows.length) || Object.keys(ls).length) {

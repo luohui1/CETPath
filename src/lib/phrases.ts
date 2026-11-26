@@ -1,4 +1,4 @@
-import { loadLemma } from "./dict";
+import { fetchDict, loadLemma } from "./dict";
 
 /*
  * 短语（2026-11-12）：点词时认出这个词所在的短语（come up with、in terms of、make up one's mind…）。
@@ -47,7 +47,7 @@ let table: Promise<{ rows: Row[]; root: Node }> | null = null;
 
 function loadTable() {
   if (!table) {
-    table = fetch("/dict/phrases.json")
+    table = fetchDict("/dict/phrases.json")
       .then((r) => {
         if (!r.ok) throw new Error(`短语表 ${r.status}`);
         return r.json() as Promise<{ p: Row[] }>;

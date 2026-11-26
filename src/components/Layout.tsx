@@ -1,7 +1,7 @@
 import { AuthGate } from "./AuthGate";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigation } from "react-router";
-import { SidebarSimple } from "@phosphor-icons/react";
+import { GithubLogo, SidebarSimple } from "@phosphor-icons/react";
 import { pendingCounts } from "@/lib/learning";
 import { backfillMastery, usePendingMistakes } from "@/lib/mistakes";
 import { useSettings } from "@/lib/settings";
@@ -149,14 +149,28 @@ export function Layout() {
     return () => clearTimeout(t);
   }, []);
 
-  const items: NavItem[] = [
-    { to: "/", label: "首页", icon: "house", end: true },
-    { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
-    { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
-    ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
-    { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: mistakes ?? 0, red: true, match: MISTAKE_PAGES.map((p) => p.to) },
-    { to: "/review", label: "单词", short: "单词", icon: "bolt", badge: counts ? counts.dueReviews + counts.newLeft : 0, match: WORD_PAGES.map((p) => p.to) },
-    { to: "/ask", label: "AI 助教", short: "AI", icon: "star" },
+  // 按学习闭环分组：做题 → 复盘 → 背词
+  const groups: { title: string; items: NavItem[] }[] = [
+    {
+      title: "做题",
+      items: [
+        { to: "/", label: "首页", icon: "house", end: true },
+        { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
+        { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
+        ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
+      ],
+    },
+    {
+      title: "复盘",
+      items: [
+        { to: "/ask", label: "AI 助教", short: "AI", icon: "star" },
+        { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: mistakes ?? 0, red: true, match: MISTAKE_PAGES.map((p) => p.to) },
+      ],
+    },
+    {
+      title: "背词",
+      items: [{ to: "/review", label: "单词", short: "单词", icon: "bolt", badge: counts ? counts.dueReviews + counts.newLeft : 0, match: WORD_PAGES.map((p) => p.to) }],
+    },
   ];
   const width = collapsed ? 72 : 200;
 
@@ -171,18 +185,33 @@ export function Layout() {
           {!collapsed && <span className="text-[17px] leading-none font-semibold tracking-[0.04em] whitespace-nowrap">英语之道</span>}
         </NavLink>
 
-        <nav className="flex flex-col gap-1" aria-label="主导航">
-          {items.map((it) => (
-            <Item key={it.to} {...it} collapsed={collapsed} />
+        <nav className="flex flex-col" aria-label="主导航">
+          {groups.map((g, i) => (
+            <div key={g.title} className={cn("flex flex-col gap-1", i > 0 && (collapsed ? "mt-2 border-t border-[var(--line-soft)] pt-2" : "mt-4"))}>
+              {!collapsed && <div className="px-3 pb-1 text-[11px] font-medium tracking-[0.12em] text-[var(--ink-subtle)]">{g.title}</div>}
+              {g.items.map((it) => (
+                <Item key={it.to} {...it} collapsed={collapsed} />
+              ))}
+            </div>
           ))}
         </nav>
 
         <div className="mt-auto flex flex-col gap-3 pt-6">
           {/* 首页已经有倒计时牌，同一件事不说两遍 */}
           {pathname !== "/" && <Countdown collapsed={collapsed} />}
-          <nav className="flex flex-col gap-0.5" aria-label="更多">
+          <nav className={cn("flex flex-col", collapsed ? "gap-1.5" : "gap-0.5")} aria-label="更多">
             <Quiet to="/stats" label="学习统计" icon="graph" collapsed={collapsed} />
             <Quiet to="/settings" label="设置" icon="ruler" collapsed={collapsed} />
+            <a
+              href="https://github.com/luohui1/CETPath"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="GitHub 开源仓库 CETPath"
+              className={cn("flex min-h-10 items-center rounded-[10px] text-[13px] text-[var(--ink-500)] transition-colors hover:bg-white/70 hover:text-[var(--ink)]", collapsed ? "flex-col justify-center gap-1 py-1.5" : "gap-3 px-3 py-2")}
+            >
+              <GithubLogo className="size-[18px]" weight="fill" />
+              {collapsed ? <span className="text-[11px] leading-none">GitHub</span> : "GitHub 开源"}
+            </a>
           </nav>
           <button
             type="button"
