@@ -1,12 +1,18 @@
 /** 试卷数据格式，详见 docs/试卷数据格式.md */
-export type ExamId = "kaoyan1" | "kaoyan2" | "cet4" | "cet6";
+export type ExamId = "kaoyan1" | "kaoyan2" | "cet4" | "cet6" | "ielts-a" | "ielts-gt";
 
 export const EXAMS: { id: ExamId; name: string; short: string }[] = [
-  { id: "kaoyan1", name: "考研英语一", short: "英语一" },
-  { id: "kaoyan2", name: "考研英语二", short: "英语二" },
+  { id: "ielts-a", name: "雅思（A类学术）", short: "雅思 A" },
+  { id: "ielts-gt", name: "雅思（G类培训）", short: "雅思 G" },
   { id: "cet4", name: "大学英语四级", short: "四级" },
   { id: "cet6", name: "大学英语六级", short: "六级" },
+  { id: "kaoyan1", name: "考研英语一", short: "英语一" },
+  { id: "kaoyan2", name: "考研英语二", short: "英语二" },
 ];
+
+export function isIeltsExam(exam?: string | null): exam is "ielts-a" | "ielts-gt" {
+  return exam === "ielts-a" || exam === "ielts-gt";
+}
 
 export interface PaperIndexItem {
   id: string;
@@ -190,7 +196,10 @@ export const peekPaperIndex = () => indexLoaded;
 export function loadPaperIndex(): Promise<PaperIndexItem[]> {
   if (!indexPromise) {
     indexPromise = fetch("/papers/index.json").then(async (r) => {
+      if (r.status === 404) return (indexLoaded = []);
       if (!r.ok) throw new Error(`加载试卷目录失败：${r.status}`);
+      const ct = r.headers.get("content-type") || "";
+      if (ct.includes("text/html")) return (indexLoaded = []);
       return (indexLoaded = await r.json());
     });
     indexPromise.catch(() => (indexPromise = null));

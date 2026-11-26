@@ -11,7 +11,7 @@ import { AgentModel } from "@/components/AgentModel";
 import { IS_PREVIEW } from "@/lib/preview";
 import { Link } from "react-router";
 import { signOut, useMe } from "@/lib/auth";
-import { syncNow, syncState } from "@/lib/sync";
+import { claimGuestRecords, countUnclaimedGuestRecords, dismissGuestRecords, syncNow, syncState } from "@/lib/sync";
 import { Button, Card, PageHeader, Segmented, Switch } from "@/components/ui";
 
 function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
@@ -41,23 +41,63 @@ function Group({ title, id, children }: { title: string; id?: string; children: 
 function Account() {
   const me = useMe();
   const [st, setSt] = useState(syncState());
+  const [guestCount, setGuestCount] = useState(0);
+  const [claiming, setClaiming] = useState(false);
   useEffect(() => {
     const on = () => setSt(syncState());
     addEventListener("yz-sync", on);
     return () => removeEventListener("yz-sync", on);
   }, []);
+  useEffect(() => {
+    if (me) void countUnclaimedGuestRecords().then(setGuestCount);
+    else setGuestCount(0);
+  }, [me]);
   const label = st.status === "syncing" ? "正在同步…" : st.status === "error" ? `同步出错：${st.error}` : st.at ? `已同步 · ${new Date(st.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "等待同步";
   return (
     <Group title="账号">
       {me ? (
-        <Row title={me.name} desc={`${label}。生词、错题、做题记录、笔记、Agent 档案和对话会在登录了这个账号的设备间同步`}>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => void syncNow()} loading={st.status === "syncing"}>立即同步</Button>
-            <Button size="sm" onClick={() => signOut().catch((e: Error) => alert(e.message))}>退出登录</Button>
-          </div>
-        </Row>
+        <>
+          <Row title={me.name} desc={`${label}。每个账号使用独立的本地数据库，生词、错题、做题记录、笔记与学习档案在登录同一账号的设备间同步`}>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void syncNow()} loading={st.status === "syncing"}>立即同步</Button>
+              <Button size="sm" onClick={() => signOut().catch((e: Error) => alert(e.message))}>退出登录</Button>
+            </div>
+          </Row>
+          {guestCount > 0 && (
+            <Row title="发现本机未登录时的学习记录" desc={`访客模式下共有 ${guestCount} 条生词或做题记录，是否合并到当前账号？`}>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={claiming}
+                  onClick={async () => {
+                    setClaiming(true);
+                    try {
+                      await claimGuestRecords();
+                      setGuestCount(0);
+                    } finally {
+                      setClaiming(false);
+                    }
+                  }}
+                >
+                  合并进此账号
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    dismissGuestRecords();
+                    setGuestCount(0);
+                  }}
+                >
+                  暂不合并
+                </Button>
+              </div>
+            </Row>
+          )}
+        </>
       ) : (
-        <Row title="没有登录" desc="数据只存在这台设备上。登录后会在多台设备间同步，本机已有的数据会合并进账号">
+        <Row title="没有登录" desc="当前使用本机访客数据库。登录后各账号独立隔离并在多设备间同步">
           <Link to="/welcome" className="inline-flex h-8 items-center rounded-[10px] bg-[var(--blue)] px-3 text-[13px] font-medium text-white">登录 / 注册</Link>
         </Row>
       )}
@@ -127,8 +167,29 @@ export function SettingsPage() {
             ]}
           />
         </Row>
-        <Row title="标出生词" desc="在卷面上标出生词本里的词">
+        <Row title="标出生词" desc="在四六级与考研原卷上标出生词本里的词">
           <Switch label="标出生词" checked={s.showVocabMarks} onChange={(v) => setSetting("showVocabMarks", v)} />
+        </Row>
+      </Group>
+
+      <Group title="雅思机考与沉浸度" id="ielts">
+        <div className="px-5 py-3.5 text-[13px] leading-[21px] text-[var(--ink-700)]">
+          全真模考（整套或单科限时）开考后会自动锁死纯净机考环境，不显示任何查词、生词标记或 AI 入口，且整套连考全部交卷后才解锁复盘。以下开关仅控制单项自由练习与交卷后的复盘页。
+        </div>
+        <Row title="机考考生显示名" desc="显示在雅思机考界面左上角（留空默认显示 Test taker ID）">
+          <SettingText value={s.ieltsCandidateName} onSave={(v) => setSetting("ieltsCandidateName", v)} />
+        </Row>
+        <Row title="复盘允许点词查词" desc="交卷进入复盘后，点击阅读或听力原文单词可查词并带原句收入生词本">
+          <Switch label="复盘允许点词查词" checked={s.ieltsReviewLookup} onChange={(v) => setSetting("ieltsReviewLookup", v)} />
+        </Row>
+        <Row title="复盘标出生词本词汇" desc="交卷进入复盘后，标出你生词本里已有的词">
+          <Switch label="复盘标出生词本词汇" checked={s.ieltsReviewVocabMarks} onChange={(v) => setSetting("ieltsReviewVocabMarks", v)} />
+        </Row>
+        <Row title="复盘显示 AI 助教入口" desc="默认关闭；开启后可在雅思复盘页唤出右侧 AI 助教讲题">
+          <Switch label="复盘显示 AI 助教入口" checked={s.ieltsReviewAgent} onChange={(v) => setSetting("ieltsReviewAgent", v)} />
+        </Row>
+        <Row title="单项练习作答中允许查词" desc="默认关闭，建议做完交卷再查词，避免破坏机考手感">
+          <Switch label="单项练习作答中允许查词" checked={s.ieltsPracticeLookup} onChange={(v) => setSetting("ieltsPracticeLookup", v)} />
         </Row>
       </Group>
 

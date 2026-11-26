@@ -3,15 +3,18 @@ import { Link, useNavigate } from "react-router";
 import { ArrowCounterClockwise, CaretDown } from "@phosphor-icons/react";
 import type { MasteryRow } from "@/lib/db";
 import { paperPath, retryPath } from "@/lib/attempts";
-import { kindName, KIND_NAMES, loadPaper, peekPaper, type Paper, type Question, type SectionKind } from "@/lib/papers";
+import { kindName, KIND_NAMES, isIeltsExam, loadPaper, peekPaper, peekPaperIndex, type Paper, type Question, type SectionKind } from "@/lib/papers";
 import { backfillMastery, restoreMistake, retireMistake, useMistakes } from "@/lib/mistakes";
 import { KINDS, usePaperIndex } from "@/lib/insights";
+import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-import { Button, EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
+import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { PaperDialog } from "@/components/overlay";
 import { PaperThumb } from "@/components/paper-ui";
 import { MISTAKE_PAGES, WordsTabs } from "@/components/WordsTabs";
 import { ExplainContext, ExplanationCard } from "@/exam/Explanation";
+import { IeltsMistakesView } from "@/ielts/components/IeltsMistakesView";
+import { useIeltsPendingMistakes } from "@/ielts/store";
 
 type Status = "pending" | "retired" | "all";
 const BATCH = 30; // 一次最多重做 30 题
@@ -116,8 +119,13 @@ function EmptySheet() {
  */
 export function MistakesPage() {
   const navigate = useNavigate();
+  const settings = useSettings();
   const rows = useMistakes();
+  const ieltsPending = useIeltsPendingMistakes();
   const { index } = usePaperIndex();
+  const [deck, setDeck] = useState<"ielts" | "cet">(() =>
+    isIeltsExam(settings.lastExam) || peekPaperIndex()?.length === 0 ? "ielts" : "cet",
+  );
   const [kind, setKind] = useState<SectionKind | "all">("all");
   const [paperFilter, setPaperFilter] = useState("all");
   const [status, setStatus] = useState<Status>("pending");
@@ -167,15 +175,28 @@ export function MistakesPage() {
       <PageHeader
         title="错题本"
         actions={
-          pending.length > 0 && (
-            <Button variant="primary" onClick={retryAll}>
-              <ArrowCounterClockwise className="size-[18px]" /> 重做全部待重做（{pending.length}）
-            </Button>
-          )
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented
+              label="错题分类"
+              value={deck}
+              onChange={(v) => setDeck(v)}
+              options={[
+                { value: "ielts", label: `雅思错题${ieltsPending ? ` ${ieltsPending}` : ""}` },
+                { value: "cet", label: `四六级 / 考研${pending.length ? ` ${pending.length}` : ""}` },
+              ]}
+            />
+            {deck === "cet" && pending.length > 0 && (
+              <Button variant="primary" onClick={retryAll}>
+                <ArrowCounterClockwise className="size-[18px]" /> 重做全部待重做（{pending.length}）
+              </Button>
+            )}
+          </div>
         }
       />
 
-      {!all.length ? (
+      {deck === "ielts" ? (
+        <IeltsMistakesView />
+      ) : !all.length ? (
         <EmptySheet />
       ) : (
         <>

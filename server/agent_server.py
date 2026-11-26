@@ -37,7 +37,11 @@ SESSION_DAYS = 180
 _auth_hits: dict[str, list[float]] = {}
 _reg_hits: dict[str, list[float]] = {}
 NAME_RE = re.compile(r"[A-Za-z0-9_\u4e00-\u9fa5]{2,20}")
-SYNC_TABLES = {"vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "aiSyntax", "kv"}
+SYNC_TABLES = {
+    "vocab", "cards", "logs", "attempts", "days", "settings",
+    "marks", "mastery", "memory", "chats", "methods", "aiSyntax", "kv",
+    "ieltsAttempts", "ieltsMastery", "ieltsSpeaking",
+}
 
 
 def sdb() -> sqlite3.Connection:
@@ -131,13 +135,13 @@ def limited(bucket: dict[str, list[float]], ip: str, n: int, window: int) -> boo
 
 
 # ---------- 提示词 ----------
-SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉大学英语四六级（CET-4/6）和考研英语（一）（二）命题规律的老师。学习者在用真题备考，问你看不懂的句子、词和题型。
+SYSTEM = """你是「英语之道」里的备考英语助教，是一位熟悉雅思（IELTS Academic / General Training）、大学英语四六级（CET-4/6）和考研英语（一）（二）命题规律的老师。学习者在用真题备考，问你看不懂的句子、词和题型。
 
 ## 讲解原则
 - 用中文讲，英文原文片段保留英文；像老师当面讲，不寒暄、不说"好的""希望对你有帮助"。
 - 说人话、少用术语，非用不可时顺手用大白话解释一下。
-- 按这套卷属于的考试来讲：四六级的卷子只从四六级出发（题型、分值、常考点、四六级怎么出题），不要扯考研；考研的卷子同理。没有试卷时按学习者档案里的考试目标。
-- 一切围绕考试：讲清这个点在四六级/考研里怎么考、怎么在阅读/翻译/写作里用、常见陷阱。
+- 按这套卷属于的考试来讲：雅思的卷子只按剑雅/机考评分标准与同义替换规律讲；四六级的卷子只从四六级出发，不要扯考研；考研的卷子同理。没有试卷时按学习者档案里的考试目标。
+- 一切围绕考试：讲清这个点在对应考试里怎么考、怎么在阅读/听力/写作/口语里用、常见陷阱。
 - 学习者问什么就直接答什么。问某道题怎么做、选什么，按下面「讲一道题」的顺序讲完并给出答案；不要只讲方法不给答案，也不要反问让他自己想。
 
 ## 讲一道题（问某题怎么做、为什么选这个、复盘某道错题时，一律按这个顺序）
@@ -255,6 +259,34 @@ CET_GUIDES = {
 }
 _CET_WORDS = [("listening", r"听力"), ("banked", r"选词填空|15选10|十五选十"), ("matching", r"长篇阅读|段落匹配|信息匹配"), ("careful", r"仔细阅读|阅读理解"), ("writing", r"作文|写作"), ("translation", r"翻译(题|部分)|汉译英|段落翻译")]
 
+IELTS_GUIDES = {
+    "reading": """雅思阅读复盘讲题：紧扣平行阅读与同义替换（Paraphrase）。按题型点破：1) 判断题（TRUE/FALSE/NOT GIVEN 或 YES/NO/NOT GIVEN）严格区分 FALSE（原文与题干逻辑直接矛盾、反义或限定冲突）与 NOT GIVEN（原文未提及该比较/因果/限定，切忌主观脑补）；2) List of Headings 抓段首转折后、段中结论句与重复核心概念，警惕局部细节词原词复现的干扰项；3) 段落信息匹配与人名观点匹配（Matching）先锁专有名词/年份/引号定位，再核对动作或态度的同义改写；4) 填空题（Summary/笔记填空）先判词性与单复数，严格遵守字数上限（如 ONE WORD ONLY），必须照抄原文原词。""",
+    "listening": """雅思听力复盘讲题：指出答案在录音里的信号词（转折 but/however/actually、自我纠正 sorry/I mean、强调、同意或否定）及同义替换。填空题重点检查拼写、单复数、大小写、日期/金额格式与字数限制；选择与配对题重点拆解说话人先抛出的干扰项（Distractor）是怎么被后半句推翻或限定掉的，建议对着录音原文跟读定位句。""",
+    "writing": """雅思写作讲题与点评：严格按官方四项评分标准（Task 1: TA/CC/LR/GRA；Task 2: TR/CC/LR/GRA）诊断。Task 1（图表/地图/流程图）看是否写出清晰 Overview（总体趋势/极值/关键阶段对比）、数据分组是否合理、有无机械罗列或主观臆测原因；Task 2 看是否正面回应所有提问部分、立场是否始终一致、主体段展开是否有具体论证而非空洞模板套句。给出估算 Band 区间（0.5 分档），最多指出 3 处最拉低分数的硬伤并给出地道改写。""",
+    "speaking": """雅思口语讲题与拓展：按官方四项标准（FC 流利度与连贯性、LR 词汇多样性、GRA 语法多样性与准确性、P 发音）指导。Part 1 直接自然作答并附一句具体原因或个人细节（2–3 句即可，忌背诵腔）；Part 2 串起题卡四小点，用真实感的故事线展开；Part 3 往社会现象、利弊对比与原因层面深入讨论。提供 2–3 个地道口语词块（idiomatic collocations），避免生僻书面大词。""",
+}
+_IELTS_WORDS = [
+    ("listening", r"听力|listening|section\s*[1-4]"),
+    ("reading", r"阅读|reading|tfng|ynng|not\s*given|heading|段落|判断|配对"),
+    ("writing", r"写作|作文|writing|task\s*[12]|小作文|大作文|图表"),
+    ("speaking", r"口语|speaking|part\s*[123]"),
+]
+
+
+def ielts_kind(last: str, ctx: dict) -> str | None:
+    """雅思卷子或口语复盘：按提问词或当前视图判断属于听说读写哪一科"""
+    if not isinstance(ctx, dict) or ctx.get("article"):
+        return None
+    paper = str(ctx.get("paper", ""))
+    view = str(ctx.get("view") or "")
+    if not re.search(r"雅思|剑雅|机经|IELTS|Writing Task", paper + " " + view, re.I):
+        return None
+    for src in (last, view, paper):
+        for k, pat in _IELTS_WORDS:
+            if re.search(pat, src, re.I):
+                return k
+    return "reading"
+
 
 def cet_kind(last: str, ctx: dict) -> str | None:
     """四六级卷子：按提问里的题型词、题号或卷面当前部分判断是哪一类题"""
@@ -335,7 +367,9 @@ def context_block(ctx: dict) -> str:
     if ctx.get("paper"):
         title = str(ctx["paper"])[:80]
         parts.append(f"试卷：{title}")
-        if "四级" in title or "六级" in title:
+        if re.search(r"雅思|剑雅|机经|IELTS|Writing Task", title, re.I):
+            parts.append("这是雅思（IELTS）真题复盘：只按雅思机考命题规律、同义替换与 Band 评分标准讲解，不要扯四六级或考研。")
+        elif "四级" in title or "六级" in title:
             parts.append("这是大学英语四六级（CET）的卷子：只从四六级的角度讲，不要提考研。")
         elif "考研" in title:
             parts.append("这是考研英语的卷子：从考研的角度讲。")
@@ -668,7 +702,8 @@ class Handler(BaseHTTPRequestHandler):
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(raw)
+        if self.command != "HEAD":
+            self.wfile.write(raw)
 
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -709,9 +744,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", "yz_ho=; Path=/api/handoff; Max-Age=0")
             self.end_headers()
             return self.wfile.write(e[2])
+        if path == "/api/health":
+            return self.send_json(200, {"ok": True})
         if path == "/api/auth/me":
             u = self.user()
-            return self.send_json(200, {"name": u[1]}) if u else self.send_json(401, {"error": "没登录"})
+            return self.send_json(200, {"uid": u[0], "name": u[1]}) if u else self.send_json(401, {"error": "没登录"})
         if path == "/api/agent/trans":
             aid = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id", [""])[0]
             p = os.path.join(TRANS_DIR, aid + ".json")
@@ -736,7 +773,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.admin(cfg):
                 return self.send_json(401, {"error": "请先登录"})
             key = cfg.get("api_key", "")
-            self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "access_code": cfg.get("access_code", ""), "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
+            self.send_json(200, {"models": cfg.get("models") or [], "base_url": cfg.get("base_url", ""), "model": cfg.get("model", ""), "temperature": cfg.get("temperature"), "access_code": cfg.get("access_code", ""), "allow_register": cfg.get("allow_register", True) is not False, "api_key_set": bool(key), "api_key_tail": key[-4:] if key else ""})
         elif path == "/api/admin/usage":
             if not self.admin(cfg):
                 return self.send_json(401, {"error": "请先登录"})
@@ -744,7 +781,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(404, {"error": "not found"})
 
-    # ---- POST / PUT ----
+    # ---- POST / PUT / HEAD ----
+    do_HEAD = do_GET
+
     def do_PUT(self):
         self.do_POST()
 
@@ -793,6 +832,8 @@ class Handler(BaseHTTPRequestHandler):
                 cfg["api_key"] = data["api_key"].strip()
             t = data.get("temperature")
             cfg["temperature"] = float(t) if isinstance(t, (int, float)) else None
+            if isinstance(data.get("allow_register"), bool):
+                cfg["allow_register"] = data["allow_register"]
             save(cfg)
             return self.send_json(200, {"ok": True})
         if path == "/api/admin/test":
@@ -879,7 +920,7 @@ class Handler(BaseHTTPRequestHandler):
             c.execute("DELETE FROM sessions WHERE exp<?", (time.time(),))
             c.execute("INSERT INTO sessions VALUES (?,?,?)", (tok, uid, time.time() + SESSION_DAYS * 86400))
         secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
-        return self.send_json(200, {"name": name}, {"Set-Cookie": f"yz_sess={tok}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax{secure}"})
+        return self.send_json(200, {"uid": uid, "name": name}, {"Set-Cookie": f"yz_sess={tok}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax{secure}"})
 
     def sync(self, data: dict):
         """按条同步：push 是本机改过的行（row 为 null 表示删了），t 是改的时间，后改的为准；返回 since 之后别的设备改过的行"""
@@ -887,6 +928,8 @@ class Handler(BaseHTTPRequestHandler):
         if not u:
             return self.send_json(401, {"error": "没登录"})
         uid = u[0]
+        if data.get("uid") is not None and int(data["uid"]) != uid:
+            return self.send_json(409, {"error": "登录账号已变化，请刷新页面"})
         push = data.get("push") or []
         since = int(data.get("since") or 0)
         if not isinstance(push, list) or len(push) > 2000:
@@ -1005,6 +1048,9 @@ class Handler(BaseHTTPRequestHandler):
         kind = cet_kind(last, c0 if isinstance(c0, dict) else {})
         if kind:
             sys_msg += "\n\n## 这类题怎么讲（名师方法，照这个思路讲，但不要提出处；回答格式仍按上面的要求，简短）\n" + CET_GUIDES[kind]
+        ikind = ielts_kind(last, c0 if isinstance(c0, dict) else {})
+        if ikind:
+            sys_msg += "\n\n## 雅思这类题怎么讲（回答格式仍按上面的要求，简短直接）\n" + IELTS_GUIDES[ikind]
         ctx = context_block(data.get("context") or {})
         if ctx:
             sys_msg += "\n\n" + ctx
@@ -1130,6 +1176,7 @@ button.primary{background:#2f6bff;color:#fff}button:disabled{opacity:.5}.hint{fo
 <label>模型名</label><input id="model" placeholder="deepseek-chat">
 <label>API Key</label><input id="api_key" type="password" autocomplete="off"><div class="hint" id="keyhint"></div>
 <label>温度（可空，默认用接口的）</label><input id="temperature" inputmode="decimal" placeholder="0.3">
+<label style="display:flex;align-items:center;gap:8px;margin-top:16px;color:#1d1d1f;cursor:pointer"><input id="allow_register" type="checkbox" style="width:18px;height:18px;margin:0">允许新用户开放注册（自建好账号后可关闭）</label>
 <div class="row"><button class="primary" id="save">保存</button><button id="test">测试连接</button><button class="out" id="logout">退出</button></div>
 <div id="msg"></div></div>
 <div class="card" id="usage" hidden style="margin-top:16px"><label>模型用量（token，接口自己报的数）</label><table id="ut" style="width:100%;font-size:14px;border-collapse:collapse"></table><div class="hint" id="uhint"></div></div>
@@ -1142,11 +1189,11 @@ $("ut").innerHTML=r("<b>范围</b>","<b>次数</b>","<b>输入</b>","<b>输出</
 $("uhint").textContent=d.since?"从 "+new Date(d.since*1000).toLocaleString("zh-CN")+" 开始记录":"还没有调用记录";$("usage").hidden=false}
 function say(t,ok){$("msg").textContent=t;$("msg").className=ok?"ok":"err"}
 async function boot(){const[s,d]=await api("/api/admin/config");if(s===401){$("login").hidden=false;$("form").hidden=true;$("pw").focus();return}
-$("login").hidden=true;$("form").hidden=false;usage();$("base_url").value=d.base_url||"";$("model").value=d.model||"";$("temperature").value=d.temperature??"";
+$("login").hidden=true;$("form").hidden=false;usage();$("base_url").value=d.base_url||"";$("model").value=d.model||"";$("temperature").value=d.temperature??"";$("allow_register").checked=d.allow_register!==false;
 $("api_key").value="";$("api_key").placeholder=d.api_key_set?"已保存（不改就留空）":"sk-...";$("keyhint").textContent=d.api_key_set?"已保存的密钥尾号 "+d.api_key_tail:"还没填"}
 $("go").onclick=async()=>{const[s,d]=await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:$("pw").value})});if(s===200){$("pw").value="";boot()}else $("lmsg").textContent=d.error||"登录失败"};
 $("pw").onkeydown=e=>e.key==="Enter"&&$("go").click();
-$("save").onclick=async()=>{const t=$("temperature").value.trim();const[s,d]=await api("/api/admin/config",{method:"PUT",body:JSON.stringify({base_url:$("base_url").value,model:$("model").value,api_key:$("api_key").value,temperature:t===""?null:Number(t)})});if(s===200){say("已保存",true);boot()}else say(d.error||"保存失败")};
+$("save").onclick=async()=>{const t=$("temperature").value.trim();const[s,d]=await api("/api/admin/config",{method:"PUT",body:JSON.stringify({base_url:$("base_url").value,model:$("model").value,api_key:$("api_key").value,temperature:t===""?null:Number(t),allow_register:$("allow_register").checked})});if(s===200){say("已保存",true);boot()}else say(d.error||"保存失败")};
 $("test").onclick=async()=>{$("test").disabled=true;say("测试中…",true);const[s,d]=await api("/api/admin/test",{method:"POST",body:"{}"});$("test").disabled=false;s===200?say("连接成功（"+d.ms+" ms）："+d.reply,true):say(d.error||"失败")};
 $("logout").onclick=async()=>{await api("/api/admin/logout",{method:"POST",body:"{}"});boot()};
 boot();
@@ -1165,6 +1212,33 @@ def main():
         cfg["secret"] = secrets.token_hex(32)  # 换密码时旧的登录全部失效
         save(cfg)
         print("已设置，配置在", CONFIG)
+        return
+    if cmd == "create-user":
+        if len(args) < 2:
+            sys.exit("用法：agent_server.py create-user <用户名> [密码]")
+        name = args[1].strip()
+        if not NAME_RE.fullmatch(name):
+            sys.exit("用户名 2-20 个字，只能用中英文、数字和下划线")
+        pw = args[2] if len(args) >= 3 else (os.environ.get("YZ_USER_PASSWORD") or getpass.getpass(f"为用户 {name} 设置密码："))
+        if len(pw) < 6 or len(pw) > 128:
+            sys.exit("密码长度需在 6–128 位之间")
+        os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+        with sdb() as c:
+            row = c.execute("SELECT id FROM users WHERE name=?", (name,)).fetchone()
+            if row:
+                c.execute("UPDATE users SET pw=? WHERE id=?", (hash_pw(pw), row[0]))
+                print(f"已更新用户 {name} (uid={row[0]}) 的密码")
+            else:
+                uid = c.execute("INSERT INTO users (name, pw, created) VALUES (?,?,?)", (name, hash_pw(pw), time.time())).lastrowid
+                print(f"已创建用户 {name} (uid={uid})")
+        return
+    if cmd == "allow-register":
+        if len(args) < 2 or args[1] not in ("on", "off"):
+            sys.exit("用法：agent_server.py allow-register <on|off>")
+        cfg = load()
+        cfg["allow_register"] = args[1] == "on"
+        save(cfg)
+        print("开放注册已设为", "开启" if cfg["allow_register"] else "关闭")
         return
     if cmd == "serve":
         port = int(args[args.index("--port") + 1]) if "--port" in args else 8787

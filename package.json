@@ -26,7 +26,8 @@
     "audit:answers": "python -I scripts/answer_audit.py",
     "fetch:word-audio": "python -I scripts/fetch_word_audio.py",
     "thumbs": "python -I scripts/make_thumbs.py",
-    "audit:explain": "python -I scripts/explain_audit.py"
+    "audit:explain": "python -I scripts/explain_audit.py",
+    "build:ielts": "uv run --no-project python scripts/build_ielts.py"
   },
   "dependencies": {
     "@fontsource/source-serif-4": "^5.3.1",

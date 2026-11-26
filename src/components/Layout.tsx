@@ -4,9 +4,11 @@ import { NavLink, Outlet, useLocation, useNavigation } from "react-router";
 import { GithubLogo, SidebarSimple } from "@phosphor-icons/react";
 import { pendingCounts } from "@/lib/learning";
 import { backfillMastery, usePendingMistakes } from "@/lib/mistakes";
+import { isIeltsExam, peekPaperIndex } from "@/lib/papers";
 import { useSettings } from "@/lib/settings";
 import { cn, daysUntil } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
+import { useIeltsPendingMistakes } from "@/ielts/store";
 import { PixelIcon, type PixelName } from "./PixelIcon";
 import { LogoMark } from "./Logo";
 import { MISTAKE_PAGES, WORD_PAGES } from "./WordsTabs";
@@ -143,6 +145,10 @@ export function Layout() {
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useCollapsed();
   const mistakes = usePendingMistakes();
+  const ieltsMistakes = useIeltsPendingMistakes();
+  const totalMistakes = (mistakes ?? 0) + (ieltsMistakes ?? 0);
+  const effectiveExam = settings.lastExam ?? (peekPaperIndex()?.length === 0 ? "ielts-a" : null);
+  const showSpeaking = isIeltsExam(effectiveExam) || pathname.startsWith("/speaking");
   // 升级前交过卷的错题补进错题本（只跑一次）；稍等一会儿，不和首屏抢
   useEffect(() => {
     const t = setTimeout(() => void backfillMastery(), 1500);
@@ -157,6 +163,7 @@ export function Layout() {
         { to: "/", label: "首页", icon: "house", end: true },
         { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
         { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
+        ...(showSpeaking ? [{ to: "/speaking", label: "口语练习", short: "口语", icon: "headphones", match: ["/speaking"] } as NavItem] : []),
         ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
       ],
     },
@@ -164,7 +171,7 @@ export function Layout() {
       title: "复盘",
       items: [
         { to: "/ask", label: "AI 助教", short: "AI", icon: "star" },
-        { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: mistakes ?? 0, red: true, match: MISTAKE_PAGES.map((p) => p.to) },
+        { to: "/mistakes", label: "错题本", short: "错题", icon: "mistakes", badge: totalMistakes, red: true, match: MISTAKE_PAGES.map((p) => p.to) },
       ],
     },
     {

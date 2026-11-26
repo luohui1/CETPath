@@ -31,7 +31,7 @@ export default defineConfig({
         // pdf.js 的解析器不进预缓存：2026-11-08 上线时 nginx 把 .mjs 当 octet-stream 发，早装上的设备预缓存里存的就是这份坏的，
         // 而文件名带固定哈希、版本号不变，预缓存永远不会换掉它。考场改用 ?mime=js 的地址取，由下面单独的运行时缓存存
         // pdf-lib（导出 PDF 才用，440KB）也不预缓存：慢网下第一次装的时候别和录音预下载抢带宽，用到时再取、存运行时缓存
-        globIgnores: ["**/pdf.worker*", "**/pdf-lib-*.js"],
+        globIgnores: ["**/pdf.worker*", "**/pdf-lib-*.js", "**/ielts/**", "**/audio/**"],
         navigateFallback: "/index.html",
         // AI 助教的后端和管理后台不归前端路由管
         navigateFallbackDenylist: [/^\/api\//, /^\/admin/],
@@ -55,10 +55,28 @@ export default defineConfig({
             options: { cacheName: "pdf-lib", expiration: { maxEntries: 3 } },
           },
           {
-            // 目录（试卷目录、录音清单）会随导入变化：有网先取新的，没网用缓存
-            urlPattern: ({ url }) => /^\/(papers|audio\/words)\/index\.json$/.test(url.pathname),
+            // 目录（试卷目录、雅思题库目录、录音清单）会随导入变化：有网先取新的，没网用缓存
+            urlPattern: ({ url }) => /^\/(papers|ielts|audio\/words)\/index\.json$/.test(url.pathname),
             handler: "NetworkFirst",
             options: { cacheName: "indexes", networkTimeoutSeconds: 3 },
+          },
+          {
+            // 雅思三包分离题库（papers / keys / explain）、写作机经与口语题库：按需加载、后台静默更新
+            urlPattern: ({ url }) => /^\/ielts\/((papers|keys|explain)\/[^/]+|writing-jj(-explain)?|speaking)\.json$/.test(url.pathname),
+            handler: "StaleWhileRevalidate",
+            options: { cacheName: "ielts-data", expiration: { maxEntries: 500 } },
+          },
+          {
+            // 雅思题面地图、流程图与 Task 1 图表：按需缓存，绝不随首屏安装预缓存
+            urlPattern: ({ url }) => url.pathname.startsWith("/ielts/img/"),
+            handler: "CacheFirst",
+            options: { cacheName: "ielts-images", expiration: { maxEntries: 300 } },
+          },
+          {
+            // 雅思口语示范音频（1,082 条短音频）：播放过哪条才缓存哪条，支持 Range 拖动
+            urlPattern: ({ url }) => url.pathname.startsWith("/audio/speaking/"),
+            handler: "CacheFirst",
+            options: { cacheName: "speaking-audio", expiration: { maxEntries: 400 }, rangeRequests: true },
           },
           {
             // 试卷数据、解析、句子译文层、卷面单词坐标（.words.json）会重新导入、润色、校正：先用缓存秒开，后台再取新的。
@@ -132,7 +150,7 @@ export default defineConfig({
     },
     // 真题原件（4 GB 多）、导入用的中间数据和打包结果都不是源码，不让开发服务器盯着它们，改动时也不会卡。
     // 试卷和音频导入时会频繁写文件，盯着它们会整页刷新；代价是新导入的试卷要重启开发服务器才看得到
-    watch: { ignored: ["**/真题/**", "**/data/**", "**/dist/**", "**/docs/**", "**/scripts/**", "**/public/papers/**", "**/public/audio/**"] },
+    watch: { ignored: ["**/真题/**", "**/data/**", "**/dist/**", "**/docs/**", "**/scripts/**", "**/public/papers/**", "**/public/ielts/**", "**/public/audio/**"] },
   },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },

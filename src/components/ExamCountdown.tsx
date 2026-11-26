@@ -4,7 +4,7 @@ import { setSetting, useSettings } from "@/lib/settings";
 import { cn, daysUntil } from "@/lib/utils";
 import { Button } from "./ui";
 
-const EXAM_PRESETS = ["考研英语（一）", "考研英语（二）", "大学英语四级", "大学英语六级"];
+const EXAM_PRESETS = ["雅思（A类）", "雅思（G类）", "大学英语四级", "大学英语六级", "考研英语（一）", "考研英语（二）"];
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 /** 离考试越近，建议越具体 */
@@ -26,7 +26,14 @@ function useNow(ms: number) {
 }
 
 /** 真题页、专项页上次选的考试 → 倒计时的默认考试名 */
-const PRESET_OF: Record<string, string> = { kaoyan1: EXAM_PRESETS[0], kaoyan2: EXAM_PRESETS[1], cet4: EXAM_PRESETS[2], cet6: EXAM_PRESETS[3] };
+const PRESET_OF: Record<string, string> = {
+  "ielts-a": EXAM_PRESETS[0],
+  "ielts-gt": EXAM_PRESETS[1],
+  cet4: EXAM_PRESETS[2],
+  cet6: EXAM_PRESETS[3],
+  kaoyan1: EXAM_PRESETS[4],
+  kaoyan2: EXAM_PRESETS[5],
+};
 const EXAM_OF: Record<string, string> = Object.fromEntries(Object.entries(PRESET_OF).map(([k, v]) => [v, k]));
 export const examPreset = (exam?: string | null) => (exam && PRESET_OF[exam]) || undefined;
 

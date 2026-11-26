@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { LogoMark } from "@/components/Logo";
 import { signIn } from "@/lib/auth";
 import { WelcomeSections } from "./WelcomeSections";
@@ -59,7 +59,6 @@ function MockPaper({ small }: { small?: boolean }) {
 }
 
 export function WelcomePage() {
-  const nav = useNavigate();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
@@ -72,7 +71,7 @@ export function WelcomePage() {
     setErr(null);
     try {
       await signIn(name.trim(), pw, reg);
-      nav("/", { replace: true });
+      location.replace("/");
     } catch (x) {
       setErr(x instanceof Error ? x.message : "登录失败");
     } finally {
@@ -122,7 +121,7 @@ export function WelcomePage() {
               {busy ? "请稍候…" : reg ? "注册，开始做题" : "登录"}
             </button>
           </form>
-          <p className="mt-3 text-[12.5px] text-[var(--ink-500)]">{reg ? "这台设备上已有的数据会合并进新账号。" : "登录后生词、错题、笔记在各台设备上同步。"}</p>
+          <p className="mt-3 text-[12.5px] text-[var(--ink-500)]">{reg ? "各账号数据独立隔离；登录后可在设置里选择是否合并本机访客记录。" : "登录后生词、错题、做题记录与笔记在各台设备间同步。"}</p>
           <Link to="/" replace onClick={guest} className="mt-8 inline-block text-[14px] font-medium underline decoration-[var(--line)] underline-offset-4 hover:decoration-[var(--ink)]">
             不登录，先用着 →
           </Link>

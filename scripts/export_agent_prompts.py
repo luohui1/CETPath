@@ -12,6 +12,8 @@ out = {
     "longGuide": a.LONG_GUIDE,
     "cetGuides": a.CET_GUIDES,
     "cetWords": a._CET_WORDS,
+    "ieltsGuides": a.IELTS_GUIDES,
+    "ieltsWords": a._IELTS_WORDS,
     "remember": a.REMEMBER,
     "tools": a.TOOLS,
 }

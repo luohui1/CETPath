@@ -27,9 +27,13 @@ export interface Article extends ArticleMeta {
   keywords?: string[];
 }
 
-/** 生词来源的链接：外刊的生词（paperId 是 article:<id>）回到文章，其余回到卷子 */
+/** 生词来源的链接：外刊的生词回到文章，雅思生词（ielts:<id>）回到雅思题库，其余回到卷子 */
 export const sourceHref = (paperId: string, query = "") =>
-  paperId.startsWith("article:") ? `/articles/${paperId.slice(8)}` : `/paper/${paperId}${query}`;
+  paperId.startsWith("article:")
+    ? `/articles/${paperId.slice(8)}`
+    : paperId.startsWith("ielts:")
+      ? `/papers?exam=${paperId.slice(6).startsWith("gt-") ? "ielts-gt" : "ielts-a"}`
+      : `/paper/${paperId}${query}`;
 
 export const SOURCE_NAMES: Record<ArticleMeta["source"], string> = { voa: "VOA Learning English", wiki: "英文维基百科" };
 

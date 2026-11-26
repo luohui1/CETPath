@@ -5,7 +5,7 @@ import { db, type DayRow } from "@/lib/db";
 import { answeredCount, paperPath } from "@/lib/attempts";
 import { pendingCounts } from "@/lib/learning";
 import { usePendingMistakes } from "@/lib/mistakes";
-import { KIND_NAMES } from "@/lib/papers";
+import { isIeltsExam, KIND_NAMES } from "@/lib/papers";
 import { useSettings } from "@/lib/settings";
 import { currentStreak } from "@/lib/stats";
 import { itemTitle, itemTotal, lastDays, MIN_ANSWERS, pct, spentText, useAttemptItems, useKindStats, usePaperIndex, type AttemptItem, type KindStat } from "@/lib/insights";
@@ -15,6 +15,10 @@ import { Button } from "@/components/ui";
 import { ExamCountdown, examPreset } from "@/components/ExamCountdown";
 import { Heatmap } from "@/components/Heatmap";
 import { Bubbles, PaperThumb } from "@/components/paper-ui";
+import { IELTS_SKILLS_ZH, ieltsPaperLabel, useIeltsIndex } from "@/ielts/data";
+import { DeleteRunButton } from "@/ielts/components/DeleteRunButton";
+import { useIeltsAttempts, useIeltsPendingMistakes } from "@/ielts/store";
+import type { IeltsAttemptRow } from "@/ielts/types";
 
 const WEEKLY_PAPERS = 2; // 每周两套整卷
 
@@ -197,6 +201,108 @@ function RecentCard({ items, className }: { items: AttemptItem[] | null; classNa
   );
 }
 
+/** 雅思首页主卡片：正在进行的机考或推荐下一套剑雅整卷模考 */
+function IeltsContinueCard({
+  active,
+  next,
+  exam,
+  className,
+}: {
+  active?: IeltsAttemptRow;
+  next?: { id: string; title: string; meta: string };
+  exam: string;
+  className?: string;
+}) {
+  const curState = active ? active.sections[active.currentSkill] : undefined;
+  const answered = curState ? Object.keys(curState.answers).length + Object.keys(curState.essays).length : 0;
+  const elapsed = active ? Object.values(active.sections).reduce((s, x) => s + (x?.elapsed ?? 0), 0) : 0;
+  const href = active ? `/ielts/exam/${active.id}` : next ? `/ielts/start/${encodeURIComponent(next.id)}?scope=full&mode=mock` : `/papers?exam=${exam}`;
+
+  return (
+    <div className={cn("card flex flex-col p-6", className)}>
+      <div className="t-label">
+        {active ? (active.scope === "full" ? "继续雅思整套机考" : `继续雅思${IELTS_SKILLS_ZH[active.currentSkill]}练习`) : "推荐下一套雅思真题"}
+      </div>
+      <h2 className="mt-1 text-[20px] leading-7 font-semibold">
+        {active ? active.paperTitle : (next?.title ?? "当前题库已全部完成")}
+      </h2>
+      <p className="mt-1 text-[14px] text-[var(--ink-500)]">
+        {active ? (
+          <>
+            当前科目：<span className="font-medium text-[var(--ink)]">{IELTS_SKILLS_ZH[active.currentSkill]}</span>
+            {answered > 0 && (
+              <>
+                {" "}· 已答 <span className="num text-[var(--ink)]">{answered}</span> 处
+              </>
+            )}
+            {elapsed >= 60 && ` · 已用 ${spentText(elapsed)}`}
+          </>
+        ) : (
+          next?.meta ?? "可前往真题库自选剑雅、机经或单科重练"
+        )}
+      </p>
+      <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
+        {(active || next) && (
+          <Link to={href}>
+            <Button variant="primary" size="lg">
+              {active ? "回到机考考场" : "进入全真机考"} <ArrowRight className="size-4" />
+            </Button>
+          </Link>
+        )}
+        {active && <DeleteRunButton run={active} label="放弃本次" className="h-10 px-3 text-[13.5px]" />}
+        <Link to={`/papers?exam=${exam}`}>
+          <Button variant="ghost">全部真题</Button>
+        </Link>
+        <Link to="/speaking">
+          <Button variant="ghost">口语题库</Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/** 雅思最近练习卡片 */
+function IeltsRecentCard({ runs, exam, className }: { runs: IeltsAttemptRow[] | undefined; exam: string; className?: string }) {
+  return (
+    <div className={cn("card p-6", className)}>
+      <Head title="最近练习" to={`/papers?exam=${exam}`} link="全部真题" />
+      {!runs?.length ? (
+        <p className="text-[14px] text-[var(--ink-500)]">还没有雅思机考记录。完成一套模考或单科练习后，这里会显示 Band 与用时。</p>
+      ) : (
+        <ul className="-mx-2">
+          {runs.slice(0, 3).map((r) => {
+            const elapsed = Object.values(r.sections).reduce((s, x) => s + (x?.elapsed ?? 0), 0);
+            const scopeLabel = r.scope === "full" ? "整套机考" : IELTS_SKILLS_ZH[r.currentSkill];
+            const to = r.submittedAt ? `/ielts/review/${r.id}` : `/ielts/exam/${r.id}`;
+            return (
+              <li key={r.id} className="flex min-h-[52px] items-center gap-2 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-[var(--paper-50)]">
+                <Link to={to} className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[14px] font-medium">
+                      {r.paperTitle} · {scopeLabel}
+                    </div>
+                    <div className="text-[13px] text-[var(--ink-500)]">
+                      {spentText(elapsed)} · {timeAgo(r.updatedAt)}
+                    </div>
+                  </div>
+                  {r.submittedAt ? (
+                    <span className="num text-[18px] font-semibold">
+                      {r.overallBand != null ? `Band ${r.overallBand.toFixed(1)}` : "已交卷"}
+                    </span>
+                  ) : (
+                    <span className="text-[13px] text-[var(--blue)]">进行中</span>
+                  )}
+                </Link>
+                <DeleteRunButton run={r} iconOnly />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * 首页只回答一个问题：今天做什么。
  * 接着做题是主角（跨两列），"今天"在它旁边；倒计时是标题下面的一行小条；下面本周、最近练习和学习日历。
@@ -209,11 +315,32 @@ export function HomePage() {
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
   const { index } = usePaperIndex();
+  const { index: ieltsIndex } = useIeltsIndex();
   const items = useAttemptItems(index);
+  const ieltsAttempts = useIeltsAttempts();
   const kinds = useKindStats(index, items);
-  const mistakes = usePendingMistakes() ?? 0;
+  const mistakes = (usePendingMistakes() ?? 0) + (useIeltsPendingMistakes() ?? 0);
+  const effectiveExam = settings.lastExam ?? (index && index.length === 0 ? "ielts-a" : null);
+  const ieltsMode = isIeltsExam(effectiveExam);
 
-  const current = items?.find((it) => !it.attempt.submittedAt && (!settings.lastExam || it.paper.exam === settings.lastExam));
+  const current = items?.find((it) => !it.attempt.submittedAt && (!effectiveExam || it.paper.exam === effectiveExam));
+  const activeIelts = useMemo(
+    () => (ieltsAttempts ?? []).find((a) => !a.submittedAt && (!effectiveExam || a.exam === effectiveExam)),
+    [ieltsAttempts, effectiveExam],
+  );
+  const nextIelts = useMemo(() => {
+    if (!ieltsMode) return undefined;
+    const doneIds = new Set((ieltsAttempts ?? []).filter((a) => a.scope === "full" && a.submittedAt).map((a) => a.paperId));
+    const p = (ieltsIndex?.papers ?? []).find((e) => e.exam === effectiveExam && e.fullMock && !doneIds.has(e.id));
+    return (
+      p && {
+        id: p.id,
+        title: ieltsPaperLabel(p),
+        meta: `${p.skills.map((s) => IELTS_SKILLS_ZH[s]).join(" + ")} · Inspera 全真机考界面`,
+      }
+    );
+  }, [ieltsMode, ieltsIndex, ieltsAttempts, effectiveExam]);
+
   const next = useMemo(() => {
     const done = new Set((items ?? []).filter((it) => !it.section).map((it) => it.paper.id));
     const p = [...(index ?? [])].filter((x) => !settings.lastExam || x.exam === settings.lastExam).sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));
@@ -230,8 +357,12 @@ export function HomePage() {
   const words = counts ? counts.dueReviews + counts.newLeft : 0;
   const noSource = !settings.activeBook && !vocabCount;
   const suggest = weakest ?? [...(kinds ?? [])].filter((k) => k.kind !== "writing" && k.kind !== "translation").sort((a, b) => a.practiced - b.practiced || b.sections - a.sections)[0];
-  const suggestDone = !!suggest && !!items?.some((it) => it.section?.kind === suggest.kind && (it.attempt.submittedAt ?? 0) >= today);
-  const weekPapers = (items ?? []).filter((it) => !it.section && (it.attempt.submittedAt ?? 0) >= weekStart()).length;
+  const suggestDone = ieltsMode
+    ? !!(ieltsAttempts ?? []).some((a) => a.scope !== "full" && (a.submittedAt ?? 0) >= today)
+    : !!suggest && !!items?.some((it) => it.section?.kind === suggest.kind && (it.attempt.submittedAt ?? 0) >= today);
+  const weekPapers = ieltsMode
+    ? (ieltsAttempts ?? []).filter((a) => a.scope === "full" && (a.submittedAt ?? 0) >= weekStart()).length
+    : (items ?? []).filter((it) => !it.section && (it.attempt.submittedAt ?? 0) >= weekStart()).length;
   const papersLeft = Math.max(0, WEEKLY_PAPERS - weekPapers);
   const fullPaper = items?.find((it) => !it.section && !it.attempt.submittedAt);
   const all: Todo[] = [
@@ -248,7 +379,9 @@ export function HomePage() {
           done: !!counts && words === 0,
           to: "/review",
         },
-    { text: suggest ? `练一篇${KIND_NAMES[suggest.kind]}` : "练一篇专项", done: suggestDone, to: suggest ? `/practice?kind=${suggest.kind}` : "/practice" },
+    ieltsMode
+      ? { text: "练一篇雅思单项或口语话题", done: suggestDone, to: `/practice?exam=${effectiveExam}` }
+      : { text: suggest ? `练一篇${KIND_NAMES[suggest.kind]}` : "练一篇专项", done: suggestDone, to: suggest ? `/practice?kind=${suggest.kind}` : "/practice" },
     {
       text: papersLeft ? (
         <>
@@ -258,7 +391,17 @@ export function HomePage() {
         "本周两套整卷做完了"
       ),
       done: papersLeft === 0,
-      to: fullPaper ? paperPath(fullPaper.paper.id) : next ? paperPath(next.id) : "/papers",
+      to: ieltsMode
+        ? activeIelts
+          ? `/ielts/exam/${activeIelts.id}`
+          : nextIelts
+            ? `/ielts/start/${encodeURIComponent(nextIelts.id)}?scope=full&mode=mock`
+            : `/papers?exam=${effectiveExam}`
+        : fullPaper
+          ? paperPath(fullPaper.paper.id)
+          : next
+            ? paperPath(next.id)
+            : "/papers",
     },
     ...(mistakes
       ? [
@@ -283,18 +426,29 @@ export function HomePage() {
         <h1 className="t-h1">{greeting()}</h1>
         <p className="mt-1.5 text-[14px] text-[var(--ink-500)]">{new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}</p>
       </div>
-      <ExamCountdown startedAt={firstDay} weak={weakest ? KIND_NAMES[weakest.kind] : undefined} defaultName={examPreset(settings.lastExam ?? next?.exam)} className="mb-5" />
+      <ExamCountdown startedAt={firstDay} weak={weakest ? KIND_NAMES[weakest.kind] : undefined} defaultName={examPreset(effectiveExam ?? next?.exam)} className="mb-5" />
 
       <div className="@container">
         <div className="grid grid-flow-row-dense grid-cols-1 gap-5 @min-[720px]:grid-cols-2 @min-[1040px]:grid-cols-3">
-          <ContinueCard item={current} next={next} weakest={weakest} className="@min-[720px]:col-span-2" />
+          {ieltsMode ? (
+            <IeltsContinueCard active={activeIelts} next={nextIelts} exam={effectiveExam!} className="@min-[720px]:col-span-2" />
+          ) : (
+            <ContinueCard item={current} next={next} weakest={weakest} className="@min-[720px]:col-span-2" />
+          )}
           <TodayCard todos={todos} />
           <WeekCard days={days ?? []} />
           <div className="card p-6 @max-[1039px]:order-last">
             <Head title="学习日历" to="/stats" link="统计" />
             <Heatmap days={days ?? []} weeks={18} />
           </div>
-          <RecentCard items={items} />
+          {ieltsMode ? (
+            <IeltsRecentCard
+              runs={(ieltsAttempts ?? []).filter((a) => a.exam === effectiveExam)}
+              exam={effectiveExam!}
+            />
+          ) : (
+            <RecentCard items={items} />
+          )}
         </div>
       </div>
     </div>

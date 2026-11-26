@@ -15,6 +15,7 @@ const DAILY_OPTIONS = [10, 20, 30, 50, 80];
 const PAGE = 50;
 
 const BOOK_DESC: Record<string, string> = {
+  ielts: "雅思核心高频词汇，按真题与语料库词频排序",
   cet4: "四级大纲词汇，按词频排序，常用词先学",
   cet6: "六级大纲词汇（含四级词），按词频排序",
   ky: "考研英语大纲词汇，按词频排序",

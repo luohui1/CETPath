@@ -1,7 +1,23 @@
 import { db } from "./db";
 import { savePreviewModel } from "./preview";
 
-const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "methods", "aiSyntax"] as const;
+const TABLES = [
+  "vocab",
+  "cards",
+  "logs",
+  "attempts",
+  "days",
+  "settings",
+  "marks",
+  "mastery",
+  "memory",
+  "chats",
+  "methods",
+  "aiSyntax",
+  "ieltsAttempts",
+  "ieltsMastery",
+  "ieltsSpeaking",
+] as const;
 
 /** 所有学习数据导出成一个 JSON，换设备或清缓存前用来备份 */
 export async function exportBackup() {

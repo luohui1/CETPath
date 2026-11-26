@@ -3,12 +3,14 @@ import { Link, useSearchParams } from "react-router";
 import { FileText } from "@phosphor-icons/react";
 import type { AttemptRow } from "@/lib/db";
 import { answeredCount, paperPath } from "@/lib/attempts";
-import { EXAMS, KIND_NAMES, type ExamId, type PaperIndexItem } from "@/lib/papers";
+import { EXAMS, isIeltsExam, KIND_NAMES, type ExamId, type PaperIndexItem } from "@/lib/papers";
 import { setSetting, useSettings } from "@/lib/settings";
 import { pct, useAttemptItems, usePaperIndex } from "@/lib/insights";
 import { cn, daysUntil } from "@/lib/utils";
 import { EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { Bubbles, PaperThumb, StickyTab, jumpToYear, useCurrentYear } from "@/components/paper-ui";
+import { useIeltsIndex } from "@/ielts/data";
+import { IeltsPapersView } from "@/ielts/components/IeltsPapersView";
 
 type Status = "all" | "new" | "doing" | "done";
 
@@ -70,11 +72,13 @@ export function PapersPage() {
   const [params, setParams] = useSearchParams();
   const settings = useSettings();
   const { index, error } = usePaperIndex();
+  const { index: ieltsIndex } = useIeltsIndex();
   const items = useAttemptItems(index);
   const [status, setStatus] = useState<Status>("all");
 
   const attemptMap = useMemo(() => new Map((items ?? []).filter((it) => !it.section).map((it) => [it.paper.id, it.attempt])), [items]);
-  const exam = (params.get("exam") as ExamId) || (settings.lastExam as ExamId | null) || (index?.[0]?.exam ?? "kaoyan1");
+  const exam = (params.get("exam") as ExamId) || (settings.lastExam as ExamId | null) || (index?.[0]?.exam ?? "ielts-a");
+  const ieltsMode = isIeltsExam(exam);
   // 从别处带着考试进来（如做题页的"返回真题训练"）也记下
   const askedExam = params.get("exam");
   useEffect(() => {
@@ -138,11 +142,13 @@ export function PapersPage() {
             void setSetting("lastExam", v);
           }}
           options={EXAMS.map((e) => {
-            const n = (index ?? []).filter((p) => p.exam === e.id).length;
+            const n = isIeltsExam(e.id)
+              ? (ieltsIndex?.papers ?? []).filter((p) => p.exam === e.id).length
+              : (index ?? []).filter((p) => p.exam === e.id).length;
             return { value: e.id, label: n ? `${e.short} ${n}` : e.short };
           })}
         />
-        {all.length > 0 && (
+        {!ieltsMode && all.length > 0 && (
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="按状态筛选">
             {FILTERS.map(({ value, label }) => (
               <button key={value} type="button" role="radio" aria-checked={status === value} onClick={() => setStatus(value)} className={cn("pill", status === value && "pill-on")}>
@@ -153,57 +159,63 @@ export function PapersPage() {
         )}
       </div>
 
-      {error && <EmptyState title="试卷目录加载失败" desc={error} />}
-      {!index && !error && <LoadingBlock />}
-      {index && all.length === 0 && <EmptyState icon={<FileText className="size-[22px]" />} title={`还没有收录${examName}`} desc="真题导入方法见 docs/试卷数据格式.md。" />}
-      {all.length > 0 && papers.length === 0 && <p className="py-12 text-center text-[14px] text-[var(--ink-500)]">没有符合条件的试卷</p>}
+      {ieltsMode ? (
+        <IeltsPapersView exam={exam} />
+      ) : (
+        <>
+          {error && <EmptyState title="试卷目录加载失败" desc={error} />}
+          {!index && !error && <LoadingBlock />}
+          {index && all.length === 0 && <EmptyState icon={<FileText className="size-[22px]" />} title={`还没有收录${examName}`} desc="真题导入方法见 docs/试卷数据格式.md。" />}
+          {all.length > 0 && papers.length === 0 && <p className="py-12 text-center text-[14px] text-[var(--ink-500)]">没有符合条件的试卷</p>}
 
-      <div className={cn(showIndex && "grid grid-cols-[minmax(0,1fr)_48px] gap-4")}>
-        <div className="space-y-6">
-          {years.map(({ year, sittings }) => (
-            <section key={year} id={`y${year}`} className="grid scroll-mt-6 grid-cols-[36px_minmax(0,1fr)]">
-              {/* 档案夹左边伸出的年份便签，滚动时贴在顶上 */}
-              <StickyTab vertical className="sticky top-6 mt-3 self-start">
-                <span className="num text-[16px] tracking-[0.04em]">{year}</span>
-              </StickyTab>
-              <div className="space-y-5 rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
-                {sittings.map(({ half, papers: ps }) => (
-                  <div key={half}>
-                    {half > 0 && <h3 className="mb-2.5 px-1 text-[14px] font-semibold text-[var(--ink-700)]">{half === 1 ? "上半年" : "下半年"}</h3>}
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {ps.map((p) => (
-                        <PaperCard key={p.id} paper={p} attempt={attemptMap.get(p.id)} />
-                      ))}
-                    </div>
+          <div className={cn(showIndex && "grid grid-cols-[minmax(0,1fr)_48px] gap-4")}>
+            <div className="space-y-6">
+              {years.map(({ year, sittings }) => (
+                <section key={year} id={`y${year}`} className="grid scroll-mt-6 grid-cols-[36px_minmax(0,1fr)]">
+                  {/* 档案夹左边伸出的年份便签，滚动时贴在顶上 */}
+                  <StickyTab vertical className="sticky top-6 mt-3 self-start">
+                    <span className="num text-[16px] tracking-[0.04em]">{year}</span>
+                  </StickyTab>
+                  <div className="space-y-5 rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
+                    {sittings.map(({ half, papers: ps }) => (
+                      <div key={half}>
+                        {half > 0 && <h3 className="mb-2.5 px-1 text-[14px] font-semibold text-[var(--ink-700)]">{half === 1 ? "上半年" : "下半年"}</h3>}
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {ps.map((p) => (
+                            <PaperCard key={p.id} paper={p} attempt={attemptMap.get(p.id)} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+                </section>
+              ))}
+            </div>
 
-        {/* 年份索引：右边一列小字，像书页边的索引；滚动时高亮当前年份 */}
-        {showIndex && (
-          <nav aria-label="跳到年份" className="sticky top-8 flex flex-col items-stretch gap-0.5 self-start">
-            {years.map(({ year }) => (
-              <a
-                key={year}
-                href={`#y${year}`}
-                onClick={(e) => jumpToYear(e, year)}
-                aria-current={curYear === year ? "true" : undefined}
-                className={cn(
-                  "num relative flex h-10 items-center justify-center rounded-[8px] text-[13px] transition-colors",
-                  curYear === year
-                    ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2.5 before:bottom-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
-                    : "text-[var(--ink-500)] hover:text-[var(--ink)]",
-                )}
-              >
-                {year}
-              </a>
-            ))}
-          </nav>
-        )}
-      </div>
+            {/* 年份索引：右边一列小字，像书页边的索引；滚动时高亮当前年份 */}
+            {showIndex && (
+              <nav aria-label="跳到年份" className="sticky top-8 flex flex-col items-stretch gap-0.5 self-start">
+                {years.map(({ year }) => (
+                  <a
+                    key={year}
+                    href={`#y${year}`}
+                    onClick={(e) => jumpToYear(e, year)}
+                    aria-current={curYear === year ? "true" : undefined}
+                    className={cn(
+                      "num relative flex h-10 items-center justify-center rounded-[8px] text-[13px] transition-colors",
+                      curYear === year
+                        ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2.5 before:bottom-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
+                        : "text-[var(--ink-500)] hover:text-[var(--ink)]",
+                    )}
+                  >
+                    {year}
+                  </a>
+                ))}
+              </nav>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import "@fontsource/source-serif-4/latin-600.css";
 import "@fontsource/source-serif-4/latin-700.css";
 import "./index.css";
 import { primeAppData } from "./lib/insights";
+import { redirectLegacyHash } from "./lib/account";
 import { db, memoryDb } from "./lib/db";
 import { leaveHttp, takeHandoff } from "./lib/https";
 import type { ComponentType } from "react";
@@ -31,7 +32,26 @@ const page = (load: () => Promise<ComponentType>) => {
   return { lazy: async () => ({ Component: await load() }) };
 };
 const reader = () => import("./pages/PaperReader").then((m) => m.PaperReaderPage);
+const ieltsStart = () => import("./ielts/pages/IeltsRunnerPage").then((m) => m.IeltsStartPage);
+const ieltsExam = () =>
+  import("./ielts/pages/IeltsRunnerPage").then((m) => {
+    const ExamRoute = () => <m.IeltsRunnerPage review={false} />;
+    return ExamRoute;
+  });
+const ieltsReview = () =>
+  import("./ielts/pages/IeltsRunnerPage").then((m) => {
+    const ReviewRoute = () => <m.IeltsRunnerPage review={true} />;
+    return ReviewRoute;
+  });
 
+redirectLegacyHash(); // 兼容旧版独立雅思站点的 #/speaking/* 等书签与 PWA 入口
+if (typeof window !== "undefined" && "caches" in window) {
+  // 清理旧版独立雅思站点遗留的 shell-v* / data-v* Service Worker 缓存（不动 IndexedDB）
+  void caches
+    .keys()
+    .then((ks) => ks.filter((k) => /^(shell|data)-v\d+$/.test(k)).forEach((k) => void caches.delete(k)))
+    .catch(() => {});
+}
 if (IS_PREVIEW) installPreview();
 else installOwnModel(); // 正式版：学习者在设置里填了自己的模型，选它时浏览器直接调
 void loadMe(); // 从哪个页面打开都先查登录、开始同步
@@ -43,6 +63,9 @@ const router = createBrowserRouter([
     ? { path: "/articles/:id", ...page(() => import("./pages/Article").then((m) => m.ArticlePage)) }
     : { path: "/articles/*", element: <Navigate to="/" replace /> },
   { path: "/paper/:id/:section?", ...page(reader), hydrateFallbackElement: <div className="min-h-dvh bg-[var(--paper-100)]" /> },
+  { path: "/ielts/start/:paperId", ...page(ieltsStart), hydrateFallbackElement: <div className="min-h-dvh bg-[#f5f6f8]" /> },
+  { path: "/ielts/exam/:runId", ...page(ieltsExam), hydrateFallbackElement: <div className="min-h-dvh bg-[#f5f6f8]" /> },
+  { path: "/ielts/review/:runId", ...page(ieltsReview), hydrateFallbackElement: <div className="min-h-dvh bg-[#f5f6f8]" /> },
   {
     element: <Layout />,
     hydrateFallbackElement: <div className="min-h-dvh bg-[var(--paper-100)]" />,
@@ -53,6 +76,8 @@ const router = createBrowserRouter([
         ? { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) }
         : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
+      { path: "/speaking", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
+      { path: "/speaking/topic/:topicId/:qIdx?", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },
       { path: "/methods", ...page(() => import("./pages/Methods").then((m) => m.MethodsPage)) },
       { path: "/review", ...page(() => import("./pages/Review").then((m) => m.ReviewPage)) },

@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { PREVIEW_MODEL_KEY } from "./preview";
 
-const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats"] as const;
+const TABLES = ["vocab", "cards", "logs", "attempts", "days", "settings", "marks", "mastery", "memory", "chats", "ieltsAttempts", "ieltsMastery", "ieltsSpeaking"] as const;
 const MOVED = "yz-moved-https";
 
 type Handoff = { app: string; tables: Record<string, unknown[]>; ls: Record<string, string> };

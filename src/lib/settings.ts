@@ -22,6 +22,13 @@ export interface Settings {
   reviewMode: ReviewMode; // 背单词怎么考：认读 / 拼写 / 听写
   lastExam: string | null; // 真题、专项页上次选的考试（ExamId）；首页推荐和倒计时默认跟它
   focusBand: FocusBand | null; // 本周重点：词书里的一个词频段，每日新词先从这里出
+  // 雅思机考与沉浸式防污染设置（全真模考开考后强制全锁死；下面开关仅控制单项练习和交卷后的复盘）
+  ieltsCandidateName: string;       // 机考顶栏显示的考生名（默认 Test taker ID）
+  ieltsPracticeLookup: boolean;     // 雅思练习模式作答中允许点词查词（默认关闭，保护沉浸感）
+  ieltsPracticeVocabMarks: boolean; // 雅思练习模式作答中标出生词下划线（默认关闭）
+  ieltsReviewLookup: boolean;       // 雅思交卷复盘时允许点词查词并加入生词本（默认开启）
+  ieltsReviewVocabMarks: boolean;   // 雅思交卷复盘时标出生词下划线（默认关闭）
+  ieltsReviewAgent: boolean;        // 雅思交卷复盘时显示 AI 助教入口（默认关闭，按需开启）
 }
 
 export interface PenPreset {
@@ -61,7 +68,13 @@ export const DEFAULT_SETTINGS: Settings = {
   pinToolbar: false,
   reviewMode: "recognize",
   focusBand: null,
-  lastExam: null,
+  lastExam: "ielts-a",
+  ieltsCandidateName: "",
+  ieltsPracticeLookup: false,
+  ieltsPracticeVocabMarks: false,
+  ieltsReviewLookup: true,
+  ieltsReviewVocabMarks: false,
+  ieltsReviewAgent: false,
 };
 
 export const settingsRows = () => db.settings.toArray();

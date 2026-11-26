@@ -1,7 +1,9 @@
 import Dexie, { type EntityTable } from "dexie";
 import { IDBKeyRange as fakeIDBKeyRange, indexedDB as fakeIndexedDB } from "fake-indexeddb";
 import type { State } from "ts-fsrs";
+import { ACTIVE_ACCOUNT, DB_NAME, GUEST_DB_NAME } from "./account";
 import type { DictEntry } from "./dict";
+import type { IeltsAttemptRow, IeltsMasteryRow, IeltsRecordingRow, IeltsSpeakingRow } from "../ielts/types";
 import type { SectionKind } from "./papers";
 import type { SyntaxEntry } from "./syntax";
 
@@ -182,7 +184,7 @@ if (memoryDb && typeof structuredClone === "undefined") {
   (globalThis as { structuredClone?: unknown }).structuredClone = (v: unknown) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 }
 
-export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexedDB, IDBKeyRange: fakeIDBKeyRange } : undefined) as Dexie & {
+type AppDb = Dexie & {
   vocab: EntityTable<VocabItem, "word">;
   cards: EntityTable<CardRow, "word">;
   logs: EntityTable<ReviewLogRow, "id">;
@@ -195,40 +197,67 @@ export const db = new Dexie("yingyu-zhidao", memoryDb ? { indexedDB: fakeIndexed
   chats: EntityTable<ChatRow, "id">;
   methods: EntityTable<MethodRow, "id">;
   aiSyntax: EntityTable<AiSyntaxRow, "id">;
+  ieltsAttempts: EntityTable<IeltsAttemptRow, "id">;
+  ieltsMastery: EntityTable<IeltsMasteryRow, "id">;
+  ieltsSpeaking: EntityTable<IeltsSpeakingRow, "id">;
+  ieltsRecordings: EntityTable<IeltsRecordingRow, "id">;
 };
 
-db.version(1).stores({
-  vocab: "word, addedAt",
-  cards: "word, due, state, origin, bookId",
-  logs: "++id, word, day, reviewedAt",
-  attempts: "paperId, updatedAt",
-  days: "day",
-  settings: "key",
-});
+function applySchema(instance: Dexie) {
+  instance.version(1).stores({
+    vocab: "word, addedAt",
+    cards: "word, due, state, origin, bookId",
+    logs: "++id, word, day, reviewedAt",
+    attempts: "paperId, updatedAt",
+    days: "day",
+    settings: "key",
+  });
 
-db.version(2).stores({
-  marks: "id, paperId, [paperId+page]",
-});
+  instance.version(2).stores({
+    marks: "id, paperId, [paperId+page]",
+  });
 
-db.version(3).stores({
-  mastery: "id, paperId, kind, firstWrongAt, retiredAt",
-});
+  instance.version(3).stores({
+    mastery: "id, paperId, kind, firstWrongAt, retiredAt",
+  });
 
-db.version(4).stores({
-  memory: "++id, kind, updatedAt",
-});
+  instance.version(4).stores({
+    memory: "++id, kind, updatedAt",
+  });
 
-db.version(5).stores({
-  chats: "id, updatedAt",
-});
+  instance.version(5).stores({
+    chats: "id, updatedAt",
+  });
 
-db.version(6).stores({
-  methods: "id, updatedAt, kind",
-});
+  instance.version(6).stores({
+    methods: "id, updatedAt, kind",
+  });
 
-db.version(7).stores({
-  aiSyntax: "id, paperId",
-});
+  instance.version(7).stores({
+    aiSyntax: "id, paperId",
+  });
+
+  instance.version(8).stores({
+    ieltsAttempts: "id, paperId, exam, scope, mode, updatedAt, submittedAt",
+    ieltsMastery: "id, paperId, skill, qtype, firstWrongAt, retiredAt",
+    ieltsSpeaking: "id, updatedAt",
+    ieltsRecordings: "id, qid, createdAt",
+  });
+}
+
+export function openNamedDb(name: string): AppDb {
+  const inst = new Dexie(name, memoryDb ? { indexedDB: fakeIndexedDB, IDBKeyRange: fakeIDBKeyRange } : undefined) as AppDb;
+  applySchema(inst);
+  return inst;
+}
+
+export const db: AppDb = openNamedDb(DB_NAME);
+
+/** 登录状态下只读访问本机访客库（用于提示并经用户确认后认领合并访客记录） */
+export function openGuestDb(): AppDb | null {
+  if (!ACTIVE_ACCOUNT || memoryDb) return null;
+  return openNamedDb(GUEST_DB_NAME);
+}
 
 // Safari（iPhone/iPad）的老毛病：新开的页面里第一次打开 IndexedDB 可能一直不响应，页面就卡在"加载中"。
 // 反复调 databases() 能把它唤醒（safari-14-idb-fix 的做法），响应了就停

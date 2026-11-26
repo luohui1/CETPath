@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import * as G from "@/grasso";
 import { db, dayKey } from "@/lib/db";
 import { isMastered, State } from "@/lib/learning";
-import { KIND_NAMES } from "@/lib/papers";
+import { isIeltsExam, KIND_NAMES } from "@/lib/papers";
+import { useSettings } from "@/lib/settings";
 import { currentStreak, isActive, longestStreak } from "@/lib/stats";
 import { lastDays, MIN_ANSWERS, pct, useAttemptItems, useCetScores, useKindStats, usePaperIndex, type ScoreRow } from "@/lib/insights";
 import { CET_PART_MAX } from "@/lib/report";
@@ -12,6 +13,8 @@ import { LoadingBlock, PageHeader } from "@/components/ui";
 import { Heatmap } from "@/components/Heatmap";
 import { KIND_PIXELS, PixelIcon } from "@/components/PixelIcon";
 import { DayColumns, MemoryStrip, Sparkline } from "@/components/viz";
+import { IeltsStatsPanel } from "@/ielts/components/IeltsStatsPanel";
+import { useIeltsAttempts } from "@/ielts/store";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -148,6 +151,7 @@ function Panel({ title, desc, className, children }: { title: string; desc?: str
 
 /** 学习统计：打卡、做题和背词的长期数据 */
 export function StatsPage() {
+  const settings = useSettings();
   const days = useCachedLiveQuery("days", () => db.days.toArray());
   const cards = useCachedLiveQuery("cards", () => db.cards.toArray());
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
@@ -157,6 +161,7 @@ export function StatsPage() {
   const items = useAttemptItems(index);
   const kinds = useKindStats(index, items);
   const scores = useCetScores(items);
+  const ieltsAttempts = useIeltsAttempts();
 
   if (!days || !cards || !logs || !forecast) return <LoadingBlock />;
 
@@ -166,7 +171,13 @@ export function StatsPage() {
   const mastered = cards.filter(isMastered).length;
   const recall = logs.length ? pct(logs.filter((l) => l.rating > 1).length, logs.length) : null;
   const submitted = (items ?? []).filter((it) => it.attempt.submittedAt);
-  const spent = (items ?? []).reduce((s, it) => s + (it.attempt.spentSec ?? 0), 0);
+  const ieltsSubmitted = (ieltsAttempts ?? []).filter((a) => a.submittedAt);
+  const ieltsSpent = (ieltsAttempts ?? []).reduce(
+    (sum, a) => sum + Object.values(a.sections).reduce((s, sec) => s + (sec?.elapsed ?? 0), 0),
+    0,
+  );
+  const spent = (items ?? []).reduce((s, it) => s + (it.attempt.spentSec ?? 0), 0) + ieltsSpent;
+  const ieltsFirst = isIeltsExam(settings.lastExam) || (ieltsSubmitted.length > 0 && !(scores?.length ?? 0));
 
   const memory = [
     { label: "已掌握", value: mastered },
@@ -196,13 +207,25 @@ export function StatsPage() {
           note={`共 ${totalQuestions} 道客观题`}
           trend={month.slice(-14).map((d) => (d.questions ? pct(d.correct, d.questions) : 0))}
         />
-        <Tile label="做题时长" value={spentParts(spent)[0]} unit={spentParts(spent)[1]} note={`交卷 ${submitted.length} 次`} />
+        <Tile label="做题时长" value={spentParts(spent)[0]} unit={spentParts(spent)[1]} note={`交卷 ${submitted.length + ieltsSubmitted.length} 次`} />
         <Tile label="已掌握单词" value={`${mastered}`} unit="个" note={`生词本 ${vocabCount ?? 0} 个${recall === null ? "" : ` · 近 30 天认识率 ${recall}%`}`} trend={month.slice(-14).map((d) => d.reviews)} />
       </div>
+
+      {ieltsFirst && (
+        <Panel title="雅思机考成绩" desc="仅统计未开启辅助查词的纯净模考（mode === mock）听力、阅读与估算均分走势">
+          <IeltsStatsPanel />
+        </Panel>
+      )}
 
       <Panel title="真题成绩" desc="整套四六级交卷后，按官方计分规则折算听力、阅读分；写作翻译不算">
         <ScoresPanel rows={scores} />
       </Panel>
+
+      {!ieltsFirst && (
+        <Panel title="雅思机考成绩" desc="仅统计未开启辅助查词的纯净模考（mode === mock）听力、阅读与估算均分走势">
+          <IeltsStatsPanel />
+        </Panel>
+      )}
 
       <Panel title="近 30 天" desc="每天做的客观题和复习的单词">
         <G.AreaChart

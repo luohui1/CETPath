@@ -23,7 +23,16 @@ export function previewModel(): PreviewModel | null {
 }
 export const savePreviewModel = (c: PreviewModel | null) => (c ? localStorage.setItem(CFG_KEY, JSON.stringify(c)) : localStorage.removeItem(CFG_KEY));
 
-type Prompts = { system: string; longGuide: string; cetGuides: Record<string, string>; cetWords: [string, string][]; remember: string; tools: unknown[] };
+type Prompts = {
+  system: string;
+  longGuide: string;
+  cetGuides: Record<string, string>;
+  cetWords: [string, string][];
+  ieltsGuides?: Record<string, string>;
+  ieltsWords?: [string, string][];
+  remember: string;
+  tools: unknown[];
+};
 let promptsP: Promise<Prompts> | null = null;
 const prompts = () => {
   promptsP ??= fetch("/agent-prompts.json").then((r) => {
@@ -73,6 +82,19 @@ function cetKind(last: string, ctx: Ctx, words: [string, string][]): string | nu
   return null;
 }
 
+function ieltsKind(last: string, ctx: Ctx, words?: [string, string][]): string | null {
+  if (ctx.article || !words?.length) return null;
+  const paper = String(ctx.paper ?? "");
+  const view = String(ctx.view ?? "");
+  if (!/雅思|剑雅|机经|IELTS|Writing Task/i.test(`${paper} ${view}`)) return null;
+  for (const src of [last, view, paper]) {
+    for (const [k, pat] of words) {
+      if (new RegExp(pat, "i").test(src)) return k;
+    }
+  }
+  return "reading";
+}
+
 function contextBlock(ctx: Ctx) {
   const p: string[] = [];
   if (ctx.article) {
@@ -85,7 +107,8 @@ function contextBlock(ctx: Ctx) {
   if (ctx.paper) {
     const title = s(ctx.paper, 80);
     p.push(`试卷：${title}`);
-    if (/四级|六级/.test(title)) p.push("这是大学英语四六级（CET）的卷子：只从四六级的角度讲，不要提考研。");
+    if (/雅思|剑雅|机经|IELTS|Writing Task/i.test(title)) p.push("这是雅思（IELTS）真题复盘：只按雅思机考命题规律、同义替换与 Band 评分标准讲解，不要扯四六级或考研。");
+    else if (/四级|六级/.test(title)) p.push("这是大学英语四六级（CET）的卷子：只从四六级的角度讲，不要提考研。");
     else if (title.includes("考研")) p.push("这是考研英语的卷子：从考研的角度讲。");
   }
   if (ctx.sentence) p.push(`正在看的句子：${s(ctx.sentence, 1200)}`);
@@ -195,6 +218,8 @@ async function chat(data: Ctx, signal?: AbortSignal | null) {
   if (ctx.sentence || /长难句|句子|这句|主干|结构|拆解|从句/.test(last)) sys += pr.longGuide;
   const kind = cetKind(last, ctx, pr.cetWords);
   if (kind) sys += "\n\n## 这类题怎么讲（名师方法，照这个思路讲，但不要提出处；回答格式仍按上面的要求，简短）\n" + pr.cetGuides[kind];
+  const ikind = ieltsKind(last, ctx, pr.ieltsWords);
+  if (ikind && pr.ieltsGuides?.[ikind]) sys += "\n\n## 雅思这类题怎么讲（回答格式仍按上面的要求，简短直接）\n" + pr.ieltsGuides[ikind];
   const cb = contextBlock(ctx);
   if (cb) sys += "\n\n" + cb;
   let r: Response;
