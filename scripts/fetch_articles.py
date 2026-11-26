@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-UA = {"User-Agent": "Mozilla/5.0 (compatible; yingyu-zhidao-article-fetcher/1.0; +https://github.com/luohui1/yingyu-zhidao)"}
+UA = {"User-Agent": "Mozilla/5.0 (compatible; yingyu-zhidao-article-fetcher/1.0; +https://github.com/luohui1/CETPath)"}
 VOA_FEEDS = [  # Learning English 里考研阅读常见话题的栏目：科技、健康与生活、美国社会文化
     "https://learningenglish.voanews.com/api/zmg_pl-vomx-tpeymtm",  # Science & Technology
     "https://learningenglish.voanews.com/api/zmmpql-vomx-tpey-_q",  # Health & Lifestyle
