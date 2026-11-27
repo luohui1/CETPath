@@ -6,8 +6,8 @@ export interface Settings {
   dailyNew: number; // 每天新词数
   dailyPasses: number; // 每天背几轮：第一轮正式复习（FSRS 评分），之后每轮把今天的词快速过一遍
   autoSpeak: boolean; // 查词和背词时自动发音
-  voiceURI: string | null; // 发音人（没有真人录音时用的系统语音）
-  accent: "us" | "uk"; // 单词真人发音：美音 / 英音
+  voiceURI: string | null; // 发音人（系统语音；口音和 accent 一致时才用，不一致按 accent 重新选）
+  accent: "us" | "uk"; // 发音口音：单词真人录音、在线发音和系统语音都按它选
   showVocabMarks: boolean; // 试卷里标出生词本里的词
   readerFontSize: number; // 试卷正文字号（px）
   examName: string; // 目标考试
