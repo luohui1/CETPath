@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import * as G from "@/grasso";
 import { IELTS_SKILLS_ZH } from "../data";
 import { useIeltsAttempts } from "../store";
+import type { IeltsExamId } from "../types";
 import { DeleteRunButton } from "./DeleteRunButton";
 
 const shortDate = (t: number) => {
@@ -14,9 +15,10 @@ const shortDate = (t: number) => {
  * Strictly counts ONLY unassisted `mode === "mock"` runs (`!r.assisted`) in the Band curve,
  * while listing all runs below so any ongoing or submitted record can be reviewed or deleted.
  */
-export function IeltsStatsPanel() {
-  const attempts = useIeltsAttempts();
-  if (!attempts) return null;
+export function IeltsStatsPanel({ exam }: { exam?: IeltsExamId }) {
+  const rawAttempts = useIeltsAttempts();
+  if (!rawAttempts) return null;
+  const attempts = exam ? rawAttempts.filter((a) => a.exam === exam) : rawAttempts;
 
   const pureMocks = attempts
     .filter((a) => a.submittedAt && a.mode === "mock" && !a.assisted && a.overallBand != null)

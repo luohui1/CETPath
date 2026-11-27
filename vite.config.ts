@@ -27,6 +27,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         // pdf.js 的解析器不进预缓存：2026-11-08 上线时 nginx 把 .mjs 当 octet-stream 发，早装上的设备预缓存里存的就是这份坏的，
         // 而文件名带固定哈希、版本号不变，预缓存永远不会换掉它。考场改用 ?mime=js 的地址取，由下面单独的运行时缓存存

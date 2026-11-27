@@ -4,6 +4,34 @@ import { Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { useClipAudio } from "./useClipAudio";
 
+/** 对话角色方章（对齐考场 ListeningBar：M 实心墨方章白字，W 空心描边方章墨字） */
+export function SpeakerTag({ speaker, reliable = true }: { speaker?: string; reliable?: boolean }) {
+  if (!speaker) return null;
+  const isM = speaker === "M";
+  const label = reliable
+    ? speaker.slice(0, 1).toUpperCase()
+    : speaker === "M"
+      ? "A"
+      : speaker === "W"
+        ? "B"
+        : speaker.slice(0, 1).toUpperCase();
+  return (
+    <span
+      className={cn(
+        "inline-flex size-[18px] flex-none items-center justify-center rounded-[4px] text-[11px] leading-none font-bold select-none",
+        reliable
+          ? isM
+            ? "bg-[var(--ink)] text-white"
+            : "bg-white text-[var(--ink)] shadow-[inset_0_0_0_1.5px_var(--ink)]"
+          : "bg-[var(--paper-200)] text-[var(--ink-700)]",
+      )}
+      title={reliable ? (isM ? "男声 (M)" : "女声 (W)") : `说话人 ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function fmtSeconds(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   const m = Math.floor(s / 60);

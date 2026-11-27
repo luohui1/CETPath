@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CaretLeft, CaretRight, Check, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretDown, CaretLeft, CaretRight, Check, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { focusBand, freqBands, State } from "@/lib/learning";
 import { loadBook, loadBookMeta, phonetic, shortTranslation, type BookInfo, type DictEntry } from "@/lib/dict";
 import { setSetting, useSettings } from "@/lib/settings";
+import { getTargetMeta, resolveTargetExam } from "@/lib/targetExam";
 import { cn } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { WordsTabs } from "@/components/WordsTabs";
@@ -75,7 +76,10 @@ function BandCard({ bookId, entries, learned }: { bookId: string; entries: DictE
 
 export function BooksPage() {
   const settings = useSettings();
+  const targetExam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(targetExam);
   const [books, setBooks] = useState<BookInfo[] | null>(null);
+  const [showOthers, setShowOthers] = useState(false);
   const [preview, setPreview] = useState<DictEntry[] | null>(null);
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState("");
@@ -98,7 +102,7 @@ export function BooksPage() {
     }
   }, [books]);
 
-  const viewing = settings.activeBook ?? books?.[0]?.id ?? null;
+  const viewing = settings.activeBook ?? books?.find((b) => b.id === targetMeta.bookId)?.id ?? books?.[0]?.id ?? null;
   useEffect(() => {
     if (!viewing) return;
     setPreview(null);
@@ -114,13 +118,53 @@ export function BooksPage() {
   if (!books) return <LoadingBlock />;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const primaryBooks = books.filter((b) => b.id === targetMeta.bookId || b.id === settings.activeBook);
+  const otherBooks = books.filter((b) => b.id !== targetMeta.bookId && b.id !== settings.activeBook);
+
+  const renderBookCard = (b: BookInfo) => {
+    const set = bookSets[b.id];
+    const done = set ? [...set].filter((w) => learned.has(w)).length : 0;
+    const active = settings.activeBook === b.id;
+    const recommended = b.id === targetMeta.bookId;
+    return (
+      <Card key={b.id} className={cn("relative flex flex-col overflow-hidden p-5", active && "card-raised before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[var(--blue)]")}>
+        <div className="flex items-start justify-between gap-2">
+          <PixelIcon name="books" size={36} />
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {recommended && !active && (
+              <span className="tag-paper">当前目标推荐</span>
+            )}
+            {active && (
+              <span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">
+                <Check className="size-3.5" weight="bold" /> 正在学
+              </span>
+            )}
+          </div>
+        </div>
+        <h3 className="mt-3 text-[18px] leading-6 font-semibold">{b.name}</h3>
+        <p className="mt-1 flex-1 text-[13px] text-[var(--ink-500)]">{BOOK_DESC[b.id] ?? ""}</p>
+        <div className="mt-4 text-[13px] text-[var(--ink-500)]">
+          已学 <span className="num text-[22px] text-[var(--ink)]">{done}</span> <span className="num">/ {b.count}</span>
+        </div>
+        {done > 0 && done < b.count && <Bubbles total={b.count} done={done} max={20} className="mt-2" />}
+        {!active && (
+          <Button className="mt-4" onClick={() => setSetting("activeBook", b.id)}>
+            生词背完补这本
+          </Button>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div>
       <WordsTabs />
-      <PageHeader title="词书" desc="生词本里的词总是先背；再选一本词书，生词背完了就从词书里补新词。学过的词按遗忘曲线自动安排复习。" />
+      <PageHeader
+        title="词书"
+        desc={`当前目标：${targetMeta.name} · 生词本里的词总是先背；生词背完了就从匹配词书里补新词，按遗忘曲线自动复习。`}
+      />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <Card className={cn("relative flex flex-col overflow-hidden p-5", !settings.activeBook && "card-raised before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[var(--blue)]")}>
           <div className="flex items-start justify-between gap-2">
             <PixelIcon name="books" size={36} />
@@ -141,36 +185,26 @@ export function BooksPage() {
             </Button>
           )}
         </Card>
-        {books.map((b) => {
-          const set = bookSets[b.id];
-          const done = set ? [...set].filter((w) => learned.has(w)).length : 0;
-          const active = settings.activeBook === b.id;
-          return (
-            <Card key={b.id} className={cn("relative flex flex-col overflow-hidden p-5", active && "card-raised before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[var(--blue)]")}>
-              <div className="flex items-start justify-between gap-2">
-                <PixelIcon name="books" size={36} />
-                {active && (
-                  <span className="tag-paper bg-[var(--blue-tint)] text-[var(--blue)]">
-                    <Check className="size-3.5" weight="bold" /> 正在学
-                  </span>
-                )}
-              </div>
-              <h3 className="mt-3 text-[18px] leading-6 font-semibold">{b.name}</h3>
-              <p className="mt-1 flex-1 text-[13px] text-[var(--ink-500)]">{BOOK_DESC[b.id] ?? ""}</p>
-              <div className="mt-4 text-[13px] text-[var(--ink-500)]">
-                已学 <span className="num text-[22px] text-[var(--ink)]">{done}</span> <span className="num">/ {b.count}</span>
-              </div>
-              {/* 答题卡式进度：只给学了一部分的书画泡 */}
-              {done > 0 && done < b.count && <Bubbles total={b.count} done={done} max={20} className="mt-2" />}
-              {!active && (
-                <Button className="mt-4" onClick={() => setSetting("activeBook", b.id)}>
-                  生词背完补这本
-                </Button>
-              )}
-            </Card>
-          );
-        })}
+        {primaryBooks.map(renderBookCard)}
       </div>
+
+      {otherBooks.length > 0 && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowOthers((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--ink-500)] hover:text-[var(--ink)]"
+          >
+            <CaretDown className={cn("size-3.5 transition-transform", !showOthers && "-rotate-90")} />
+            查看其他考试词书（{otherBooks.length} 本）
+          </button>
+          {showOthers && (
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {otherBooks.map(renderBookCard)}
+            </div>
+          )}
+        </div>
+      )}
 
       <Card className="mt-6 flex flex-wrap items-center justify-between gap-3 p-5">
         <div>

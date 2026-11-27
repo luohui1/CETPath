@@ -4,12 +4,20 @@ import { Link } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowSquareOut, ArrowUp, CaretDown, ChatsCircle, FileText, List, NotePencil, Trash, X } from "@phosphor-icons/react";
 import { db, type ChatRow } from "@/lib/db";
-import { EXAMS, loadPaperIndex, peekPaperIndex, type PaperIndexItem } from "@/lib/papers";
+import { EXAMS, loadPaperIndex, peekPaperIndex, type ExamId, type PaperIndexItem } from "@/lib/papers";
+import { useSettings } from "@/lib/settings";
+import { normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { sentenceKey } from "@/lib/trans";
 import { cn } from "@/lib/utils";
 import { AgentPanel, chatTitle, forgetThread, type AgentThread } from "@/exam/AgentPanel";
 
-const SUGGEST = ["六级翻译怎么拆长句？", "仔细阅读的推理题怎么做？", "听力总是跟不上怎么办？", "帮我制定一周的四级复习计划"];
+const SUGGEST_BY_EXAM: Record<string, string[]> = {
+  cet4: ["四级翻译常考什么主题词与句式？", "四级仔细阅读干扰项怎么排除？", "四级听力对话总漏听关键信息怎么办？", "帮我制定一周的四级冲刺复习计划"],
+  cet6: ["六级翻译怎么拆分长难句？", "六级仔细阅读推理题怎么做？", "六级听力讲座跟不上节奏怎么办？", "帮我制定一周的六级备考复习计划"],
+  "ielts-a": ["雅思阅读 TRUE/FALSE/NOT GIVEN 怎么稳拿分？", "雅思大作文审题和论点怎么展开？", "雅思听力地图题和配对题有什么技巧？", "帮我梳理雅思口语 Part 2 话题延伸思路"],
+  "ielts-gt": ["雅思 G 类阅读前面段落匹配怎么提速？", "雅思 G 类书信小作文常见语气怎么切换？", "雅思听力填空拼写和单复数如何避坑？", "帮我制定两周的雅思 G 类冲刺计划"],
+  kaoyan1: ["考研阅读长难句怎么快速找主干？", "考研新题型七选五有什么衔接线索？", "考研英语大小作文怎么积累功能句？", "考研英译汉怎么准确调整中文语序？"],
+};
 const FREE = "";
 
 type Group = { key: string; paper?: PaperIndexItem; chats: ChatRow[] };
@@ -28,8 +36,11 @@ const paperLink = (id: string, chat?: string) => {
 
 /** AI 助教页：左边历史对话按卷子分组（随便问的单独一组），右边是对话；没开对话时中间一个输入框，下面可以挑一套卷子去卷面上问 */
 export function AskPage() {
+  const settings = useSettings();
+  const targetExam: ExamId = resolveTargetExam(settings);
+  const suggest = SUGGEST_BY_EXAM[targetExam] ?? SUGGEST_BY_EXAM.cet6;
   const chats = useLiveQuery(() => db.chats.orderBy("updatedAt").reverse().toArray(), []);
-  const attempts = useLiveQuery(() => db.attempts.orderBy("updatedAt").reverse().limit(6).toArray(), []);
+  const attempts = useLiveQuery(() => db.attempts.orderBy("updatedAt").reverse().limit(12).toArray(), []);
   const [index, setIndex] = useState(peekPaperIndex);
   useEffect(() => void loadPaperIndex().then(setIndex, () => {}), []);
   const byTitle = useMemo(() => new Map(index?.map((p) => [p.title, p])), [index]);
@@ -55,9 +66,16 @@ export function AskPage() {
   }, [chats, byTitle]);
 
   const recent = useMemo(() => {
-    const seen = (attempts ?? []).map((a) => byId.get(a.paperId)).filter((p): p is PaperIndexItem => !!p);
-    return (seen.length ? seen : (index ?? []).slice(0, 4)).slice(0, 4);
-  }, [attempts, byId, index]);
+    const targetPapers = (index ?? []).filter((p) => normalizeTargetExam(p.exam) === targetExam);
+    const seen = (attempts ?? [])
+      .map((a) => byId.get(a.paperId))
+      .filter((p): p is PaperIndexItem => !!p && normalizeTargetExam(p.exam) === targetExam);
+    const unique: PaperIndexItem[] = [];
+    for (const p of seen) {
+      if (!unique.some((x) => x.id === p.id)) unique.push(p);
+    }
+    return (unique.length ? unique : targetPapers).slice(0, 4);
+  }, [attempts, byId, index, targetExam]);
 
   const ask = (raw = draft) => {
     const text = raw.trim().replace(/\s+/g, " ");
@@ -229,7 +247,7 @@ export function AskPage() {
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {SUGGEST.map((s) => (
+                {suggest.map((s) => (
                   <button key={s} type="button" onClick={() => ask(s)} className="rounded-full border border-[var(--line)] px-3.5 py-1.5 text-[13px] text-[var(--ink-700)] transition-colors hover:bg-[var(--fill-quiet)]">
                     {s}
                   </button>

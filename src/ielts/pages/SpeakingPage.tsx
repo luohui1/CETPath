@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Microphone, Play, Pause, Star, Trash, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { Microphone, PaperPlaneTilt, Play, Pause, Sparkle, Star, Trash, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { AgentActivate } from "@/components/AgentActivate";
+import { Markdown } from "@/components/Markdown";
 import { bumpDay, db } from "@/lib/db";
-import { agentHeaders } from "@/lib/agent";
+import { agentHeaders, streamChat, useAgentState, type ChatMsg } from "@/lib/agent";
 import { useSettings } from "@/lib/settings";
 import { WordCard } from "@/exam/WordCard";
 import type { TransLookup } from "@/lib/trans";
@@ -256,6 +258,15 @@ function SpeakingPracticeScreen({
   const [wordHit, setWordHit] = useState<ClickedWordHit | null>(null);
   const [sentTransCache, setSentTransCache] = useState<Record<string, string>>({});
 
+  // AI 考官点评状态
+  const agentSt = useAgentState();
+  const [aiDraft, setAiDraft] = useState("");
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [followInput, setFollowInput] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   const playerRef = useRef<HTMLAudioElement | null>(null);
   const recUrlsRef = useRef<Map<string, string>>(new Map());
   const activeRecRef = useRef<{ mr: MediaRecorder; stream: MediaStream; t0: number; max: number; discard: boolean } | null>(null);
@@ -263,6 +274,12 @@ function SpeakingPracticeScreen({
   // Reset per question
   useEffect(() => {
     if (!q) return;
+    abortRef.current?.abort();
+    setAiBusy(false);
+    setAiErr(null);
+    setChatMsgs([]);
+    setAiDraft("");
+    setFollowInput("");
     setStage(q.part === 2 ? "card" : "answer");
     setPrepLeft(PREP_SEC);
     setNotes("");
@@ -275,6 +292,7 @@ function SpeakingPracticeScreen({
       .sortBy("createdAt")
       .then(setRecs);
     return () => {
+      abortRef.current?.abort();
       playerRef.current?.pause();
       setPlayingKey(null);
       if (activeRecRef.current) {
@@ -426,6 +444,57 @@ function SpeakingPracticeScreen({
     },
     [sentTransCache],
   );
+
+  const askIeltsExaminer = async (userReply?: string) => {
+    if (!q || aiBusy) return;
+    const answerText = (userReply ?? (aiDraft.trim() || notes.trim())).trim();
+    if (!answerText) {
+      setAiErr("请先在下方输入你的英文作答思路或句子，再请 AI 考官按雅思四项标准点评。");
+      return;
+    }
+    setAiErr(null);
+    const promptMsg: ChatMsg = userReply
+      ? { role: "user", content: userReply }
+      : {
+          role: "user",
+          content: `请以雅思口语考官（IELTS Part ${q.part}）身份点评我的英文作答（中文点评、英文保留原文）：
+1. 预估 Band 分档与四维简评（FC / LR / GRA / 切题度）
+2. 最关键的 2–3 处用词或语法纠错
+3. Band 7.5+ 地道自然改写版
+4. 给 1 个考官追问（英文），供我继续对练。
+
+【题目】${q.question}
+【我的作答】${answerText}`,
+        };
+
+    const nextHistory = userReply ? [...chatMsgs, promptMsg] : [promptMsg];
+    setChatMsgs([...nextHistory, { role: "assistant", content: "" }]);
+    if (userReply) setFollowInput("");
+    setAiBusy(true);
+
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    try {
+      await streamChat(
+        nextHistory,
+        {
+          paper: `雅思口语 Part ${q.part} · ${topic.name}`,
+          sentence: q.question,
+          question: q.question,
+        },
+        (partial) => setChatMsgs([...nextHistory, { role: "assistant", content: partial }]),
+        ctrl.signal,
+      );
+    } catch (e) {
+      if ((e as { name?: string })?.name !== "AbortError") {
+        setAiErr((e as Error)?.message || "AI 考官响应失败，请稍后重试。");
+      }
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   if (!q) return null;
 
@@ -649,6 +718,78 @@ function SpeakingPracticeScreen({
               {allowLookup && <p className="text-[12px] text-[var(--ink-500)]">提示：点击示范答案中的英文生词可直接查词并加入记忆树。</p>}
             </div>
           )}
+        </Card>
+      )}
+
+      {/* AI Examiner Evaluation Card */}
+      {agentSt !== "off" && (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-[16px] font-semibold">
+              <Sparkle className="size-4 text-[var(--blue)]" weight="fill" />
+              AI 考官点评与 Band 7.5+ 改写
+            </h3>
+            {agentSt === "on" && (
+              <Button size="sm" variant="primary" loading={aiBusy} onClick={() => void askIeltsExaminer()}>
+                请 AI 考官批改
+              </Button>
+            )}
+          </div>
+          {agentSt === "locked" ? (
+            <div className="mt-3">
+              <AgentActivate />
+            </div>
+          ) : agentSt === "on" ? (
+            <div className="mt-3 space-y-3">
+              <textarea
+                rows={3}
+                value={aiDraft}
+                onChange={(e) => setAiDraft(e.target.value)}
+                placeholder={notes ? "未输入时将使用上方提纲草稿，也可在此补充完整英文作答…" : "在此输入或粘贴你的英文回答，一键获取四维预估 Band 分与地道改写…"}
+                className="w-full rounded-[9px] border border-[var(--line)] bg-[var(--paper-50)] px-3 py-2 text-[14px] leading-relaxed outline-none focus:border-[var(--blue)]"
+              />
+              {aiErr && <p className="text-[13px] text-[var(--red)]">{aiErr}</p>}
+              {chatMsgs.length > 0 && (
+                <div className="space-y-3 rounded-[10px] border border-[var(--line-soft)] bg-[var(--paper-50)] p-4 text-[14px]">
+                  {chatMsgs.map((m, idx) =>
+                    idx === 0 && m.role === "user" ? null : (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "rounded-[9px] px-3 py-2",
+                          m.role === "user" ? "ml-auto max-w-[88%] bg-[var(--blue)] text-white" : "bg-white text-[var(--ink)] shadow-xs",
+                        )}
+                      >
+                        {m.role === "assistant" ? <Markdown text={m.content || "考官正在打分并撰写改写建议…"} /> : m.content}
+                      </div>
+                    ),
+                  )}
+                  {!aiBusy && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        value={followInput}
+                        onChange={(e) => setFollowInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && followInput.trim()) void askIeltsExaminer(followInput);
+                        }}
+                        placeholder="用英文接着回答考官的追问…"
+                        className="h-9 flex-1 rounded-[8px] border border-[var(--line)] bg-white px-3 text-[13px] outline-none focus:border-[var(--blue)]"
+                      />
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={!followInput.trim()}
+                        onClick={() => void askIeltsExaminer(followInput)}
+                      >
+                        <PaperPlaneTilt className="size-3.5" weight="fill" /> 发送
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
         </Card>
       )}
 

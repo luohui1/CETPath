@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { useCachedLiveQuery } from "./live";
+import type { ExamId } from "./papers";
 
 export interface Settings {
   activeBook: string | null; // 当前词书 id
@@ -10,6 +11,7 @@ export interface Settings {
   accent: "us" | "uk"; // 单词真人发音：美音 / 英音
   showVocabMarks: boolean; // 试卷里标出生词本里的词
   readerFontSize: number; // 试卷正文字号（px）
+  targetExam: ExamId | null; // 全局唯一备考目标
   examName: string; // 目标考试
   examDate: string | null; // 考试日期 YYYY-MM-DD
   examMode: "exam" | "free"; // 整套卷默认的做题方式：全真模拟 / 普通做题
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   accent: "us",
   showVocabMarks: true,
   readerFontSize: 18,
+  targetExam: null,
   examName: "",
   examDate: null,
   examMode: "free",
@@ -68,7 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pinToolbar: false,
   reviewMode: "recognize",
   focusBand: null,
-  lastExam: "ielts-a",
+  lastExam: "cet6",
   ieltsCandidateName: "",
   ieltsPracticeLookup: false,
   ieltsPracticeVocabMarks: false,
@@ -84,6 +87,10 @@ export function useSettings(): Settings {
   const s = { ...DEFAULT_SETTINGS };
   for (const r of rows ?? []) (s as Record<string, unknown>)[r.key] = r.value;
   return s;
+}
+
+export function useSettingsReady(): boolean {
+  return useCachedLiveQuery("settings", settingsRows) !== undefined;
 }
 
 export async function getSettings(): Promise<Settings> {

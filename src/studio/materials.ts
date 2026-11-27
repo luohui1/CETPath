@@ -1,15 +1,21 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { ieltsPaperLabel, loadIeltsExplain, loadIeltsPaper, useIeltsIndex } from "@/ielts/data";
+import type { IeltsIndexEntry, IeltsMasteryRow } from "@/ielts/types";
+import { db, type MasteryRow } from "@/lib/db";
 import { touchAudio } from "@/lib/audioCache";
+import { usePaperIndex } from "@/lib/insights";
 import {
   findAudioLine,
+  isIeltsExam,
   loadPaper,
   type AudioLine,
+  type ExamId,
   type Paper,
   type PaperIndexItem,
   type Question,
 } from "@/lib/papers";
+import { normalizeTargetExam } from "@/lib/targetExam";
 import { findTrans, loadTrans, type TransFile } from "@/lib/trans";
 
 type RawAudioLine = AudioLine & { kind?: string };
@@ -67,6 +73,7 @@ export interface StudioSegment {
   id: string;
   label: string;
   shortLabel: string;
+  audioSrc: string;
   start: number;
   end: number;
   lines: StudioLine[];
@@ -89,6 +96,17 @@ export interface WrongAudioTarget {
   qids: string[];
   qNumbers: number[];
   unretiredCount: number;
+  partNumbers?: number[];
+}
+
+export interface ListeningCatalogItem {
+  id: string;
+  title: string;
+  groupLabel: string;
+  subLabel?: string;
+  segments: { id: string; label: string }[];
+  paper?: PaperIndexItem;
+  ieltsEntry?: IeltsIndexEntry;
 }
 
 /** 目录里自身带独立录音、非第3套拼装听力的试卷 */
@@ -104,21 +122,75 @@ export function canonicalAudioPaperId(paperId: string, index: PaperIndexItem[]):
   return listening?.from ?? paperId;
 }
 
-/** 聚合错题本中所有做错过的听力题所属试卷（未掌握优先） */
-export function useWrongAudioTargets(index: PaperIndexItem[] | null): WrongAudioTarget[] {
-  const rows = useLiveQuery(
-    () => db.mastery.where("kind").equals("listening").toArray().catch(() => []),
-    [],
+/** 聚合错题本中当前唯一备考目标下的听力错题（未掌握优先） */
+export function useWrongAudioTargets(
+  index: PaperIndexItem[] | null,
+  targetExam: ExamId,
+): WrongAudioTarget[] {
+  const ieltsMode = isIeltsExam(targetExam);
+  const cetRows = useLiveQuery<MasteryRow[]>(
+    () =>
+      ieltsMode
+        ? Promise.resolve<MasteryRow[]>([])
+        : db.mastery.where("kind").equals("listening").toArray().catch(() => []),
+    [ieltsMode],
+  );
+  const ieltsRows = useLiveQuery<IeltsMasteryRow[]>(
+    () =>
+      ieltsMode
+        ? db.ieltsMastery.where("skill").equals("listening").toArray().catch(() => [])
+        : Promise.resolve<IeltsMasteryRow[]>([]),
+    [ieltsMode],
   );
 
   return useMemo(() => {
-    if (!index || !rows?.length) return [];
-    const ownIds = new Set(index.filter(isOwnAudioPaper).map((p) => p.id));
+    if (ieltsMode) {
+      if (!ieltsRows?.length) return [];
+      const map = new Map<
+        string,
+        { qids: Set<string>; qNums: Set<number>; parts: Set<number>; unretired: number; latest: number }
+      >();
+      for (const r of ieltsRows) {
+        if (r.exam !== targetExam) continue;
+        let cur = map.get(r.paperId);
+        if (!cur) {
+          cur = { qids: new Set(), qNums: new Set(), parts: new Set(), unretired: 0, latest: 0 };
+          map.set(r.paperId, cur);
+        }
+        cur.qids.add(r.unitKey);
+        cur.qNums.add(r.first);
+        cur.parts.add(r.part);
+        if (!r.retiredAt) cur.unretired++;
+        if (r.updatedAt > cur.latest) cur.latest = r.updatedAt;
+      }
+      return [...map.entries()]
+        .map(([paperId, info]) => ({
+          paperId,
+          qids: [...info.qids],
+          qNumbers: [...info.qNums].sort((a, b) => a - b),
+          partNumbers: [...info.parts].sort((a, b) => a - b),
+          unretiredCount: info.unretired,
+          latest: info.latest,
+        }))
+        .sort((a, b) => (b.unretiredCount > 0 ? 1 : 0) - (a.unretiredCount > 0 ? 1 : 0) || b.latest - a.latest)
+        .map(({ paperId, qids, qNumbers, partNumbers, unretiredCount }) => ({
+          paperId,
+          qids,
+          qNumbers,
+          partNumbers,
+          unretiredCount,
+        }));
+    }
+
+    if (!index || !cetRows?.length) return [];
+    const ownMap = new Map(
+      index.filter((p) => isOwnAudioPaper(p) && normalizeTargetExam(p.exam) === targetExam).map((p) => [p.id, p]),
+    );
     const map = new Map<string, { qids: Set<string>; qNums: Set<number>; unretired: number; latest: number }>();
 
-    for (const row of rows) {
+    for (const row of cetRows) {
       const targetPaperId = canonicalAudioPaperId(row.paperId, index);
-      if (!ownIds.has(targetPaperId)) continue;
+      if (!ownMap.has(targetPaperId)) continue;
       let cur = map.get(targetPaperId);
       if (!cur) {
         cur = { qids: new Set(), qNums: new Set(), unretired: 0, latest: 0 };
@@ -147,30 +219,75 @@ export function useWrongAudioTargets(index: PaperIndexItem[] | null): WrongAudio
         qNumbers,
         unretiredCount,
       }));
-  }, [index, rows]);
+  }, [ieltsMode, ieltsRows, cetRows, index, targetExam]);
+}
+
+export function useListeningCatalog(targetExam: ExamId) {
+  const ieltsMode = isIeltsExam(targetExam);
+  const { index: paperIndex, error: paperErr } = usePaperIndex();
+  const { index: ieltsIndex, error: ieltsErr } = useIeltsIndex();
+
+  const catalog = useMemo<ListeningCatalogItem[]>(() => {
+    if (ieltsMode) {
+      return (ieltsIndex?.papers ?? [])
+        .filter((p) => p.exam === targetExam && p.skills.includes("listening"))
+        .map((e) => ({
+          id: e.id,
+          title: ieltsPaperLabel(e),
+          groupLabel:
+            e.family === "cam" && e.book
+              ? `剑桥雅思真题 ${e.book}（A类）`
+              : e.family === "gt" && e.book
+                ? `剑桥雅思真题 ${e.book}（G类）`
+                : e.family === "jj"
+                  ? e.group || "机经 Pro 套题"
+                  : "雅思红皮密卷",
+          subLabel: `${e.q.listening ?? 40} 题 · 4 个听力 Part`,
+          segments: [1, 2, 3, 4].map((n) => ({ id: `p${n}`, label: `Part ${n}` })),
+          ieltsEntry: e,
+        }));
+    }
+
+    return (paperIndex ?? [])
+      .filter((p) => isOwnAudioPaper(p) && normalizeTargetExam(p.exam) === targetExam)
+      .sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0))
+      .map((p) => ({
+        id: p.id,
+        title: p.title,
+        groupLabel: `${p.year} 年`,
+        subLabel: p.month ? `${p.month}月${p.set ? ` 第${p.set}套` : ""}` : undefined,
+        segments: [],
+        paper: p,
+      }));
+  }, [ieltsMode, ieltsIndex, paperIndex, targetExam]);
+
+  const loading = ieltsMode ? !ieltsIndex && !ieltsErr : !paperIndex && !paperErr;
+  const error = ieltsMode ? ieltsErr : paperErr;
+  return { catalog, loading, error, paperIndex, ieltsIndex };
 }
 
 const packCache = new Map<string, Promise<StudioPack>>();
 
 export function loadStudioPack(paperId: string): Promise<StudioPack> {
-  const cached = packCache.get(paperId);
+  const cacheKey = `cet:${paperId}`;
+  const cached = packCache.get(cacheKey);
   if (cached) return cached;
 
   const p = (async (): Promise<StudioPack> => {
     const [paperRaw, trans] = await Promise.all([loadPaper(paperId), loadTrans(paperId)]);
     const sharedFrom = (paperRaw as SharedPaper).shared?.find((x) => x.section === "listening")?.from;
     const paper = sharedFrom && sharedFrom !== paperId ? await loadPaper(sharedFrom) : paperRaw;
+    const audioSrc = paper.audio?.src ?? "";
 
-    if (paper.audio?.src) {
-      touchAudio(paper.audio.src);
+    if (audioSrc) {
+      touchAudio(audioSrc);
     }
 
     const listeningSections = paper.sections.filter((s) => s.kind === "listening");
     const groups = listeningSections.flatMap((s) => s.groups);
     const audioSegs = paper.audio?.segments ?? [];
 
-    // 记录每段包含的题目和考点句指向
-    const lineQMap = new Map<string, number[]>(); // `${segId}:${lineIndex}` -> [qNumbers]
+    const lineQMap = new Map<string, number[]>();
     const allSignalRaw: {
       q: Question;
       segId: string;
@@ -273,6 +390,7 @@ export function loadStudioPack(paperId: string): Promise<StudioPack> {
         id: seg.id,
         label: seg.label,
         shortLabel: shortSegmentLabel(seg.label),
+        audioSrc,
         start: contentStart,
         end: contentEnd,
         lines,
@@ -288,7 +406,120 @@ export function loadStudioPack(paperId: string): Promise<StudioPack> {
     return { paper, trans, segments, allSignalItems };
   })();
 
-  p.catch(() => packCache.delete(paperId));
-  packCache.set(paperId, p);
+  p.catch(() => packCache.delete(cacheKey));
+  packCache.set(cacheKey, p);
   return p;
+}
+
+export function loadIeltsStudioPack(paperId: string, exam: ExamId): Promise<StudioPack> {
+  const cacheKey = `ielts:${paperId}`;
+  const cached = packCache.get(cacheKey);
+  if (cached) return cached;
+
+  const p = (async (): Promise<StudioPack> => {
+    const [ieltsPaper, explain] = await Promise.all([loadIeltsPaper(paperId), loadIeltsExplain(paperId)]);
+    const parts = ieltsPaper.listening ?? [];
+
+    const segments: StudioSegment[] = [];
+    for (const lp of parts) {
+      const exPart = explain.listening?.find((x) => x.part === lp.part);
+      const transcript = exPart?.transcript ?? [];
+      if (!transcript.length || !lp.audioUrl) continue;
+
+      const partEndFallback = lp.seconds && lp.seconds > 0 ? lp.seconds : transcript[transcript.length - 1].s / 1000 + 8;
+
+      // 从 source 提取答案对应句（轻量精确子串匹配）
+      const qByLineIdx = new Map<number, number[]>();
+      const sourceEntries = Object.entries(exPart?.source ?? {});
+      if (sourceEntries.length) {
+        const lowerLines = transcript.map((tr) => tr.t.toLowerCase());
+        for (const [qStr, quotes] of sourceEntries) {
+          const qn = Number(qStr);
+          if (!Number.isFinite(qn)) continue;
+          for (const qText of quotes) {
+            const norm = qText.trim().replace(/\s+/g, " ").toLowerCase();
+            if (norm.length < 12) continue;
+            const snippet = norm.slice(0, Math.min(36, norm.length));
+            const idx = lowerLines.findIndex((lt) => lt.includes(snippet));
+            if (idx >= 0) {
+              const arr = qByLineIdx.get(idx) ?? [];
+              if (!arr.includes(qn)) arr.push(qn);
+              qByLineIdx.set(idx, arr);
+            }
+          }
+        }
+      }
+
+      const lines: StudioLine[] = [];
+      for (let i = 0; i < transcript.length; i++) {
+        const tr = transcript[i];
+        const text = tr.t.trim().replace(/\s+/g, " ");
+        if (!text) continue;
+        const start = Math.max(0, tr.s / 1000);
+        const words = Math.max(1, text.split(/\s+/).length);
+        const maxSpeech = Math.max(2.6, Math.min(18, words * 0.48 + 1.2));
+        const nextStart = i < transcript.length - 1 ? Math.max(start + 0.6, transcript[i + 1].s / 1000) : partEndFallback;
+        const end = Math.min(nextStart, start + maxSpeech);
+        const playStart = Math.max(0, start - 0.08);
+        const playEnd = Math.max(playStart + 0.8, Math.min(nextStart, end + 0.15));
+
+        lines.push({
+          index: i,
+          text,
+          start,
+          end,
+          playStart,
+          playEnd,
+          zh: null,
+          qNumbers: qByLineIdx.get(i) ?? [],
+        });
+      }
+
+      const questions: Question[] = [];
+      for (const grp of lp.groups) {
+        for (let n = grp.first; n <= grp.last; n++) {
+          questions.push({ id: `q${n}`, number: n });
+        }
+      }
+
+      segments.push({
+        id: `p${lp.part}`,
+        label: `Listening Part ${lp.part}`,
+        shortLabel: `Part ${lp.part}`,
+        audioSrc: lp.audioUrl,
+        start: lines[0]?.playStart ?? 0,
+        end: lines.at(-1)?.playEnd ?? partEndFallback,
+        lines,
+        hasDialogue: false,
+        speakers: [],
+        speakerReliable: false,
+        questions,
+        signalItems: [],
+      });
+    }
+
+    const syntheticPaper: Paper = {
+      id: ieltsPaper.id,
+      exam,
+      year: 0,
+      title: ieltsPaper.title,
+      pdf: { src: "", words: "" },
+      sections: [],
+    };
+
+    return {
+      paper: syntheticPaper,
+      trans: null,
+      segments,
+      allSignalItems: [],
+    };
+  })();
+
+  p.catch(() => packCache.delete(cacheKey));
+  packCache.set(cacheKey, p);
+  return p;
+}
+
+export function loadListeningPack(exam: ExamId, paperId: string): Promise<StudioPack> {
+  return isIeltsExam(exam) ? loadIeltsStudioPack(paperId, exam) : loadStudioPack(paperId);
 }

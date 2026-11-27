@@ -370,10 +370,15 @@ export async function patchSpeakingProgress(qid: string, mutator: (cur: IeltsSpe
 // ---------- Live Queries ----------
 const allIeltsAttempts = () => db.ieltsAttempts.orderBy("updatedAt").reverse().toArray();
 const allIeltsMastery = () => db.ieltsMastery.toArray();
-const pendingIeltsMasteryCount = () => db.ieltsMastery.filter((r) => !r.retiredAt).count();
 const allIeltsSpeaking = () => db.ieltsSpeaking.toArray();
 
 export const useIeltsAttempts = () => useCachedLiveQuery("ielts-attempts", allIeltsAttempts);
 export const useIeltsMastery = () => useCachedLiveQuery("ielts-mastery", allIeltsMastery);
-export const useIeltsPendingMistakes = () => useCachedLiveQuery("ielts-mastery-pending", pendingIeltsMasteryCount);
+export function useIeltsPendingMistakes(exam?: string) {
+  return useCachedLiveQuery(
+    exam ? `ielts-mastery-pending:${exam}` : "ielts-mastery-pending",
+    () => db.ieltsMastery.filter((r) => !r.retiredAt && (!exam || r.exam === exam)).count(),
+    [exam],
+  );
+}
 export const useIeltsSpeakingRows = () => useCachedLiveQuery("ielts-speaking", allIeltsSpeaking);

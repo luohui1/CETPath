@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { FileText } from "@phosphor-icons/react";
 import type { AttemptRow } from "@/lib/db";
 import { answeredCount, paperPath } from "@/lib/attempts";
-import { EXAMS, isIeltsExam, KIND_NAMES, type ExamId, type PaperIndexItem } from "@/lib/papers";
-import { setSetting, useSettings } from "@/lib/settings";
+import { EXAMS, isIeltsExam, KIND_NAMES, type PaperIndexItem } from "@/lib/papers";
+import { useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { pct, useAttemptItems, usePaperIndex } from "@/lib/insights";
 import { cn, daysUntil } from "@/lib/utils";
-import { EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
+import { EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
 import { Bubbles, PaperThumb, StickyTab, jumpToYear, useCurrentYear } from "@/components/paper-ui";
-import { useIeltsIndex } from "@/ielts/data";
 import { IeltsPapersView } from "@/ielts/components/IeltsPapersView";
 
 type Status = "all" | "new" | "doing" | "done";
@@ -69,26 +69,20 @@ function PaperCard({ paper, attempt }: { paper: PaperIndexItem; attempt?: Attemp
 
 /** 真题训练只回答"做哪套"：像一个试卷架——每年一个档案夹，左边伸出年份便签，里面按场次放卷子 */
 export function PapersPage() {
-  const [params, setParams] = useSearchParams();
   const settings = useSettings();
   const { index, error } = usePaperIndex();
-  const { index: ieltsIndex } = useIeltsIndex();
   const items = useAttemptItems(index);
   const [status, setStatus] = useState<Status>("all");
 
   const attemptMap = useMemo(() => new Map((items ?? []).filter((it) => !it.section).map((it) => [it.paper.id, it.attempt])), [items]);
-  const exam = (params.get("exam") as ExamId) || (settings.lastExam as ExamId | null) || (index?.[0]?.exam ?? "ielts-a");
+  const exam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(exam);
   const ieltsMode = isIeltsExam(exam);
-  // 从别处带着考试进来（如做题页的"返回真题训练"）也记下
-  const askedExam = params.get("exam");
-  useEffect(() => {
-    if (askedExam && askedExam !== settings.lastExam) void setSetting("lastExam", askedExam);
-  }, [askedExam, settings.lastExam]);
-  const all = (index ?? []).filter((p) => p.exam === exam);
+  const all = (index ?? []).filter((p) => normalizeTargetExam(p.exam) === exam);
   const papers = all.filter((p) => status === "all" || statusOf(attemptMap.get(p.id)) === status);
   const count = (s: Status) => (s === "all" ? all.length : all.filter((p) => statusOf(attemptMap.get(p.id)) === s).length);
 
-  // 年份 → 上半年 / 下半年 → 套。四六级目录只有 6 月、12 月两场；2020 年上半年那场因疫情改在 7 月、9 月，算上半年
+  // 年份 → 上半年 / 下半年 → 套
   const years = useMemo(() => {
     const byYear = new Map<number, Map<number, PaperIndexItem[]>>();
     for (const p of papers) {
@@ -110,11 +104,10 @@ export function PapersPage() {
           })),
       }));
   }, [papers]);
-  // 年份多了才需要书页边的索引
   const showIndex = years.length > 6;
   const curYear = useCurrentYear(years.map((y) => y.year));
   const countdown = settings.examDate ? daysUntil(settings.examDate) : null;
-  const examName = EXAMS.find((e) => e.id === exam)?.name;
+  const examName = EXAMS.find((e) => e.id === exam)?.name ?? targetMeta.name;
 
   return (
     <div>
@@ -122,42 +115,25 @@ export function PapersPage() {
         title="真题训练"
         desc={
           <>
-            {/* 一行说完（做题方式在开始前的那一页里选，这里不再解释） */}
-            整套做题、交卷看分；只练一种题型去
-            <Link to={`/practice?exam=${exam}`} className="text-[var(--blue)] hover:underline">
+            当前目标：<b className="text-[var(--ink)]">{targetMeta.name}</b> · 整套做题、交卷看分；只练一种题型去
+            <Link to="/practice" className="text-[var(--blue)] hover:underline">
               专项训练
             </Link>
-            。{countdown !== null && countdown >= 0 && ` 距${settings.examName || "考试"}还有 ${countdown} 天。`}
+            。{countdown !== null && countdown >= 0 && ` 距开考还有 ${countdown} 天。`}
           </>
         }
+        actions={
+          !ieltsMode && all.length > 0 ? (
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="按状态筛选">
+              {FILTERS.map(({ value, label }) => (
+                <button key={value} type="button" role="radio" aria-checked={status === value} onClick={() => setStatus(value)} className={cn("pill", status === value && "pill-on")}>
+                  {label} <span className="num">{count(value)}</span>
+                </button>
+              ))}
+            </div>
+          ) : undefined
+        }
       />
-
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <Segmented
-          label="考试"
-          value={exam}
-          onChange={(v) => {
-            setStatus("all");
-            setParams({ exam: v }, { replace: true });
-            void setSetting("lastExam", v);
-          }}
-          options={EXAMS.map((e) => {
-            const n = isIeltsExam(e.id)
-              ? (ieltsIndex?.papers ?? []).filter((p) => p.exam === e.id).length
-              : (index ?? []).filter((p) => p.exam === e.id).length;
-            return { value: e.id, label: n ? `${e.short} ${n}` : e.short };
-          })}
-        />
-        {!ieltsMode && all.length > 0 && (
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="按状态筛选">
-            {FILTERS.map(({ value, label }) => (
-              <button key={value} type="button" role="radio" aria-checked={status === value} onClick={() => setStatus(value)} className={cn("pill", status === value && "pill-on")}>
-                {label} <span className="num">{count(value)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {ieltsMode ? (
         <IeltsPapersView exam={exam} />

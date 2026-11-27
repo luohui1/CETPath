@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import * as G from "@/grasso";
 import { db, dayKey } from "@/lib/db";
 import { isMastered, State } from "@/lib/learning";
 import { isIeltsExam, KIND_NAMES } from "@/lib/papers";
 import { useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { currentStreak, isActive, longestStreak } from "@/lib/stats";
 import { lastDays, MIN_ANSWERS, pct, useAttemptItems, useCetScores, useKindStats, usePaperIndex, type ScoreRow } from "@/lib/insights";
 import { CET_PART_MAX } from "@/lib/report";
@@ -152,6 +153,11 @@ function Panel({ title, desc, className, children }: { title: string; desc?: str
 /** 学习统计：打卡、做题和背词的长期数据 */
 export function StatsPage() {
   const settings = useSettings();
+  const targetExam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(targetExam);
+  const ieltsMode = isIeltsExam(targetExam);
+  const cetMode = targetExam === "cet4" || targetExam === "cet6";
+
   const days = useCachedLiveQuery("days", () => db.days.toArray());
   const cards = useCachedLiveQuery("cards", () => db.cards.toArray());
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
@@ -159,9 +165,22 @@ export function StatsPage() {
   const forecast = useForecast();
   const { index } = usePaperIndex();
   const items = useAttemptItems(index);
-  const kinds = useKindStats(index, items);
-  const scores = useCetScores(items);
-  const ieltsAttempts = useIeltsAttempts();
+
+  const examPapers = useMemo(
+    () => (index ?? []).filter((p) => normalizeTargetExam(p.exam) === targetExam),
+    [index, targetExam],
+  );
+  const examItems = useMemo(
+    () => (items ?? []).filter((it) => normalizeTargetExam(it.paper.exam) === targetExam),
+    [items, targetExam],
+  );
+  const kinds = useKindStats(!ieltsMode && index ? examPapers : null, !ieltsMode && items ? examItems : null);
+  const scores = useCetScores(cetMode && items ? examItems : null);
+  const rawIeltsAttempts = useIeltsAttempts();
+  const ieltsAttempts = useMemo(
+    () => (rawIeltsAttempts ?? []).filter((a) => a.exam === targetExam),
+    [rawIeltsAttempts, targetExam],
+  );
 
   if (!days || !cards || !logs || !forecast) return <LoadingBlock />;
 
@@ -170,14 +189,16 @@ export function StatsPage() {
   const totalCorrect = days.reduce((s, d) => s + d.correct, 0);
   const mastered = cards.filter(isMastered).length;
   const recall = logs.length ? pct(logs.filter((l) => l.rating > 1).length, logs.length) : null;
-  const submitted = (items ?? []).filter((it) => it.attempt.submittedAt);
-  const ieltsSubmitted = (ieltsAttempts ?? []).filter((a) => a.submittedAt);
-  const ieltsSpent = (ieltsAttempts ?? []).reduce(
+  const submitted = examItems.filter((it) => it.attempt.submittedAt);
+  const ieltsSubmitted = ieltsAttempts.filter((a) => a.submittedAt);
+  const ieltsSpent = ieltsAttempts.reduce(
     (sum, a) => sum + Object.values(a.sections).reduce((s, sec) => s + (sec?.elapsed ?? 0), 0),
     0,
   );
-  const spent = (items ?? []).reduce((s, it) => s + (it.attempt.spentSec ?? 0), 0) + ieltsSpent;
-  const ieltsFirst = isIeltsExam(settings.lastExam) || (ieltsSubmitted.length > 0 && !(scores?.length ?? 0));
+  const spent = ieltsMode
+    ? ieltsSpent
+    : examItems.reduce((s, it) => s + (it.attempt.spentSec ?? 0), 0);
+  const submitTotal = ieltsMode ? ieltsSubmitted.length : submitted.length;
 
   const memory = [
     { label: "已掌握", value: mastered },
@@ -186,8 +207,6 @@ export function StatsPage() {
     { label: "未学", value: cards.filter((c) => c.state === State.New).length },
   ].filter((m) => m.value);
 
-  // 各题型正确率和所有题型的平均比
-  // 答题不足 5 题看不出水平，不列
   const kindRows = (kinds ?? []).filter((k) => k.answered >= MIN_ANSWERS);
   const weakest = [...kindRows].sort((a, b) => a.correct / a.total - b.correct / b.total)[0];
   const kindCorrect = kindRows.reduce((n, k) => n + k.correct, 0);
@@ -196,7 +215,7 @@ export function StatsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="学习统计" desc="每天复习过单词或做过题，就算打卡一天。" />
+      <PageHeader title="学习统计" desc={`当前目标：${targetMeta.name} · 每天复习过单词或做过题，就算打卡一天。`} />
 
       <div className="grid grid-cols-2 gap-5 xl:grid-cols-4">
         <Tile label="连续打卡" value={`${currentStreak(days)}`} unit="天" note={`最长 ${longestStreak(days)} 天，累计 ${days.filter(isActive).length} 天`} trend={month.slice(-14).map((d) => (isActive(d) ? 1 : 0))} />
@@ -207,23 +226,19 @@ export function StatsPage() {
           note={`共 ${totalQuestions} 道客观题`}
           trend={month.slice(-14).map((d) => (d.questions ? pct(d.correct, d.questions) : 0))}
         />
-        <Tile label="做题时长" value={spentParts(spent)[0]} unit={spentParts(spent)[1]} note={`交卷 ${submitted.length + ieltsSubmitted.length} 次`} />
+        <Tile label={`${targetMeta.short}做题时长`} value={spentParts(spent)[0]} unit={spentParts(spent)[1]} note={`交卷 ${submitTotal} 次`} />
         <Tile label="已掌握单词" value={`${mastered}`} unit="个" note={`生词本 ${vocabCount ?? 0} 个${recall === null ? "" : ` · 近 30 天认识率 ${recall}%`}`} trend={month.slice(-14).map((d) => d.reviews)} />
       </div>
 
-      {ieltsFirst && (
+      {ieltsMode && (
         <Panel title="雅思机考成绩" desc="仅统计未开启辅助查词的纯净模考（mode === mock）听力、阅读与估算均分走势">
-          <IeltsStatsPanel />
+          <IeltsStatsPanel exam={targetExam} />
         </Panel>
       )}
 
-      <Panel title="真题成绩" desc="整套四六级交卷后，按官方计分规则折算听力、阅读分；写作翻译不算">
-        <ScoresPanel rows={scores} />
-      </Panel>
-
-      {!ieltsFirst && (
-        <Panel title="雅思机考成绩" desc="仅统计未开启辅助查词的纯净模考（mode === mock）听力、阅读与估算均分走势">
-          <IeltsStatsPanel />
+      {cetMode && (
+        <Panel title={`${targetMeta.short}真题成绩`} desc="整套交卷后，按官方计分规则折算听力、阅读分；写作翻译不算">
+          <ScoresPanel rows={scores} />
         </Panel>
       )}
 
@@ -241,35 +256,36 @@ export function StatsPage() {
       </Panel>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-3">
-        <Panel title={kindTotal ? `各题型正确率 · 平均 ${avg}%` : "各题型正确率"} desc="整套和专项都算；蓝色竖线是平均" className="lg:col-span-2">
-          {kindRows.length ? (
-            <div className="space-y-1">
-              {kindRows.map((k) => {
-                const v = pct(k.correct, k.total);
-                const diff = v - avg;
-                return (
-                  <div key={k.kind} className="grid h-11 grid-cols-[22px_5em_minmax(0,1fr)_3.5em_3.5em] items-center gap-3" title={`答对 ${k.correct} / ${k.total} 题`}>
-                    <PixelIcon name={KIND_PIXELS[k.kind]} size={20} />
-                    <span className="text-[14px]">{KIND_NAMES[k.kind]}</span>
-                    <div className="relative h-2.5 rounded-full bg-[var(--paper-200)]">
-                      <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${v}%`, background: k === weakest && kindRows.length > 1 ? "var(--red)" : "var(--ink)" }} />
-                      {/* 平均线 */}
-                      <span className="absolute -top-1.5 -bottom-1.5 w-[2px] rounded-full bg-[var(--blue)]" style={{ left: `calc(${avg}% - 1px)` }} aria-hidden />
+        {!ieltsMode && (
+          <Panel title={kindTotal ? `各题型正确率 · 平均 ${avg}%` : "各题型正确率"} desc="整套和专项都算；蓝色竖线是平均" className="lg:col-span-2">
+            {kindRows.length ? (
+              <div className="space-y-1">
+                {kindRows.map((k) => {
+                  const v = pct(k.correct, k.total);
+                  const diff = v - avg;
+                  return (
+                    <div key={k.kind} className="grid h-11 grid-cols-[22px_5em_minmax(0,1fr)_3.5em_3.5em] items-center gap-3" title={`答对 ${k.correct} / ${k.total} 题`}>
+                      <PixelIcon name={KIND_PIXELS[k.kind]} size={20} />
+                      <span className="text-[14px]">{KIND_NAMES[k.kind]}</span>
+                      <div className="relative h-2.5 rounded-full bg-[var(--paper-200)]">
+                        <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${v}%`, background: k === weakest && kindRows.length > 1 ? "var(--red)" : "var(--ink)" }} />
+                        <span className="absolute -top-1.5 -bottom-1.5 w-[2px] rounded-full bg-[var(--blue)]" style={{ left: `calc(${avg}% - 1px)` }} aria-hidden />
+                      </div>
+                      <span className="num text-right text-[17px]">{v}%</span>
+                      <span className="num text-right text-[13px] text-[var(--ink-500)]">
+                        {diff > 0 ? "+" : ""}
+                        {diff}
+                      </span>
                     </div>
-                    <span className="num text-right text-[17px]">{v}%</span>
-                    <span className="num text-right text-[13px] text-[var(--ink-500)]">
-                      {diff > 0 ? "+" : ""}
-                      {diff}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="well py-10 text-center text-[14px] text-[var(--ink-500)]">每种题型答够 5 题后，这里按题型统计</p>
-          )}
-        </Panel>
-        <Panel title="单词记忆" desc="按复习状态">
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="well py-10 text-center text-[14px] text-[var(--ink-500)]">每种题型答够 5 题后，这里按题型统计</p>
+            )}
+          </Panel>
+        )}
+        <Panel title="单词记忆" desc="按复习状态" className={ieltsMode ? "lg:col-span-3" : undefined}>
           <div className="num mb-4 text-[40px] leading-[44px]">
             {cards.length}
             <span className="ml-1 font-[family-name:var(--font-sans)] text-[13px] font-normal text-[var(--ink-500)]">个单词</span>

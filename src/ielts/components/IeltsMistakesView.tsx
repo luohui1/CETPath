@@ -8,12 +8,12 @@ import { IELTS_QTYPE_ZH, IELTS_SKILLS_ZH, loadIeltsExplain, loadIeltsKey, loadIe
 import { gradeGroup } from "../grade";
 import { QuestionGroupView } from "../exam/QuestionGroupView";
 import { deleteIeltsMistake, recordIeltsRetryResult, restoreIeltsMistake, retireIeltsMistake, useIeltsMastery } from "../store";
-import type { IeltsAnswerValue, IeltsMasteryRow, IeltsPaperGroup } from "../types";
+import type { IeltsAnswerValue, IeltsExamId, IeltsMasteryRow, IeltsPaperGroup } from "../types";
 import "../exam/inspera.css";
 
 type Status = "pending" | "retired" | "all";
 
-export function IeltsMistakesView() {
+export function IeltsMistakesView({ exam }: { exam?: IeltsExamId }) {
   const rows = useIeltsMastery();
   const [status, setStatus] = useState<Status>("pending");
   const [skillFilter, setSkillFilter] = useState<"all" | "listening" | "reading">("all");
@@ -26,7 +26,7 @@ export function IeltsMistakesView() {
     checked?: { earned: number; max: number; ok: boolean; perQ: any };
   } | null>(null);
 
-  const all = rows ?? [];
+  const all = useMemo(() => (rows ?? []).filter((r) => !exam || r.exam === exam), [rows, exam]);
   const pending = all.filter((r) => !r.retiredAt);
   const qtypes = useMemo(() => [...new Set(all.map((r) => r.qtype))], [all]);
 
@@ -92,8 +92,8 @@ export function IeltsMistakesView() {
           title="还没有雅思错题"
           desc="完成雅思听力或阅读交卷后，答错或未拿满分的题（含多选题组）会自动归档到这里；连续两次重做全对即自动移出。"
           action={
-            <Link to="/papers?exam=ielts-a">
-              <Button variant="primary">去做一套剑雅真题</Button>
+            <Link to="/papers">
+              <Button variant="primary">去做一套{exam === "ielts-gt" ? "G类" : "剑雅"}真题</Button>
             </Link>
           }
         />

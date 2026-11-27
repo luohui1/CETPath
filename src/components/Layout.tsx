@@ -1,29 +1,31 @@
 import { AuthGate } from "./AuthGate";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigation } from "react-router";
-import { GithubLogo, SidebarSimple } from "@phosphor-icons/react";
+import { ArrowsLeftRight, GithubLogo, SidebarSimple } from "@phosphor-icons/react";
 import { pendingCounts } from "@/lib/learning";
-import { backfillMastery, usePendingMistakes } from "@/lib/mistakes";
-import { isIeltsExam, peekPaperIndex } from "@/lib/papers";
+import { backfillMastery, useMistakes } from "@/lib/mistakes";
+import { isIeltsExam } from "@/lib/papers";
+import { usePaperIndex } from "@/lib/insights";
 import { useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam, type TargetExamMeta } from "@/lib/targetExam";
 import { cn, daysUntil } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { useIeltsPendingMistakes } from "@/ielts/store";
 import { PixelIcon, type PixelName } from "./PixelIcon";
 import { LogoMark } from "./Logo";
+import { TargetExamModal } from "./TargetExamModal";
 import { MISTAKE_PAGES, WORD_PAGES } from "./WordsTabs";
 import { ARTICLES_ON } from "@/lib/articles";
 
 const KEY = "yy-sidebar-collapsed";
 
-/** 侧边栏收起/展开：记在本机；没记过时，平板等窄屏默认收起 */
 function useCollapsed() {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       const v = localStorage.getItem(KEY);
       if (v !== null) return v === "1";
     } catch {
-      // 隐私模式等读不到本地存储，按屏幕宽度来
+      // 隐私模式读不到本地存储，按屏幕宽度来
     }
     return innerWidth < 1280;
   });
@@ -31,7 +33,7 @@ function useCollapsed() {
     try {
       localStorage.setItem(KEY, collapsed ? "1" : "0");
     } catch {
-      // 存不了就只在这次打开里有效
+      // 忽略
     }
   }, [collapsed]);
   return [collapsed, setCollapsed] as const;
@@ -40,15 +42,14 @@ function useCollapsed() {
 interface NavItem {
   to: string;
   label: string;
-  short?: string; // 收起时图标下面的小字
+  short?: string;
   icon: PixelName;
   end?: boolean;
   badge?: number;
-  red?: boolean; // 徽标用红笔色（错题本的待重做数）
-  match?: readonly string[]; // 这几页也算当前项（单词：背单词、词书、生词本）
+  red?: boolean;
+  match?: readonly string[];
 }
 
-/** 主导航项：双色文具图标 + 文字；当前页是一张抬起的白纸，左边一道品牌蓝 */
 function Item({ to, label, short, icon, end, badge, red, match, collapsed }: NavItem & { collapsed: boolean }) {
   const { pathname } = useLocation();
   const also = !!match?.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -79,7 +80,6 @@ function Item({ to, label, short, icon, end, badge, red, match, collapsed }: Nav
   );
 }
 
-/** 次要导航：小字、小一号的文具图标 */
 function Quiet({ to, label, icon, collapsed }: { to: string; label: string; icon: PixelName; collapsed: boolean }) {
   return (
     <NavLink
@@ -88,7 +88,6 @@ function Quiet({ to, label, icon, collapsed }: { to: string; label: string; icon
       className={({ isActive }) =>
         cn(
           "flex min-h-10 items-center rounded-[10px] text-[13px] transition-colors",
-          // 收起时图标下面也写字（和主导航一样），不然只剩三个猜不出意思的小图标
           collapsed ? "flex-col justify-center gap-1 py-1.5" : "gap-3 px-3 py-2",
           isActive ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)]" : "text-[var(--ink-500)] hover:bg-white/70 hover:text-[var(--ink)]",
         )
@@ -100,38 +99,63 @@ function Quiet({ to, label, icon, collapsed }: { to: string; label: string; icon
   );
 }
 
-/** 侧边栏底部的小倒计时牌：墨色数字（红色只留给首页的倒计时牌，每屏最多一处红） */
-function Countdown({ collapsed }: { collapsed: boolean }) {
-  const settings = useSettings();
-  const days = settings.examDate ? daysUntil(settings.examDate) : null;
-  const set = days !== null && days >= 0;
-  if (!set) return null; // 设考试只在首页那一条
+/** 侧边栏底部常驻：当前备考目标徽章（点击切换备考目标与考试日期） */
+function TargetBadge({
+  collapsed,
+  target,
+  examDate,
+  onClick,
+}: {
+  collapsed: boolean;
+  target: TargetExamMeta;
+  examDate: string | null;
+  onClick: () => void;
+}) {
+  const days = examDate ? daysUntil(examDate) : null;
+  const hasDays = days !== null && days >= 0;
+
   return (
-    <NavLink
-      to={set ? "/" : "/settings"}
-      className={cn("card card-press flex items-center", collapsed ? "flex-col gap-0.5 px-1 py-2" : "gap-3 px-3 py-2")}
-      title={set ? `距${settings.examName || "考试"} ${days} 天` : "设置考试日期"}
-    >
-      {set ? (
-        <div className={cn("min-w-0", collapsed && "text-center")}>
-          {!collapsed && <div className="truncate text-[11px] text-[var(--ink-subtle)]">距{settings.examName || "考试"}</div>}
-          <div className={cn("num leading-7 text-[var(--ink)]", collapsed ? "text-[20px]" : "text-[26px]")}>
-            {days}
-            <span className="ml-0.5 font-[family-name:var(--font-sans)] text-[11px] font-normal text-[var(--ink-subtle)]">天</span>
-          </div>
-        </div>
-      ) : (
-        <span className={cn("flex items-center whitespace-nowrap text-[var(--blue)]", collapsed ? "flex-col gap-1 text-[11px] leading-none" : "gap-2 text-[12px]")}>
-          <PixelIcon name="hourglass" size={18} />
-          {collapsed ? "考试日" : "设置考试"}
-        </span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "card card-press w-full text-left transition",
+        collapsed ? "flex flex-col items-center gap-0.5 px-1 py-2 text-center" : "px-3 py-2.5",
       )}
-    </NavLink>
+      title={`当前备考目标：${target.name}${hasDays ? ` · 距考 ${days} 天` : ""}（点击切换）`}
+    >
+      {collapsed ? (
+        <>
+          <span className="text-[11px] leading-tight font-semibold text-[var(--blue)]">{target.short}</span>
+          {hasDays ? (
+            <span className="num text-[14px] leading-tight text-[var(--ink)]">{days}天</span>
+          ) : (
+            <span className="text-[10px] leading-tight text-[var(--ink-500)]">切换</span>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between text-[11px] text-[var(--ink-500)]">
+            <span>备考目标</span>
+            <span className="inline-flex items-center gap-0.5 font-medium text-[var(--blue)]">
+              <ArrowsLeftRight className="size-3" />
+              切换
+            </span>
+          </div>
+          <div className="mt-1 flex items-baseline justify-between gap-1.5">
+            <span className="truncate text-[14px] font-semibold text-[var(--ink)]">{target.short}</span>
+            {hasDays && (
+              <span className="num flex-none text-[13px] font-semibold text-[var(--ink-700)]">
+                {days} 天
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </button>
   );
 }
 
-/** 应用外壳：左侧窄导航（可以收成图标栏），右侧内容 */
-/** 切页时下一页还在加载：顶上一条细进度条，让人知道点到了 */
 function NavProgress() {
   const loading = useNavigation().state === "loading";
   return (
@@ -141,21 +165,32 @@ function NavProgress() {
 
 export function Layout() {
   const settings = useSettings();
+  const targetExam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(targetExam);
+  const ieltsMode = isIeltsExam(targetExam);
+
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useCollapsed();
-  const mistakes = usePendingMistakes();
-  const ieltsMistakes = useIeltsPendingMistakes();
-  const totalMistakes = (mistakes ?? 0) + (ieltsMistakes ?? 0);
-  const effectiveExam = settings.lastExam ?? (peekPaperIndex()?.length === 0 ? "ielts-a" : null);
-  const showSpeaking = isIeltsExam(effectiveExam) || pathname.startsWith("/speaking");
-  // 升级前交过卷的错题补进错题本（只跑一次）；稍等一会儿，不和首屏抢
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
+
+  const { index } = usePaperIndex();
+  const mistakes = useMistakes();
+  const ieltsMistakes = useIeltsPendingMistakes(ieltsMode ? targetExam : undefined);
+
+  const cetMistakeCount = useMemo(() => {
+    if (ieltsMode || !mistakes || !index) return 0;
+    const examByPaper = new Map(index.map((p) => [p.id, normalizeTargetExam(p.exam)]));
+    return mistakes.filter((r) => !r.retiredAt && examByPaper.get(r.paperId) === targetExam).length;
+  }, [ieltsMode, mistakes, index, targetExam]);
+
+  const totalMistakes = ieltsMode ? (ieltsMistakes ?? 0) : cetMistakeCount;
+
   useEffect(() => {
     const t = setTimeout(() => void backfillMastery(), 1500);
     return () => clearTimeout(t);
   }, []);
 
-  // 按学习闭环分组：做题 → 复盘 → 背词
   const groups: { title: string; items: NavItem[] }[] = [
     {
       title: "做题",
@@ -163,8 +198,10 @@ export function Layout() {
         { to: "/", label: "首页", icon: "house", end: true },
         { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
         { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
-        { to: "/studio", label: "听说实训", short: "听说", icon: "headphones", match: ["/studio"] },
-        ...(showSpeaking ? [{ to: "/speaking", label: "口语练习", short: "口语", icon: "headphones", match: ["/speaking"] } as NavItem] : []),
+        ...(targetMeta.hasListening
+          ? [{ to: "/listening", label: "听力精练", short: "精听", icon: "headphones", match: ["/listening", "/studio"] } as NavItem]
+          : []),
+        { to: "/speaking", label: "口语训练", short: "口语", icon: "mic", match: ["/speaking"] },
         ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
       ],
     },
@@ -204,9 +241,13 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="mt-auto flex flex-col gap-3 pt-6">
-          {/* 首页已经有倒计时牌，同一件事不说两遍 */}
-          {pathname !== "/" && <Countdown collapsed={collapsed} />}
+        <div className="mt-auto flex flex-col gap-3 pt-5">
+          <TargetBadge
+            collapsed={collapsed}
+            target={targetMeta}
+            examDate={settings.examDate}
+            onClick={() => setTargetModalOpen(true)}
+          />
           <nav className={cn("flex flex-col", collapsed ? "gap-1.5" : "gap-0.5")} aria-label="更多">
             <Quiet to="/stats" label="学习统计" icon="graph" collapsed={collapsed} />
             <Quiet to="/settings" label="设置" icon="ruler" collapsed={collapsed} />
@@ -239,6 +280,8 @@ export function Layout() {
         <AuthGate />
         <Outlet />
       </main>
+
+      <TargetExamModal open={targetModalOpen} onClose={() => setTargetModalOpen(false)} />
     </div>
   );
 }

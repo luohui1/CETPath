@@ -9,6 +9,7 @@ export { IconBookStack } from "./IconBookStack";
 export { IconGraphPaper } from "./IconGraphPaper";
 export { IconRulerPencil } from "./IconRulerPencil";
 export { IconHeadset } from "./IconHeadset";
+export { IconMic } from "./IconMic";
 export { IconBlankLine } from "./IconBlankLine";
 export { IconWordBank } from "./IconWordBank";
 export { IconParagraphs } from "./IconParagraphs";

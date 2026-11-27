@@ -3,18 +3,18 @@ import { Link, useNavigate } from "react-router";
 import { ArrowCounterClockwise, CaretDown } from "@phosphor-icons/react";
 import type { MasteryRow } from "@/lib/db";
 import { paperPath, retryPath } from "@/lib/attempts";
-import { kindName, KIND_NAMES, isIeltsExam, loadPaper, peekPaper, peekPaperIndex, type Paper, type Question, type SectionKind } from "@/lib/papers";
+import { kindName, KIND_NAMES, isIeltsExam, loadPaper, peekPaper, type Paper, type Question, type SectionKind } from "@/lib/papers";
 import { backfillMastery, restoreMistake, retireMistake, useMistakes } from "@/lib/mistakes";
 import { KINDS, usePaperIndex } from "@/lib/insights";
 import { useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { cn } from "@/lib/utils";
-import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
+import { Button, EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
 import { PaperDialog } from "@/components/overlay";
 import { PaperThumb } from "@/components/paper-ui";
 import { MISTAKE_PAGES, WordsTabs } from "@/components/WordsTabs";
 import { ExplainContext, ExplanationCard } from "@/exam/Explanation";
 import { IeltsMistakesView } from "@/ielts/components/IeltsMistakesView";
-import { useIeltsPendingMistakes } from "@/ielts/store";
 
 type Status = "pending" | "retired" | "all";
 const BATCH = 30; // 一次最多重做 30 题
@@ -120,28 +120,32 @@ function EmptySheet() {
 export function MistakesPage() {
   const navigate = useNavigate();
   const settings = useSettings();
+  const targetExam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(targetExam);
+  const ieltsMode = isIeltsExam(targetExam);
+
   const rows = useMistakes();
-  const ieltsPending = useIeltsPendingMistakes();
   const { index } = usePaperIndex();
-  const [deck, setDeck] = useState<"ielts" | "cet">(() =>
-    isIeltsExam(settings.lastExam) || peekPaperIndex()?.length === 0 ? "ielts" : "cet",
-  );
   const [kind, setKind] = useState<SectionKind | "all">("all");
   const [paperFilter, setPaperFilter] = useState("all");
   const [status, setStatus] = useState<Status>("pending");
   const [batches, setBatches] = useState(false);
-  const [more, setMore] = useState<Set<string>>(new Set()); // 展开了全部错题的卷子
-  // 第一次打开：把升级前交过卷的记录补进来（只跑一次）
+  const [more, setMore] = useState<Set<string>>(new Set());
   useEffect(() => void backfillMastery(), []);
 
   const titles = useMemo(() => new Map((index ?? []).map((p) => [p.id, p.title])), [index]);
-  const all = useMemo(() => rows ?? [], [rows]);
+  const examByPaper = useMemo(() => new Map((index ?? []).map((p) => [p.id, normalizeTargetExam(p.exam)])), [index]);
+
+  const all = useMemo(() => {
+    if (ieltsMode || !rows || !index) return [];
+    return rows.filter((r) => examByPaper.get(r.paperId) === targetExam);
+  }, [ieltsMode, rows, index, examByPaper, targetExam]);
+
   const pending = all.filter((r) => !r.retiredAt);
   const paperIds = useMemo(() => [...new Set(all.map((r) => r.paperId))], [all]);
   const paperOf = usePapers(paperIds);
 
   const shown = all.filter((r) => (status === "all" || (status === "pending" ? !r.retiredAt : !!r.retiredAt)) && (kind === "all" || r.kind === kind) && (paperFilter === "all" || r.paperId === paperFilter));
-  // 按试卷分组：最近出错的卷子在前；组内按题号
   const groups = useMemo(() => {
     const map = new Map<string, MasteryRow[]>();
     for (const r of shown) {
@@ -156,7 +160,6 @@ export function MistakesPage() {
   const byKind = KINDS.map((k) => ({ k, n: pending.filter((r) => r.kind === k).length })).filter((x) => x.n);
   const maxKind = Math.max(1, ...byKind.map((x) => x.n));
   const kindsPresent = KINDS.filter((k) => all.some((r) => r.kind === k));
-  // 重做全部：按试卷分批，每批最多 30 题
   const plan = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const r of pending) {
@@ -167,35 +170,25 @@ export function MistakesPage() {
   }, [pending]);
   const retryAll = () => (plan.length === 1 ? navigate(retryPath(plan[0].paperId, plan[0].ids)) : setBatches(true));
 
-  if (!rows) return <LoadingBlock />;
+  if (!ieltsMode && (!rows || !index)) return <LoadingBlock />;
 
   return (
     <div>
       <WordsTabs pages={MISTAKE_PAGES} label="错题" />
       <PageHeader
         title="错题本"
+        desc={`当前目标：${targetMeta.name} · 答对两次自动移出`}
         actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <Segmented
-              label="错题分类"
-              value={deck}
-              onChange={(v) => setDeck(v)}
-              options={[
-                { value: "ielts", label: `雅思错题${ieltsPending ? ` ${ieltsPending}` : ""}` },
-                { value: "cet", label: `四六级 / 考研${pending.length ? ` ${pending.length}` : ""}` },
-              ]}
-            />
-            {deck === "cet" && pending.length > 0 && (
-              <Button variant="primary" onClick={retryAll}>
-                <ArrowCounterClockwise className="size-[18px]" /> 重做全部待重做（{pending.length}）
-              </Button>
-            )}
-          </div>
+          !ieltsMode && pending.length > 0 ? (
+            <Button variant="primary" onClick={retryAll}>
+              <ArrowCounterClockwise className="size-[18px]" /> 重做全部待重做（{pending.length}）
+            </Button>
+          ) : undefined
         }
       />
 
-      {deck === "ielts" ? (
-        <IeltsMistakesView />
+      {ieltsMode ? (
+        <IeltsMistakesView exam={targetExam} />
       ) : !all.length ? (
         <EmptySheet />
       ) : (

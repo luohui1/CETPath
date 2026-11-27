@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
+import { createBrowserRouter, Navigate, RouterProvider, useLocation } from "react-router";
 import { ARTICLES_ON } from "./lib/articles";
 import { registerSW } from "virtual:pwa-register";
 import { IconContext } from "@phosphor-icons/react";
@@ -45,6 +45,15 @@ const ieltsReview = () =>
   });
 
 redirectLegacyHash(); // 兼容旧版独立雅思站点的 #/speaking/* 等书签与 PWA 入口
+
+const StudioRedirect = () => {
+  const { search } = useLocation();
+  const p = new URLSearchParams(search);
+  if (p.get("tab") === "speaking") return <Navigate to="/speaking" replace />;
+  p.delete("tab");
+  const qs = p.toString();
+  return <Navigate to={qs ? `/listening?${qs}` : "/listening"} replace />;
+};
 if (typeof window !== "undefined" && "caches" in window) {
   // 清理旧版独立雅思站点遗留的 shell-v* / data-v* Service Worker 缓存（不动 IndexedDB）
   void caches
@@ -76,9 +85,10 @@ const router = createBrowserRouter([
         ? { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) }
         : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
-      { path: "/studio", ...page(() => import("./pages/Studio").then((m) => m.StudioPage)) },
-      { path: "/speaking", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
-      { path: "/speaking/topic/:topicId/:qIdx?", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
+      { path: "/listening", ...page(() => import("./pages/ListeningDrill").then((m) => m.ListeningDrillPage)) },
+      { path: "/studio", element: <StudioRedirect /> },
+      { path: "/speaking", ...page(() => import("./pages/SpeakingUnified").then((m) => m.SpeakingUnifiedPage)) },
+      { path: "/speaking/topic/:topicId/:qIdx?", ...page(() => import("./pages/SpeakingUnified").then((m) => m.SpeakingUnifiedPage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },
       { path: "/methods", ...page(() => import("./pages/Methods").then((m) => m.MethodsPage)) },
       { path: "/review", ...page(() => import("./pages/Review").then((m) => m.ReviewPage)) },
@@ -104,6 +114,18 @@ idle(() => {
 });
 
 registerSW({ immediate: true });
+
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || refreshing) return;
+    // 避开正在作答的考场页，避免中途打断答题状态
+    if (location.pathname.startsWith("/paper/") || location.pathname.startsWith("/ielts/exam/")) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
 
 /* 本地数据库看门狗：5 秒打不开（某些手机自带、内嵌浏览器里 IndexedDB 不回调），本次会话改用内存库，刷新一次。
    只自动切一次；内存库模式下发现真的数据库又能用了（比如换了设置），自动切回来，也只切一次 */

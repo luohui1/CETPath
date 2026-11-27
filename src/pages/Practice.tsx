@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ArrowRight, Shuffle, Target } from "@phosphor-icons/react";
 import type { AttemptRow } from "@/lib/db";
 import { answeredCount, attemptKey, paperPath } from "@/lib/attempts";
-import { EXAMS, isIeltsExam, kindName, type ExamId, type PaperIndexItem, type SectionIndexItem, type SectionKind } from "@/lib/papers";
+import { EXAMS, isIeltsExam, kindName, type PaperIndexItem, type SectionIndexItem, type SectionKind } from "@/lib/papers";
 import { KINDS, MIN_ANSWERS, pct, spentText, useAttemptItems, useKindStats, usePaperIndex } from "@/lib/insights";
 import { setSetting, useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { cn, timeAgo } from "@/lib/utils";
 import { Button, EmptyState, LoadingBlock, PageHeader, Segmented } from "@/components/ui";
 import { KIND_PIXELS, PixelIcon } from "@/components/PixelIcon";
 import { Bubbles, PaperThumb, StickyTab, jumpToYear, useCurrentYear } from "@/components/paper-ui";
-import { useIeltsIndex } from "@/ielts/data";
 import { IeltsPracticeView } from "@/ielts/components/IeltsPracticeView";
 
 const SUBJECTIVE = new Set<SectionKind>(["translation", "writing"]);
@@ -64,28 +64,21 @@ export function PracticePage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { index, error } = usePaperIndex();
-  const { index: ieltsIndex } = useIeltsIndex();
   const items = useAttemptItems(index);
   const [status, setStatus] = useState<Status>("all");
   const settings = useSettings();
-  // 新开一篇用哪种模式：考试（交卷才判）/ 练习（选完即判）；已经开始的按记录
   const startPath = (r: Row) => paperPath(r.paper.id, r.section.id) + (r.attempt ? "" : `?mode=${settings.practiceMode}`);
 
-  const exam = (params.get("exam") as ExamId) || (settings.lastExam as ExamId | null) || (index?.[0]?.exam ?? "ielts-a");
+  const exam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(exam);
   const ieltsMode = isIeltsExam(exam);
-  // 从别处带着考试进来（如做题页的"返回真题训练"）也记下
-  const askedExam = params.get("exam");
-  useEffect(() => {
-    if (askedExam && askedExam !== settings.lastExam) void setSetting("lastExam", askedExam);
-  }, [askedExam, settings.lastExam]);
-  const papers = useMemo(() => (index ?? []).filter((p) => p.exam === exam), [index, exam]);
-  const examItems = useMemo(() => (items ?? []).filter((it) => it.paper.exam === exam), [items, exam]);
+  const papers = useMemo(() => (index ?? []).filter((p) => normalizeTargetExam(p.exam) === exam), [index, exam]);
+  const examItems = useMemo(() => (items ?? []).filter((it) => normalizeTargetExam(it.paper.exam) === exam), [items, exam]);
   const stats = useKindStats(index ? papers : null, items ? examItems : null);
   const attemptMap = useMemo(() => new Map(examItems.filter((it) => it.section).map((it) => [it.key, it.attempt])), [examItems]);
 
   const rowsOf = (k: SectionKind): Row[] =>
     papers
-      // 第 3 套接过来的听力和同场那一套是同一份，不重复列
       .flatMap((paper) => paper.sections.filter((s) => s.kind === k && !s.from).map((section) => ({ paper, section, attempt: attemptMap.get(attemptKey(paper.id, section.id)) })))
       .sort((a, b) => b.paper.year - a.paper.year || (b.paper.month ?? 0) - (a.paper.month ?? 0) || (a.paper.set ?? 0) - (b.paper.set ?? 0));
   const kinds = KINDS.filter((k) => papers.some((p) => p.sections.some((s) => s.kind === k)));
@@ -93,7 +86,6 @@ export function PracticePage() {
   const kind = asked && kinds.includes(asked) ? asked : kinds[0];
   const rows = kind ? rowsOf(kind) : [];
   const shown = rows.filter((r) => status === "all" || statusOf(r.attempt) === status);
-  // 和真题训练一样：年份 → 上半年 / 下半年（rows 已按时间倒序）
   const years: { year: number; halves: { half: number; rows: Row[] }[] }[] = [];
   for (const r of shown) {
     const half = r.paper.month ? (r.paper.month <= 9 ? 1 : 2) : 0;
@@ -109,9 +101,8 @@ export function PracticePage() {
 
   const chooseKind = (k: SectionKind) => {
     setStatus("all");
-    setParams({ exam, kind: k }, { replace: true });
+    setParams({ kind: k }, { replace: true });
   };
-  /** 来一篇：优先没练过的（随机挑），都练过就挑正确率最低的 */
   const pick = (k: SectionKind) => {
     const all = rowsOf(k);
     const fresh = all.filter((r) => !r.attempt);
@@ -122,23 +113,9 @@ export function PracticePage() {
 
   return (
     <div>
-      <PageHeader title="专项训练" desc="按题型练：每次只做原卷里的一个部分，和整套模考分开计分。练习模式选完一题马上看对错和解析。" />
-
-      <Segmented
-        label="考试"
-        className="mb-6"
-        value={exam}
-        onChange={(v) => {
-          setStatus("all");
-          setParams({ exam: v }, { replace: true });
-          void setSetting("lastExam", v);
-        }}
-        options={EXAMS.map((e) => {
-          const n = isIeltsExam(e.id)
-            ? (ieltsIndex?.papers ?? []).filter((p) => p.exam === e.id).length
-            : (index ?? []).filter((p) => p.exam === e.id).length;
-          return { value: e.id, label: n ? `${e.short} ${n}` : e.short };
-        })}
+      <PageHeader
+        title="专项训练"
+        desc={`当前目标：${targetMeta.name} · 按题型逐篇拆分精练，练习模式选完即判、即时查看解析。`}
       />
 
       {ieltsMode ? (

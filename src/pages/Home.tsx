@@ -1,18 +1,20 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ArrowRight, CaretRight, Check } from "@phosphor-icons/react";
 import { db, type DayRow } from "@/lib/db";
 import { answeredCount, paperPath } from "@/lib/attempts";
 import { pendingCounts } from "@/lib/learning";
-import { usePendingMistakes } from "@/lib/mistakes";
+import { useMistakes } from "@/lib/mistakes";
 import { isIeltsExam, KIND_NAMES } from "@/lib/papers";
 import { useSettings } from "@/lib/settings";
+import { getTargetMeta, normalizeTargetExam, resolveTargetExam } from "@/lib/targetExam";
 import { currentStreak } from "@/lib/stats";
 import { itemTitle, itemTotal, lastDays, MIN_ANSWERS, pct, spentText, useAttemptItems, useKindStats, usePaperIndex, type AttemptItem, type KindStat } from "@/lib/insights";
 import { cn, timeAgo } from "@/lib/utils";
 import { useCachedLiveQuery } from "@/lib/live";
 import { Button } from "@/components/ui";
-import { ExamCountdown, examPreset } from "@/components/ExamCountdown";
+import { ExamCountdown } from "@/components/ExamCountdown";
+import { TargetExamModal } from "@/components/TargetExamModal";
 import { Heatmap } from "@/components/Heatmap";
 import { Bubbles, PaperThumb } from "@/components/paper-ui";
 import { IELTS_SKILLS_ZH, ieltsPaperLabel, useIeltsIndex } from "@/ielts/data";
@@ -311,6 +313,11 @@ function IeltsRecentCard({ runs, exam, className }: { runs: IeltsAttemptRow[] | 
  */
 export function HomePage() {
   const settings = useSettings();
+  const effectiveExam = resolveTargetExam(settings);
+  const targetMeta = getTargetMeta(effectiveExam);
+  const ieltsMode = isIeltsExam(effectiveExam);
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
+
   const days = useCachedLiveQuery("days", () => db.days.toArray());
   const vocabCount = useCachedLiveQuery("vocab-count", () => db.vocab.count());
   const counts = useCachedLiveQuery("pending", () => pendingCounts(), [settings.dailyNew, settings.activeBook]);
@@ -318,19 +325,37 @@ export function HomePage() {
   const { index: ieltsIndex } = useIeltsIndex();
   const items = useAttemptItems(index);
   const ieltsAttempts = useIeltsAttempts();
-  const kinds = useKindStats(index, items);
-  const mistakes = (usePendingMistakes() ?? 0) + (useIeltsPendingMistakes() ?? 0);
-  const effectiveExam = settings.lastExam ?? (index && index.length === 0 ? "ielts-a" : null);
-  const ieltsMode = isIeltsExam(effectiveExam);
+  const allMistakes = useMistakes();
+  const ieltsPending = useIeltsPendingMistakes(ieltsMode ? effectiveExam : undefined);
 
-  const current = items?.find((it) => !it.attempt.submittedAt && (!effectiveExam || it.paper.exam === effectiveExam));
+  const examPapers = useMemo(
+    () => (index ?? []).filter((p) => normalizeTargetExam(p.exam) === effectiveExam),
+    [index, effectiveExam],
+  );
+  const examItems = useMemo(
+    () => (items ?? []).filter((it) => normalizeTargetExam(it.paper.exam) === effectiveExam),
+    [items, effectiveExam],
+  );
+  const kinds = useKindStats(index ? examPapers : null, items ? examItems : null);
+
+  const cetPending = useMemo(() => {
+    if (ieltsMode || !allMistakes || !index) return 0;
+    const examByPaper = new Map(index.map((p) => [p.id, normalizeTargetExam(p.exam)]));
+    return allMistakes.filter((r) => !r.retiredAt && examByPaper.get(r.paperId) === effectiveExam).length;
+  }, [ieltsMode, allMistakes, index, effectiveExam]);
+
+  const mistakes = ieltsMode ? (ieltsPending ?? 0) : cetPending;
+
+  const current = examItems.find((it) => !it.attempt.submittedAt);
   const activeIelts = useMemo(
-    () => (ieltsAttempts ?? []).find((a) => !a.submittedAt && (!effectiveExam || a.exam === effectiveExam)),
+    () => (ieltsAttempts ?? []).find((a) => !a.submittedAt && a.exam === effectiveExam),
     [ieltsAttempts, effectiveExam],
   );
   const nextIelts = useMemo(() => {
     if (!ieltsMode) return undefined;
-    const doneIds = new Set((ieltsAttempts ?? []).filter((a) => a.scope === "full" && a.submittedAt).map((a) => a.paperId));
+    const doneIds = new Set(
+      (ieltsAttempts ?? []).filter((a) => a.exam === effectiveExam && a.scope === "full" && a.submittedAt).map((a) => a.paperId),
+    );
     const p = (ieltsIndex?.papers ?? []).find((e) => e.exam === effectiveExam && e.fullMock && !doneIds.has(e.id));
     return (
       p && {
@@ -342,29 +367,40 @@ export function HomePage() {
   }, [ieltsMode, ieltsIndex, ieltsAttempts, effectiveExam]);
 
   const next = useMemo(() => {
-    const done = new Set((items ?? []).filter((it) => !it.section).map((it) => it.paper.id));
-    const p = [...(index ?? [])].filter((x) => !settings.lastExam || x.exam === settings.lastExam).sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0)).find((x) => !done.has(x.id));
-    return p && { id: p.id, exam: p.exam, title: p.title, meta: [`${p.questionCount} 题`, p.durationMinutes && `${p.durationMinutes} 分钟`, p.hasAudio && "含听力"].filter(Boolean).join(" · ") };
-  }, [index, items, settings.lastExam]);
+    const done = new Set(examItems.filter((it) => !it.section).map((it) => it.paper.id));
+    const p = [...examPapers]
+      .sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0) || (a.set ?? 0) - (b.set ?? 0))
+      .find((x) => !done.has(x.id));
+    return (
+      p && {
+        id: p.id,
+        exam: p.exam,
+        title: p.title,
+        meta: [`${p.questionCount} 题`, p.durationMinutes && `${p.durationMinutes} 分钟`, p.hasAudio && "含听力"]
+          .filter(Boolean)
+          .join(" · "),
+      }
+    );
+  }, [examPapers, examItems]);
 
   const firstDay = days?.length ? new Date(`${[...days].sort((a, b) => a.day.localeCompare(b.day))[0].day}T00:00:00`).getTime() : undefined;
   const weakest = (kinds ?? [])
     .filter((k) => k.answered >= MIN_ANSWERS)
     .sort((a, b) => a.correct / a.total - b.correct / b.total)[0];
 
-  // 今天的三件事，只用现有数据：待背的词、弱项一篇、本周整卷
+  // 今天的三件事，按当前唯一备考目标过滤
   const today = new Date().setHours(0, 0, 0, 0);
   const words = counts ? counts.dueReviews + counts.newLeft : 0;
   const noSource = !settings.activeBook && !vocabCount;
   const suggest = weakest ?? [...(kinds ?? [])].filter((k) => k.kind !== "writing" && k.kind !== "translation").sort((a, b) => a.practiced - b.practiced || b.sections - a.sections)[0];
   const suggestDone = ieltsMode
-    ? !!(ieltsAttempts ?? []).some((a) => a.scope !== "full" && (a.submittedAt ?? 0) >= today)
-    : !!suggest && !!items?.some((it) => it.section?.kind === suggest.kind && (it.attempt.submittedAt ?? 0) >= today);
+    ? !!(ieltsAttempts ?? []).some((a) => a.exam === effectiveExam && a.scope !== "full" && (a.submittedAt ?? 0) >= today)
+    : !!suggest && examItems.some((it) => it.section?.kind === suggest.kind && (it.attempt.submittedAt ?? 0) >= today);
   const weekPapers = ieltsMode
-    ? (ieltsAttempts ?? []).filter((a) => a.scope === "full" && (a.submittedAt ?? 0) >= weekStart()).length
-    : (items ?? []).filter((it) => !it.section && (it.attempt.submittedAt ?? 0) >= weekStart()).length;
+    ? (ieltsAttempts ?? []).filter((a) => a.exam === effectiveExam && a.scope === "full" && (a.submittedAt ?? 0) >= weekStart()).length
+    : examItems.filter((it) => !it.section && (it.attempt.submittedAt ?? 0) >= weekStart()).length;
   const papersLeft = Math.max(0, WEEKLY_PAPERS - weekPapers);
-  const fullPaper = items?.find((it) => !it.section && !it.attempt.submittedAt);
+  const fullPaper = examItems.find((it) => !it.section && !it.attempt.submittedAt);
   const all: Todo[] = [
     noSource
       ? { text: "选一本词书", done: false, to: "/books" }
@@ -380,7 +416,7 @@ export function HomePage() {
           to: "/review",
         },
     ieltsMode
-      ? { text: "练一篇雅思单项或口语话题", done: suggestDone, to: `/practice?exam=${effectiveExam}` }
+      ? { text: "练一篇雅思单项或口语话题", done: suggestDone, to: `/practice` }
       : { text: suggest ? `练一篇${KIND_NAMES[suggest.kind]}` : "练一篇专项", done: suggestDone, to: suggest ? `/practice?kind=${suggest.kind}` : "/practice" },
     {
       text: papersLeft ? (
@@ -396,7 +432,7 @@ export function HomePage() {
           ? `/ielts/exam/${activeIelts.id}`
           : nextIelts
             ? `/ielts/start/${encodeURIComponent(nextIelts.id)}?scope=full&mode=mock`
-            : `/papers?exam=${effectiveExam}`
+            : `/papers`
         : fullPaper
           ? paperPath(fullPaper.paper.id)
           : next
@@ -417,21 +453,28 @@ export function HomePage() {
         ]
       : []),
   ];
-  // 三行以内：没做完的排前面，做完的顶多补到三行
   const todos = [...all.filter((t) => !t.done), ...all.filter((t) => t.done)].slice(0, 3);
 
   return (
     <div>
       <div className="mb-7">
         <h1 className="t-h1">{greeting()}</h1>
-        <p className="mt-1.5 text-[14px] text-[var(--ink-500)]">{new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}</p>
+        <p className="mt-1.5 text-[14px] text-[var(--ink-500)]">
+          {new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })} · 目标：{targetMeta.name}
+        </p>
       </div>
-      <ExamCountdown startedAt={firstDay} weak={weakest ? KIND_NAMES[weakest.kind] : undefined} defaultName={examPreset(effectiveExam ?? next?.exam)} className="mb-5" />
+      <ExamCountdown
+        startedAt={firstDay}
+        weak={weakest ? KIND_NAMES[weakest.kind] : undefined}
+        targetExam={effectiveExam}
+        onEditTarget={() => setTargetModalOpen(true)}
+        className="mb-5"
+      />
 
       <div className="@container">
         <div className="grid grid-flow-row-dense grid-cols-1 gap-5 @min-[720px]:grid-cols-2 @min-[1040px]:grid-cols-3">
           {ieltsMode ? (
-            <IeltsContinueCard active={activeIelts} next={nextIelts} exam={effectiveExam!} className="@min-[720px]:col-span-2" />
+            <IeltsContinueCard active={activeIelts} next={nextIelts} exam={effectiveExam} className="@min-[720px]:col-span-2" />
           ) : (
             <ContinueCard item={current} next={next} weakest={weakest} className="@min-[720px]:col-span-2" />
           )}
@@ -444,13 +487,15 @@ export function HomePage() {
           {ieltsMode ? (
             <IeltsRecentCard
               runs={(ieltsAttempts ?? []).filter((a) => a.exam === effectiveExam)}
-              exam={effectiveExam!}
+              exam={effectiveExam}
             />
           ) : (
-            <RecentCard items={items} />
+            <RecentCard items={examItems} />
           )}
         </div>
       </div>
+
+      <TargetExamModal open={targetModalOpen} onClose={() => setTargetModalOpen(false)} />
     </div>
   );
 }

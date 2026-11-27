@@ -5,6 +5,7 @@ export type ClipStatus = "idle" | "loading" | "playing";
 
 export interface PlayRangeOptions {
   key?: string;
+  src?: string;
   rate?: number;
   loop?: boolean;
   /** 从区间内部的某个时间点起播（用于进度条点击定位），仍保留区间 [start, end] 作为循环与停止边界 */
@@ -24,26 +25,29 @@ export interface ClipProgress {
 
 interface ActiveRange {
   seq: number;
+  src: string;
   start: number;
   end: number;
   loop: boolean;
   key: string | null;
+  hasEnteredWindow: boolean;
+  lastForceSeekAt: number;
   onEnded?: () => void;
 }
 
 /**
- * 工业级区间音频引擎：
- * - 绑定真实 DOM <audio preload="metadata">，配合后台 prefetchAudio 分段写入 "listening" 缓存，不抢 Range 连接；
- * - 使用递增 seqRef + seekingRef 锁，彻底杜绝跨段/回跳时因 seek 未完成被旧 currentTime >= end 误杀静音；
- * - rAF 进度通过订阅回调直接驱动声学条 DOM，不在播放期每秒 60 次触发 React 全树重渲染。
+ * 同步手势区间音频引擎（对齐考场 ListeningBar）：
+ * 1. 用户点击播放时，在同一同步调用栈内直接执行 el.play()（绝不在 play() 前 await），彻底解决手势过期无响应；
+ * 2. 若元信息尚未就绪（readyState === 0），通过 pendingSeekRef + 短暂静音护航，loadedmetadata 到达瞬间跳转目标句，杜绝从 0 秒泄露或错位；
+ * 3. 通过 hasEnteredWindow 状态机守护回跳边界，rAF 进度经 subscribeProgress 直推声学条 DOM，零 React 重渲染开销。
  */
-export function useClipAudio(src: string | null) {
+export function useClipAudio(defaultSrc: string | null) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const srcRef = useRef<string | null>(src);
-  srcRef.current = src;
+  const srcRef = useRef<string | null>(defaultSrc);
+  srcRef.current = defaultSrc;
 
   const seqRef = useRef(0);
-  const seekingRef = useRef(false);
+  const pendingSeekRef = useRef<{ seq: number; time: number } | null>(null);
   const rangeRef = useRef<ActiveRange | null>(null);
   const rafRef = useRef(0);
   const lastArgsRef = useRef<{ start: number; end: number; opts?: PlayRangeOptions } | null>(null);
@@ -85,9 +89,13 @@ export function useClipAudio(src: string | null) {
   const pause = useCallback(() => {
     seqRef.current++;
     stopRaf();
-    seekingRef.current = false;
+    pendingSeekRef.current = null;
     rangeRef.current = null;
-    audioRef.current?.pause();
+    const el = audioRef.current;
+    if (el) {
+      el.muted = false;
+      el.pause();
+    }
     setStatus("idle");
     setActiveKey(null);
   }, [stopRaf]);
@@ -108,41 +116,78 @@ export function useClipAudio(src: string | null) {
     }
   }, []);
 
+  const applyPendingSeek = useCallback((el: HTMLAudioElement) => {
+    const pending = pendingSeekRef.current;
+    if (!pending || pending.seq !== seqRef.current || el.readyState < 1) return false;
+    pendingSeekRef.current = null;
+    const maxT = Number.isFinite(el.duration) && el.duration > 0 ? Math.max(0, el.duration - 0.08) : pending.time;
+    const target = Math.min(pending.time, maxT);
+    try {
+      el.currentTime = target;
+    } catch {
+      // 忽略极端浏览器状态下暂不可寻址
+    }
+    const r = rangeRef.current;
+    if (r && r.seq === seqRef.current) {
+      r.lastForceSeekAt = Date.now();
+      if (!el.seeking && Math.abs(el.currentTime - r.start) <= 0.35 && el.currentTime < r.end - 0.05) {
+        r.hasEnteredWindow = true;
+        el.muted = false;
+      } else {
+        window.setTimeout(() => {
+          if (rangeRef.current?.seq === r.seq) el.muted = false;
+        }, 900);
+      }
+    } else {
+      el.muted = false;
+    }
+    return true;
+  }, []);
+
   const checkBoundary = useCallback(() => {
     const el = audioRef.current;
     const r = rangeRef.current;
-    if (!el || !r || r.seq !== seqRef.current || seekingRef.current || el.seeking || el.paused) return;
+    if (!el || !r || r.seq !== seqRef.current || el.paused) return;
+
+    if (pendingSeekRef.current && pendingSeekRef.current.seq === r.seq) {
+      if (el.readyState >= 1) applyPendingSeek(el);
+      return;
+    }
+    if (el.seeking) return;
 
     const t = el.currentTime;
+    if (!r.hasEnteredWindow) {
+      if (t >= r.start - 0.35 && t < r.end - 0.05) {
+        r.hasEnteredWindow = true;
+        el.muted = false;
+      } else if (el.readyState >= 1 && (t < r.start - 0.5 || t >= r.end)) {
+        const now = Date.now();
+        if (now - r.lastForceSeekAt > 400) {
+          r.lastForceSeekAt = now;
+          el.currentTime = r.start;
+        }
+        return;
+      }
+    }
+
     const dur = Math.max(0.1, r.end - r.start);
     const ratio = Math.max(0, Math.min(1, (t - r.start) / dur));
     emitProgress(t, ratio, r.start, r.end, r.key);
 
-    if (t >= r.start - 0.25 && (t >= r.end || el.ended)) {
+    if (r.hasEnteredWindow && (t >= r.end || el.ended)) {
       if (r.loop) {
-        seekingRef.current = true;
-        const releaseSeek = () => {
-          seekingRef.current = false;
-        };
-        const timer = window.setTimeout(releaseSeek, 900);
-        const onSeeked = () => {
-          clearTimeout(timer);
-          releaseSeek();
-        };
-        el.addEventListener("seeked", onSeeked, { once: true });
+        r.hasEnteredWindow = false;
+        r.lastForceSeekAt = Date.now();
         el.currentTime = r.start;
-        if (!el.seeking && Math.abs(el.currentTime - r.start) <= 0.05) {
-          clearTimeout(timer);
-          el.removeEventListener("seeked", onSeeked);
-          releaseSeek();
-        }
         emitProgress(r.start, 0, r.start, r.end, r.key);
         if (el.paused) void el.play().catch(() => {});
       } else {
         const cb = r.onEnded;
         seqRef.current++;
         rangeRef.current = null;
+        pendingSeekRef.current = null;
         stopRaf();
+        el.muted = false;
         el.pause();
         setStatus("idle");
         setActiveKey(null);
@@ -150,7 +195,7 @@ export function useClipAudio(src: string | null) {
         cb?.();
       }
     }
-  }, [emitProgress, stopRaf]);
+  }, [applyPendingSeek, emitProgress, stopRaf]);
 
   const startRaf = useCallback(
     (seq: number) => {
@@ -169,32 +214,48 @@ export function useClipAudio(src: string | null) {
     [checkBoundary, stopRaf],
   );
 
-  // 绑定真实 DOM <audio> 元素事件
+  // 绑定真实 DOM <audio> 事件
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
+    el.setAttribute("referrerpolicy", "no-referrer");
 
+    const onLoadedMeta = () => {
+      applyPendingSeek(el);
+    };
+    const onSeeked = () => {
+      const r = rangeRef.current;
+      if (r && r.seq === seqRef.current) {
+        el.muted = false;
+        if (el.currentTime >= r.start - 0.35 && el.currentTime < r.end - 0.05) {
+          r.hasEnteredWindow = true;
+        }
+      }
+    };
     const onWaiting = () => {
       if (rangeRef.current?.seq === seqRef.current) setStatus("loading");
     };
     const onPlaying = () => {
       if (rangeRef.current?.seq === seqRef.current) {
+        if (!pendingSeekRef.current) el.muted = false;
         setStatus("playing");
         setError(null);
       }
     };
     const onPause = () => {
-      if (seekingRef.current) return;
-      if (statusRef.current !== "loading") {
+      if (el.seeking || pendingSeekRef.current) return;
+      if (rangeRef.current?.seq === seqRef.current && statusRef.current === "playing") {
         stopRaf();
         setStatus("idle");
       }
     };
     const onTimeUpdate = () => checkBoundary();
     const onError = () => {
-      if (seekingRef.current) return;
+      if (el.seeking) return;
       if (rangeRef.current?.seq === seqRef.current) {
+        pendingSeekRef.current = null;
         stopRaf();
+        el.muted = false;
         rangeRef.current = null;
         setStatus("idle");
         setActiveKey(null);
@@ -202,6 +263,9 @@ export function useClipAudio(src: string | null) {
       }
     };
 
+    el.addEventListener("loadedmetadata", onLoadedMeta);
+    el.addEventListener("canplay", onLoadedMeta);
+    el.addEventListener("seeked", onSeeked);
     el.addEventListener("waiting", onWaiting);
     el.addEventListener("playing", onPlaying);
     el.addEventListener("pause", onPause);
@@ -210,20 +274,24 @@ export function useClipAudio(src: string | null) {
 
     return () => {
       stopRaf();
+      el.muted = false;
       el.pause();
+      el.removeEventListener("loadedmetadata", onLoadedMeta);
+      el.removeEventListener("canplay", onLoadedMeta);
+      el.removeEventListener("seeked", onSeeked);
       el.removeEventListener("waiting", onWaiting);
       el.removeEventListener("playing", onPlaying);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("timeupdate", onTimeUpdate);
       el.removeEventListener("error", onError);
     };
-  }, [checkBoundary, stopRaf]);
+  }, [applyPendingSeek, checkBoundary, stopRaf]);
 
-  // 切卷时复位状态并延迟后台缓存整份录音（避免与首个点播 Range 抢带宽）
+  // 切卷或切音频时复位状态，仅对同源 /audio/ 启用延迟分片缓存
   useEffect(() => {
     seqRef.current++;
     stopRaf();
-    seekingRef.current = false;
+    pendingSeekRef.current = null;
     rangeRef.current = null;
     lastArgsRef.current = null;
     setStatus("idle");
@@ -232,19 +300,20 @@ export function useClipAudio(src: string | null) {
 
     const el = audioRef.current;
     if (el) {
+      el.muted = false;
       el.pause();
-      if (!src) {
+      if (!defaultSrc) {
         el.removeAttribute("src");
         el.load();
       }
     }
 
-    if (!src) {
+    if (!defaultSrc || !defaultSrc.startsWith("/")) {
       setCachePct(null);
       return;
     }
 
-    touchAudio(src);
+    touchAudio(defaultSrc);
     setCachePct(null);
     let live = true;
     const ctrl = new AbortController();
@@ -253,7 +322,7 @@ export function useClipAudio(src: string | null) {
       if (typeof caches !== "undefined") {
         const hit = await caches
           .open(AUDIO_CACHE)
-          .then((c) => c.match(src))
+          .then((c) => c.match(defaultSrc))
           .catch(() => null);
         if (!live) return;
         if (hit) {
@@ -265,29 +334,28 @@ export function useClipAudio(src: string | null) {
 
     const timer = window.setTimeout(() => {
       if (!live) return;
-      void prefetchAudio(src, ctrl.signal, (p) => {
+      void prefetchAudio(defaultSrc, ctrl.signal, (p) => {
         if (live) setCachePct(p);
       }).then((ok) => {
         if (live && ok) setCachePct(1);
       });
-    }, 600);
+    }, 800);
 
     return () => {
       live = false;
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [src, stopRaf]);
+  }, [defaultSrc, stopRaf]);
 
   const playRange = useCallback(
-    async (start: number, end: number, opts?: PlayRangeOptions): Promise<boolean> => {
-      const targetSrc = srcRef.current;
+    (start: number, end: number, opts?: PlayRangeOptions): Promise<boolean> => {
+      const targetSrc = opts?.src ?? srcRef.current;
       const el = audioRef.current;
-      if (!targetSrc || !el) return false;
+      if (!targetSrc || !el) return Promise.resolve(false);
 
       const seq = ++seqRef.current;
       stopRaf();
-      seekingRef.current = false;
 
       const safeStart = Math.max(0, start);
       const safeEnd = Math.max(safeStart + 0.25, end);
@@ -295,7 +363,17 @@ export function useClipAudio(src: string | null) {
       const loop = !!opts?.loop;
 
       lastArgsRef.current = { start: safeStart, end: safeEnd, opts: { ...opts, seekAt: undefined } };
-      rangeRef.current = { seq, start: safeStart, end: safeEnd, loop, key, onEnded: opts?.onEnded };
+      rangeRef.current = {
+        seq,
+        src: targetSrc,
+        start: safeStart,
+        end: safeEnd,
+        loop,
+        key,
+        hasEnteredWindow: false,
+        lastForceSeekAt: 0,
+        onEnded: opts?.onEnded,
+      };
       setActiveKey(key);
       setError(null);
       setStatus("loading");
@@ -304,6 +382,7 @@ export function useClipAudio(src: string | null) {
         opts?.seekAt !== undefined
           ? Math.max(safeStart, Math.min(safeEnd - 0.08, opts.seekAt))
           : safeStart;
+
       emitProgress(
         initialSeek,
         Math.max(0, Math.min(1, (initialSeek - safeStart) / Math.max(0.1, safeEnd - safeStart))),
@@ -312,124 +391,109 @@ export function useClipAudio(src: string | null) {
         key,
       );
 
-      const attempt = async (retriedFromCache: boolean): Promise<boolean> => {
-        if (seq !== seqRef.current) return false;
-
-        const targetUrl = new URL(targetSrc, location.href).href;
-        if (el.src !== targetUrl) {
-          el.src = targetSrc;
-          el.load();
-        } else if (el.error) {
-          el.load();
-        }
+      const resolvedUrl = new URL(targetSrc, location.href).href;
+      const needReloadSrc = el.src !== resolvedUrl || !el.getAttribute("src") || !!el.error;
+      if (needReloadSrc) {
+        el.src = targetSrc;
+        el.load();
+      }
+      if (targetSrc.startsWith("/")) {
         touchAudio(targetSrc);
+      }
 
-        if (el.readyState < 1) {
-          await new Promise<void>((resolve, reject) => {
-            let settled = false;
-            const finish = (ok: boolean) => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              el.removeEventListener("loadedmetadata", onReady);
-              el.removeEventListener("canplay", onReady);
-              el.removeEventListener("error", onErr);
-              if (ok) resolve();
-              else reject(new Error("metadata load failed"));
-            };
-            const onReady = () => finish(true);
-            const onErr = () => finish(false);
-            const timer = window.setTimeout(() => finish(el.readyState >= 1), 8000);
-            el.addEventListener("loadedmetadata", onReady);
-            el.addEventListener("canplay", onReady);
-            el.addEventListener("error", onErr);
-          });
-        }
-        if (seq !== seqRef.current) return false;
+      el.playbackRate = opts?.rate ?? rateRef.current;
 
-        el.playbackRate = opts?.rate ?? rateRef.current;
-
+      if (el.readyState >= 1) {
+        pendingSeekRef.current = null;
+        el.muted = false;
         const maxT = Number.isFinite(el.duration) && el.duration > 0 ? Math.max(0, el.duration - 0.08) : initialSeek;
         const seekTarget = Math.min(initialSeek, maxT);
-
         if (Math.abs(el.currentTime - seekTarget) > 0.05) {
-          seekingRef.current = true;
-          await new Promise<void>((resolve) => {
-            let settled = false;
-            const finish = () => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              el.removeEventListener("seeked", finish);
-              el.removeEventListener("error", finish);
-              resolve();
-            };
-            const timer = window.setTimeout(finish, 1200);
-            el.addEventListener("seeked", finish, { once: true });
-            el.addEventListener("error", finish, { once: true });
-            el.currentTime = seekTarget;
-            if (!el.seeking && Math.abs(el.currentTime - seekTarget) <= 0.05) {
-              finish();
-            }
-          });
-          seekingRef.current = false;
-          if (seq !== seqRef.current) return false;
+          el.currentTime = seekTarget;
         }
+        if (el.currentTime >= safeStart - 0.35 && el.currentTime < safeEnd - 0.05 && !el.seeking) {
+          rangeRef.current.hasEnteredWindow = true;
+        }
+      } else {
+        // 冷流元信息未就绪时先短暂静音并用同步手势拉起播放，避免 0 秒处声音闪烁
+        el.muted = initialSeek > 0.5;
+        pendingSeekRef.current = { seq, time: initialSeek };
+      }
 
-        try {
-          await el.play();
-        } catch (e) {
+      return el.play().then(
+        () => {
+          if (seq !== seqRef.current) {
+            el.muted = false;
+            el.pause();
+            return false;
+          }
+          if (pendingSeekRef.current && pendingSeekRef.current.seq === seq && el.readyState >= 1) {
+            applyPendingSeek(el);
+          }
+          if (!el.paused) {
+            setStatus("playing");
+            startRaf(seq);
+          }
+          return true;
+        },
+        (e: unknown) => {
           if (seq !== seqRef.current) return false;
+          el.muted = false;
           const name = (e as { name?: string })?.name;
           if (name === "AbortError") return false;
           if (name === "NotAllowedError") {
+            pendingSeekRef.current = null;
             rangeRef.current = null;
             setStatus("idle");
             setActiveKey(null);
             if (!opts?.silentAutoplayBlock) {
-              setError("浏览器拦截了自动播放，请手动点击一次播放按钮");
+              setError("浏览器拦截了播放，请手动点击一次播放按钮");
             }
             return false;
           }
-          if (!retriedFromCache && typeof caches !== "undefined") {
-            const cached = await caches
+          if (targetSrc.startsWith("/") && typeof caches !== "undefined") {
+            return caches
               .open(AUDIO_CACHE)
               .then((c) => c.match(targetSrc))
-              .catch(() => null);
-            if (cached && seq === seqRef.current) {
-              el.load();
-              return attempt(true);
-            }
+              .then((cached) => {
+                if (cached && seq === seqRef.current) {
+                  el.load();
+                  pendingSeekRef.current = { seq, time: initialSeek };
+                  return el.play().then(
+                    () => {
+                      if (seq !== seqRef.current) return false;
+                      if (el.readyState >= 1) applyPendingSeek(el);
+                      setStatus("playing");
+                      startRaf(seq);
+                      return true;
+                    },
+                    () => false,
+                  );
+                }
+                return false;
+              })
+              .catch(() => false)
+              .then((recovered) => {
+                if (!recovered && seq === seqRef.current) {
+                  pendingSeekRef.current = null;
+                  rangeRef.current = null;
+                  setStatus("idle");
+                  setActiveKey(null);
+                  setError("录音加载受阻，请点击重试");
+                }
+                return recovered;
+              });
           }
+          pendingSeekRef.current = null;
           rangeRef.current = null;
           setStatus("idle");
           setActiveKey(null);
           setError("录音加载受阻，请点击重试");
           return false;
-        }
-
-        if (seq !== seqRef.current) {
-          el.pause();
-          return false;
-        }
-        setStatus("playing");
-        startRaf(seq);
-        return true;
-      };
-
-      try {
-        return await attempt(false);
-      } catch {
-        if (seq !== seqRef.current) return false;
-        seekingRef.current = false;
-        rangeRef.current = null;
-        setStatus("idle");
-        setActiveKey(null);
-        setError("录音加载受阻，请点击重试");
-        return false;
-      }
+        },
+      );
     },
-    [emitProgress, startRaf, stopRaf],
+    [applyPendingSeek, emitProgress, startRaf, stopRaf],
   );
 
   const toggleRange = useCallback(

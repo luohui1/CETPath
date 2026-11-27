@@ -3,9 +3,11 @@ import { touchMemory } from "@/lib/agent";
 import { clearProfile, getProfile, learningStats, PROFILE_SECTIONS, saveProfile, useProfile } from "@/lib/profile";
 import { DownloadSimple, SpeakerHigh, Trash, UploadSimple } from "@phosphor-icons/react";
 import { clearAll, exportBackup, importBackup } from "@/lib/backup";
+import { isIeltsExam } from "@/lib/papers";
 import { setSetting, useSettings } from "@/lib/settings";
+import { applyTargetExam, resolveTargetExam, TARGET_EXAMS } from "@/lib/targetExam";
 import { speak, speechSupported, useEnglishVoices } from "@/lib/speech";
-import { downloadText } from "@/lib/utils";
+import { cn, downloadText } from "@/lib/utils";
 import { StickyTab } from "@/components/paper-ui";
 import { AgentModel } from "@/components/AgentModel";
 import { IS_PREVIEW } from "@/lib/preview";
@@ -107,10 +109,11 @@ function Account() {
 
 export function SettingsPage() {
   const s = useSettings();
+  const targetExam = resolveTargetExam(s);
+  const isIelts = isIeltsExam(targetExam);
   const voices = useEnglishVoices();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  // 从别处链接到某一组（如 /settings#agent）：页面是按需加载的，画好后再滚过去
   useEffect(() => {
     if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
   }, []);
@@ -144,54 +147,81 @@ export function SettingsPage() {
       <PageHeader title="设置" />
       {!IS_PREVIEW && <Account />}
 
-      <Group title="做题">
-        <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
-          <Segmented
-            label="整套卷的做题方式"
-            value={s.examMode}
-            onChange={(v) => setSetting("examMode", v)}
-            options={[
-              { value: "free", label: "普通做题" },
-              { value: "exam", label: "全真模拟" },
-            ]}
-          />
+      <Group title="备考目标" id="target">
+        <Row title="唯一备考目标" desc="切换后，全站真题、专项、听力精练、口语与统计均自动聚焦该考种，并匹配对应词书">
+          <div className="flex flex-wrap gap-1.5">
+            {TARGET_EXAMS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => void applyTargetExam(t.id)}
+                className={cn("pill", targetExam === t.id && "pill-on")}
+              >
+                {t.short}
+              </button>
+            ))}
+          </div>
         </Row>
-        <Row title="专项训练的模式" desc="练习模式选完一题马上看对错和解析">
-          <Segmented
-            label="专项训练的模式"
-            value={s.practiceMode}
-            onChange={(v) => setSetting("practiceMode", v)}
-            options={[
-              { value: "exam", label: "考试" },
-              { value: "practice", label: "练习" },
-            ]}
+        <Row title="考试日期" desc="设置后在首页与侧边栏显示倒计时">
+          <input
+            type="date"
+            value={s.examDate ?? ""}
+            onChange={(e) => setSetting("examDate", e.target.value || null)}
+            className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)]"
           />
-        </Row>
-        <Row title="标出生词" desc="在四六级与考研原卷上标出生词本里的词">
-          <Switch label="标出生词" checked={s.showVocabMarks} onChange={(v) => setSetting("showVocabMarks", v)} />
         </Row>
       </Group>
 
-      <Group title="雅思机考与沉浸度" id="ielts">
-        <div className="px-5 py-3.5 text-[13px] leading-[21px] text-[var(--ink-700)]">
-          全真模考（整套或单科限时）开考后会自动锁死纯净机考环境，不显示任何查词、生词标记或 AI 入口，且整套连考全部交卷后才解锁复盘。以下开关仅控制单项自由练习与交卷后的复盘页。
-        </div>
-        <Row title="机考考生显示名" desc="显示在雅思机考界面左上角（留空默认显示 Test taker ID）">
-          <SettingText value={s.ieltsCandidateName} onSave={(v) => setSetting("ieltsCandidateName", v)} />
-        </Row>
-        <Row title="复盘允许点词查词" desc="交卷进入复盘后，点击阅读或听力原文单词可查词并带原句收入生词本">
-          <Switch label="复盘允许点词查词" checked={s.ieltsReviewLookup} onChange={(v) => setSetting("ieltsReviewLookup", v)} />
-        </Row>
-        <Row title="复盘标出生词本词汇" desc="交卷进入复盘后，标出你生词本里已有的词">
-          <Switch label="复盘标出生词本词汇" checked={s.ieltsReviewVocabMarks} onChange={(v) => setSetting("ieltsReviewVocabMarks", v)} />
-        </Row>
-        <Row title="复盘显示 AI 助教入口" desc="默认关闭；开启后可在雅思复盘页唤出右侧 AI 助教讲题">
-          <Switch label="复盘显示 AI 助教入口" checked={s.ieltsReviewAgent} onChange={(v) => setSetting("ieltsReviewAgent", v)} />
-        </Row>
-        <Row title="单项练习作答中允许查词" desc="默认关闭，建议做完交卷再查词，避免破坏机考手感">
-          <Switch label="单项练习作答中允许查词" checked={s.ieltsPracticeLookup} onChange={(v) => setSetting("ieltsPracticeLookup", v)} />
-        </Row>
-      </Group>
+      {isIelts ? (
+        <Group title="雅思机考与沉浸度" id="ielts">
+          <div className="px-5 py-3.5 text-[13px] leading-[21px] text-[var(--ink-700)]">
+            全真模考（整套或单科限时）开考后会自动锁死纯净机考环境，不显示任何查词、生词标记或 AI 入口，且整套连考全部交卷后才解锁复盘。以下开关仅控制单项自由练习与交卷后的复盘页。
+          </div>
+          <Row title="机考考生显示名" desc="显示在雅思机考界面左上角（留空默认显示 Test taker ID）">
+            <SettingText value={s.ieltsCandidateName} onSave={(v) => setSetting("ieltsCandidateName", v)} />
+          </Row>
+          <Row title="复盘允许点词查词" desc="交卷进入复盘后，点击阅读或听力原文单词可查词并带原句收入生词本">
+            <Switch label="复盘允许点词查词" checked={s.ieltsReviewLookup} onChange={(v) => setSetting("ieltsReviewLookup", v)} />
+          </Row>
+          <Row title="复盘标出生词本词汇" desc="交卷进入复盘后，标出你生词本里已有的词">
+            <Switch label="复盘标出生词本词汇" checked={s.ieltsReviewVocabMarks} onChange={(v) => setSetting("ieltsReviewVocabMarks", v)} />
+          </Row>
+          <Row title="复盘显示 AI 助教入口" desc="默认关闭；开启后可在雅思复盘页唤出右侧 AI 助教讲题">
+            <Switch label="复盘显示 AI 助教入口" checked={s.ieltsReviewAgent} onChange={(v) => setSetting("ieltsReviewAgent", v)} />
+          </Row>
+          <Row title="单项练习作答中允许查词" desc="默认关闭，建议做完交卷再查词，避免破坏机考手感">
+            <Switch label="单项练习作答中允许查词" checked={s.ieltsPracticeLookup} onChange={(v) => setSetting("ieltsPracticeLookup", v)} />
+          </Row>
+        </Group>
+      ) : (
+        <Group title="做题">
+          <Row title="整套卷的做题方式" desc="新开一套时直接用这个方式；普通做题还没动笔时，也能在顶栏改成全真模拟">
+            <Segmented
+              label="整套卷的做题方式"
+              value={s.examMode}
+              onChange={(v) => setSetting("examMode", v)}
+              options={[
+                { value: "free", label: "普通做题" },
+                { value: "exam", label: "全真模拟" },
+              ]}
+            />
+          </Row>
+          <Row title="专项训练的模式" desc="练习模式选完一题马上看对错和解析">
+            <Segmented
+              label="专项训练的模式"
+              value={s.practiceMode}
+              onChange={(v) => setSetting("practiceMode", v)}
+              options={[
+                { value: "exam", label: "考试" },
+                { value: "practice", label: "练习" },
+              ]}
+            />
+          </Row>
+          <Row title="标出生词" desc="在四六级与考研原卷上标出生词本里的词">
+            <Switch label="标出生词" checked={s.showVocabMarks} onChange={(v) => setSetting("showVocabMarks", v)} />
+          </Row>
+        </Group>
+      )}
 
       <Group title="发音">
         <Row title="自动发音" desc="查词和背词时自动读出单词">
@@ -227,20 +257,6 @@ export function SettingsPage() {
           <Button size="icon" variant="ghost" onClick={() => speak("Practice makes perfect.")} aria-label="试听">
             <SpeakerHigh className="size-[18px]" />
           </Button>
-        </Row>
-      </Group>
-
-      <Group title="备考目标">
-        <Row title="目标考试" desc="显示在首页和真题训练">
-          <SettingText value={s.examName} onSave={(v) => setSetting("examName", v)} />
-        </Row>
-        <Row title="考试日期" desc="设置后显示倒计时">
-          <input
-            type="date"
-            value={s.examDate ?? ""}
-            onChange={(e) => setSetting("examDate", e.target.value || null)}
-            className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)]"
-          />
         </Row>
       </Group>
 

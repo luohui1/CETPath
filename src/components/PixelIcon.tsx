@@ -11,6 +11,7 @@ import {
   IconHeadset,
   IconHighlighter,
   IconMagnifyPage,
+  IconMic,
   IconNib,
   IconNotebook,
   IconParagraphs,
@@ -42,8 +43,9 @@ const ICONS = {
   chest: IconBookStack,
   graph: IconGraphPaper,
   ruler: IconRulerPencil,
-  // 题型
+  // 题型与听说
   headphones: IconHeadset,
+  mic: IconMic,
   puzzle: IconBlankLine,
   blanks: IconWordBank,
   link: IconParagraphs,
