@@ -163,6 +163,7 @@ export function Layout() {
         { to: "/", label: "首页", icon: "house", end: true },
         { to: "/papers", label: "真题训练", short: "真题", icon: "paper" },
         { to: "/practice", label: "专项训练", short: "专项", icon: "target" },
+        { to: "/studio", label: "听说实训", short: "听说", icon: "headphones", match: ["/studio"] },
         ...(showSpeaking ? [{ to: "/speaking", label: "口语练习", short: "口语", icon: "headphones", match: ["/speaking"] } as NavItem] : []),
         ...(ARTICLES_ON ? [{ to: "/articles", label: "外刊阅读", short: "外刊", icon: "book" } as NavItem] : []),
       ],

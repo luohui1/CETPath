@@ -2,6 +2,7 @@
 """针对 server/agent_server.py 的多账户鉴权、开放注册开关、HEAD /api/auth/me 及 IELTS 同步表集成测试。"""
 from __future__ import annotations
 
+import gc
 import http.client
 import json
 import pathlib
@@ -18,7 +19,7 @@ import agent_server as srv  # noqa: E402
 
 class TestAgentServerAuthAndSync(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         tdir = pathlib.Path(self.tmp.name)
         srv.CONFIG = str(tdir / "agent.json")
         srv.DB_PATH = str(tdir / "yingyu.db")
@@ -32,6 +33,7 @@ class TestAgentServerAuthAndSync(unittest.TestCase):
     def tearDown(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
+        gc.collect()
         self.tmp.cleanup()
 
     def req(self, method: str, path: str, body: dict | None = None, cookie: str | None = None):

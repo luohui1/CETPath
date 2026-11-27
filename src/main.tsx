@@ -76,6 +76,7 @@ const router = createBrowserRouter([
         ? { path: "/articles", ...page(() => import("./pages/Articles").then((m) => m.ArticlesPage)) }
         : { path: "/articles", element: <Navigate to="/" replace /> },
       { path: "/practice", ...page(() => import("./pages/Practice").then((m) => m.PracticePage)) },
+      { path: "/studio", ...page(() => import("./pages/Studio").then((m) => m.StudioPage)) },
       { path: "/speaking", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
       { path: "/speaking/topic/:topicId/:qIdx?", ...page(() => import("./ielts/pages/SpeakingPage").then((m) => m.SpeakingPage)) },
       { path: "/mistakes", ...page(() => import("./pages/Mistakes").then((m) => m.MistakesPage)) },

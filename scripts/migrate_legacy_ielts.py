@@ -310,10 +310,11 @@ def build_migration_rows(
         idx_doc = json.loads(idx_path.read_text("utf-8"))
         for e in idx_doc.get("papers") or []:
             fam, book, name, grp = e.get("family", "cam"), e.get("book", ""), str(e.get("name", "")), e.get("group", "")
+            short_name = re.sub(r"^Test\s*", "", name, flags=re.I)
             if fam == "cam" and book:
-                label = f"剑雅 {book} Test {re.sub(r'^Test\\s*', '', name, flags=re.I)}"
+                label = f"剑雅 {book} Test {short_name}"
             elif fam == "gt" and book:
-                label = f"剑雅 {book} G类 {re.sub(r'^Test\\s*', '', name, flags=re.I)}"
+                label = f"剑雅 {book} G类 {short_name}"
             elif fam == "jj" and grp:
                 label = f"机经 Pro {grp.replace('机经Pro套题', '').replace('（', '').replace('）', '')} {name}".strip()
             else:

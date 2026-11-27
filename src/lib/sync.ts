@@ -30,7 +30,7 @@ const OUT = scopedKey("yz-sync-out");
 const SEQ = scopedKey("yz-sync-seq");
 const KV_SEEN = scopedKey("yz-sync-kv");
 const GUEST_DISMISSED = scopedKey("yz-guest-dismissed");
-const KV_PREFIXES = ["yz-article-marks:", "yz-articles-read"];
+const KV_PREFIXES = ["yz-article-marks:", "yz-articles-read", "yz-studio-"];
 
 /** 同步用的键：自增 id 的表（logs、memory）换成跨设备不变的键 */
 function keyOf(tbl: Tbl, row: Row): string | null {
@@ -110,6 +110,7 @@ async function applyRow(tbl: string, k: string, row: unknown) {
     if (row === null) delete seen[k];
     else seen[k] = String(row);
     localStorage.setItem(KV_SEEN, JSON.stringify(seen));
+    if (k.startsWith("yz-studio-")) dispatchEvent(new Event("yz-studio-change"));
     return;
   }
   if (!(SYNC_TABLES as readonly string[]).includes(tbl)) return;

@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import pathlib
 import sqlite3
+import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import migrate_legacy_ielts as mig
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -166,7 +168,7 @@ class TestMigrateLegacyIelts(unittest.TestCase):
         conn.close()
 
     def test_full_migration_and_idempotency(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             tdir = pathlib.Path(tmp)
             legacy_db = tdir / "sync.sqlite3"
             target_db = tdir / "yingyu.db"

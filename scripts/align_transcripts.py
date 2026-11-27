@@ -867,7 +867,7 @@ def words_of(sents):
     return words
 
 
-def dp_align(durs, words, rate, must_start=None, lmax=50):
+def dp_align(durs, words, rate, must_start=None, lmax=65, free_lead=False):
     """每行分到哪几个词：返回 ([(a, b)], 总代价)（词序号，左闭右开）；无解返回 (None, INF)。
     代价 = W·|字数 − 时长·语速| / (期望字数 + 8) + 断点代价 + 一行跨两个说话人的惩罚；允许一行没有词（SKIP_COST）。
     每一行对所有 (起点, 终点) 一次算完（numpy 广播），一个分段几十毫秒"""
@@ -894,7 +894,7 @@ def dp_align(durs, words, rate, must_start=None, lmax=50):
     ac = np.where(valid, aidx, 0)
     x = C[bidx] - C[ac]  # 这一行分到的字数
     inside = np.where(bidx - ac >= 2, P[bidx] - P[np.minimum(ac + 1, bidx)], 0.0)
-    cross = 14.0 * (inside > 0)
+    cross = 1.5 * inside
     bcost = np.where((bidx > 0) & (bidx < m), bp[bidx], 0.0)
     forbid = (bp[bidx] >= INF / 2) & (bidx > 0) & (bidx < m)  # 不许在这里断行
     dp = np.full((n + 1, m + 1), INF)
@@ -903,7 +903,8 @@ def dp_align(durs, words, rate, must_start=None, lmax=50):
     for i in range(1, n + 1):
         e = durs[i - 1] * rate
         ms = must_start.get(i - 1)
-        cost = np.where(x > 0, W_COST * np.abs(x - e) / (e + 8.0), SKIP_COST) + cross
+        skip_c = np.where(free_lead & (bidx == 0), 2.0, SKIP_COST)
+        cost = np.where(x > 0, W_COST * np.abs(x - e) / (e + 8.0), skip_c) + cross
         tot = dp[i - 1][ac] + cost + np.where(x > 0, bcost, 0.0)
         tot = np.where(valid & ~forbid, tot, INF)
         if ms is not None:
@@ -923,21 +924,22 @@ def dp_align(durs, words, rate, must_start=None, lmax=50):
     return spans, float(dp[n, m])
 
 
-def align_lines(lines, words, must_start):
+def align_lines(lines, words, must_start, free_lead=False):
     """对一个分段：语速先按 RATE 试，对完用实际的字数/时长再对一遍。返回 (各行的词范围, 语速, 总代价)"""
     durs = [max(0.05, l["end"] - l["start"]) for l in lines]
-    rate = RATE
+    rate = 16.0 if free_lead else RATE
     spans, cost = None, INF
     for _ in range(3):
-        sp, c = dp_align(durs, words, rate, must_start)
+        sp, c = dp_align(durs, words, rate, must_start, free_lead=free_lead)
         if sp is None:
-            sp, c = dp_align(durs, words, rate, None)
+            sp, c = dp_align(durs, words, rate, None, free_lead=free_lead)
         if sp is None:
             break
         spans, cost = sp, c
         chars = sum(sum(w["len"] for w in words[a:b]) for a, b in sp)
         dur = sum(d for d, (a, b) in zip(durs, sp) if b > a)
-        new = min(22.0, max(10.0, chars / dur)) if dur > 0 else rate
+        lo_rate = 13.5 if free_lead else 11.0
+        new = min(22.0, max(lo_rate, chars / dur)) if dur > 0 else rate
         if abs(new - rate) < 0.3:
             rate = new
             break
@@ -988,25 +990,50 @@ def group_sentences(item):
 QMARK = re.compile(r"^Question (\d+)\b")
 
 
-def align_segment(seg, item, preamble=None):
+def align_segment(seg, item, preamble=None, free_lead=False):
     """给一个录音分段的各行写 text / speaker。preamble 是录音开头的指导语句子（第一个分段才有）：
     带指导语和不带各对一遍，取代价小的（有的录音一开始就是新闻）。返回统计"""
     lines = seg["lines"]
     sents = group_sentences(item)
+    title = (seg.get("label") or "").strip()
+    if title and not title.endswith("."):
+        title += "."
+    cands = [None]
+    if title:
+        cands.append([title])
+    if preamble:
+        split_pre = []
+        for s_ in preamble:
+            if s_.startswith("Directions: "):
+                split_pre.extend(["Directions:", s_[len("Directions: "):]])
+            else:
+                split_pre.append(s_)
+        cands.append( preamble )
+        cands.append(split_pre)
+        if title:
+            cands.append(split_pre + [title])
     best = None
-    for pre in ([None, preamble] if preamble else [None]):
+    for pre in cands:
         allsents = ([{"text": t, "speaker": None, "role": "pre"} for t in pre] if pre else []) + sents
         words = words_of(allsents)
         qstart = {w["q"]: j for j, w in enumerate(words) if w["q"] is not None}
+        lead_idx = next((j for j, w in enumerate(words) if allsents[w["si"]].get("role") == "lead"), None)
+        if lead_idx is not None and lead_idx > 0:
+            words[lead_idx - 1]["bt"] = min(words[lead_idx - 1]["bt"], 0.0) - 5.0
         must, seen = {}, set()
         for i, l in enumerate(lines):
-            m = QMARK.match(l.get("text") or "")
+            txt = (l.get("text") or "").strip()
+            if lead_idx is not None and "lead" not in seen and CUE_RE.match(txt):
+                seen.add("lead")
+                must[i] = lead_idx
+                continue
+            m = QMARK.match(txt)
             if m:
                 k = int(m.group(1))
-                if item["lo"] < k <= item["hi"] and k not in seen and k in qstart:
+                if item["lo"] <= k <= item["hi"] and k not in seen and k in qstart:
                     seen.add(k)
                     must[i] = qstart[k]
-        spans, rate, cost = align_lines(lines, words, must)
+        spans, rate, cost = align_lines(lines, words, must, free_lead=free_lead)
         if spans is not None and (best is None or cost < best[0]):
             best = (cost, spans, rate, words, bool(pre), allsents)
     stat = {"lines": len(lines), "text": 0, "rate": 0.0, "words": 0, "wps": 0.0, "spans": None, "pre": False, "out": None}
@@ -1028,18 +1055,24 @@ def align_segment(seg, item, preamble=None):
 _W = r"\s*"
 _WHAT = r"(?:news\s*reports?|conversations?|passages?|recordings?|talks?|lectures?)"
 DIRECTION_RES = [re.compile(p, re.I) for p in (
+    r"^College\s*English\s*Test\b.*$",
     r"^Part\s*(?:II|2|Two)\b\.?\s*(?:Listening\s*Comprehension\.?)?$",
     r"^Listening\s*Comprehension\.?$",
     r"^Section\s*[ABC]\b\.?(?:\s*Directions\s*:?)?$",
     r"^Directions\s*:?$",
+    r"^In\s*this\s*part\b.*$",
+    r"^There\s*are\s*three\s*sections\b.*$",
+    r"^You\s*(?:'ll|’ll|\s+will)\s*hear\s*(?:two|three)\s*(?:long\s*conversations|news\s*reports|passages|lectures|talks|recordings)\b.*$",
+    r"^(?:and\s+|or\s+)?(?:two|three)?\s*(?:passages|lectures|talks|recordings)\s*in\s*section\s*[ABC]\b.*$",
     r"^(?:Section\s*[ABC]\b\.?\s*)?(?:Directions\s*:\s*)?In\s*this\s*section,?\s*you\s*will\s*hear\b.*$",
-    r"^At\s*the\s*end\s*of\s*(?:each|the)\s*" + _WHAT + r"\s*,?\s*(?:you\s*will\s*hear\b.*\bquestions?|one\s*or\s*more\s*questions\s*will\s*be\s*asked\b.*)\.?$",
-    r"^Both\s*the\s*" + _WHAT + r"\s*and\s*the\s*questions\s*will\s*be\s*(?:spoken|read|played)\s*only\s*once\.?$",
+    r"^At\s*the\s*end\s*of\s*(?:each|the)\s*" + _WHAT + r"\s*,?\s*(?:you\s*will\s*hear\b.*\bquestions?|one\s*or\s*more\s*questions\s*will\s*be\s*asked\b.*|passage\b.*\bquestions?)\.?$",
+    r"^(?:Both|All)\s*the\s*(?:listening\s*materials|" + _WHAT + r")\s*and\s*(?:the\s*)?questions\s*will\s*be\s*(?:spoken|read|played)\s*only\s*once\.?$",
     r"^The\s*" + _WHAT + r"\s*(?:and\s*the\s*questions\s*)?will\s*be\s*(?:spoken|read|played)\s*only\s*once\.?$",
-    r"^After\s*you\s*hear\s*a\s*question\s*,?\s*you\s*must\s*choose\s*the\s*best\s*answer\s*from\s*the\s*four\s*choices\s*marked\s*A\)?.{0,24}D\)?\s*\.?$",
+    r"^(?:After\s*you\s*hear\s*a\s*question\s*,?\s*)?you\s*must\s*choose\s*the\s*best\s*answer\s*from\s*the\s*four\s*choices\b.*$",
+    r"^(?:marked\s+)?(?:A\b.*)?(?:B,?\s*)?(?:C,?\s*)?(?:and\s+)?D[).,;\s]+then\s*mark\s*the\b.*$",
     r"^After\s*each\s*question\s*there\s*will\s*be\s*a\s*pause\.?$",
     r"^During\s*the\s*pause\s*,?\s*you\s*must\s*read\s*the\s*four\s*choices\b.*\bbest\s*answer\.?$",
-    r"^Then\s*mark\s*the\s*corresponding\s*letter\s*on\s*Answer\s*Sheet\s*(?:1|One|I)\b.*\bthrough\s*the\s*cent(?:re|er)\.?$",
+    r"^Then,?\s*mark\s*the\s*(?:a\s+)?corresponding\s*letter\s*on\s*Answer\s*Sheet\s*(?:1|One|I)\b.*\bthrough\s*the\s*cent(?:re|er)\.?$",
     r"^(?:News\s*Report|Conversation|Passage|Recording|Lecture|Talk)\s*(?:One|Two|Three|Four|Five|[1-5])\.?$",
 )]
 CUE_RE = re.compile(r"^Questions?\s*\d{1,2}\s*(?:and|to|-)\s*\d{1,2}\s*(?:are\s*)?based\s*on", re.I)
@@ -1324,12 +1357,17 @@ def align_paper(paper, answers_pdf, allow_ocr=True, src=None, workers=8, log=Non
     items = extract_group_scripts(src, paper["exam"], groups, first)
     src.save()
     kinds_ok = [(g["lo"], g["hi"]) for g in groups] == [(a, b) for a, b, _ in TEMPLATES[paper["exam"]]]  # 版式对得上才加指导语
+    dir_by_sid = {
+        "cet4": {"news1": DIRECTIONS["cet4"][0], "conv1": DIRECTIONS["cet4"][3], "pass1": DIRECTIONS["cet4"][5]},
+        "cet6": {"conv1": DIRECTIONS["cet6"][0], "pass1": DIRECTIONS["cet6"][2], "rec1": DIRECTIONS["cet6"][4]},
+    }.get(paper["exam"], {})
     for gi, (g, item) in enumerate(zip(groups, items)):
         seg = segs[g["seg"]]
         r = {"id": seg["id"], "lines": len(seg["lines"]), "text": 0, "wps": 0.0, "rate": 0.0, "quality": item["quality"], "warn": list(item["warn"]), "words": 0}
         out = None
         if item["story"]:
-            st = align_segment(seg, item, DIRECTIONS.get(paper["exam"], {}).get(gi) if kinds_ok else None)
+            pre = dir_by_sid.get(seg["id"]) or (DIRECTIONS.get(paper["exam"], {}).get(gi) if kinds_ok else None)
+            st = align_segment(seg, item, pre, free_lead=(gi == 0))
             r.update(text=st["text"], wps=st["wps"], rate=st["rate"], words=st["words"], pre=st["pre"])
             out = st["out"]
             if st["spans"] is None:
