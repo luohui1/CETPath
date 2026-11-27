@@ -20,7 +20,7 @@ import {
 } from "@phosphor-icons/react";
 import { AgentActivate } from "@/components/AgentActivate";
 import { Markdown } from "@/components/Markdown";
-import { Badge, Button, Card, Segmented } from "@/components/ui";
+import { Badge, Button, Card, Segmented, Spinner } from "@/components/ui";
 import { WordText } from "@/components/WordText";
 import { streamChat, useAgentState, type ChatMsg } from "@/lib/agent";
 import { bumpDay } from "@/lib/db";
@@ -65,9 +65,11 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
   const [prepLeft, setPrepLeft] = useState(0);
   const [showSample, setShowSample] = useState(false);
 
-  // 录音历史与播放
+  // 录音历史与示范音频播放
   const [recs, setRecs] = useState<StudioRecordingRow[]>([]);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const [audioLoadingKey, setAudioLoadingKey] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
   const playerRef = useRef<HTMLAudioElement | null>(null);
   const urlsRef = useRef<Map<string, string>>(new Map());
 
@@ -129,6 +131,8 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
     setShowSample(false);
     playerRef.current?.pause();
     setPlayingKey(null);
+    setAudioLoadingKey(null);
+    setAudioError(null);
 
     const saved = progress.speaking[activeItem.id];
     setDraft(saved?.draft ?? "");
@@ -160,25 +164,43 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
   }, [stage]);
 
   const togglePlayUrl = useCallback(
-    (key: string, src: string) => {
+    (key: string, rawSrc: string) => {
+      const src = rawSrc.startsWith("http") || rawSrc.startsWith("blob:") || rawSrc.startsWith("/") ? rawSrc : `/${rawSrc}`;
       let a = playerRef.current;
       if (!a) {
         a = new Audio();
-        a.addEventListener("ended", () => setPlayingKey(null));
-        a.addEventListener("error", () => setPlayingKey(null));
+        a.addEventListener("playing", () => setAudioLoadingKey(null));
+        a.addEventListener("ended", () => {
+          setPlayingKey(null);
+          setAudioLoadingKey(null);
+        });
+        a.addEventListener("error", () => {
+          setPlayingKey(null);
+          setAudioLoadingKey(null);
+          setAudioError("示范音频加载失败，可使用右侧系统朗读");
+        });
         playerRef.current = a;
       }
-      if (playingKey === key) {
+      if (playingKey === key || audioLoadingKey === key) {
         a.pause();
         setPlayingKey(null);
+        setAudioLoadingKey(null);
         return;
       }
       a.pause();
-      a.src = src;
+      setAudioError(null);
+      setAudioLoadingKey(key);
       setPlayingKey(key);
-      a.play().catch(() => setPlayingKey(null));
+      a.src = src;
+      a.play().catch((e) => {
+        if ((e as { name?: string })?.name !== "AbortError") {
+          setPlayingKey(null);
+          setAudioLoadingKey(null);
+          setAudioError("音频播放未能启动，请再点一次重试");
+        }
+      });
     },
-    [playingKey],
+    [playingKey, audioLoadingKey],
   );
 
   const urlForRec = (r: StudioRecordingRow) => {
@@ -227,6 +249,8 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
 
     playerRef.current?.pause();
     setPlayingKey(null);
+    setAudioLoadingKey(null);
+    setAudioError(null);
     setStage("talk");
     await rec.start({ maxSec: timerOn ? activeItem.talkSec : 300 });
   };
@@ -335,12 +359,15 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
                 className="h-8 w-36 rounded-full border border-[var(--line)] bg-[var(--paper-50)] pr-3 pl-8 text-[12px] outline-none focus:border-[var(--blue)] sm:w-44"
               />
             </div>
+            <span className="num rounded-full bg-[var(--paper-100)] px-2.5 py-1 text-[12px] text-[var(--ink-500)]">
+              {curIdx >= 0 ? `${curIdx + 1} / ${filteredItems.length}` : filteredItems.length}
+            </span>
           </div>
         </div>
 
-        {/* 话题列表快选 */}
+        {/* 话题列表快选（固定高度滚动书签匣，避免 100+ 话题把题卡挤出首屏） */}
         {filteredItems.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--line-soft)] pt-3">
+          <div className="mt-3 flex max-h-[124px] flex-wrap items-center gap-1.5 overflow-y-auto border-t border-[var(--line-soft)] pt-3 pr-1">
             {filteredItems.map((it) => {
               const st = progress.speaking[it.id];
               const isCur = it.id === activeItem?.id;
@@ -442,6 +469,22 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
                 </p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {activeItem.audioUrl && (
+                  <Button
+                    variant={playingKey === `spk-model:${activeItem.id}` ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => togglePlayUrl(`spk-model:${activeItem.id}`, activeItem.audioUrl!)}
+                  >
+                    {audioLoadingKey === `spk-model:${activeItem.id}` ? (
+                      <Spinner className="size-3.5" />
+                    ) : playingKey === `spk-model:${activeItem.id}` ? (
+                      <Pause className="size-3.5" weight="fill" />
+                    ) : (
+                      <Play className="size-3.5" weight="fill" />
+                    )}
+                    听真人示范/考官原声
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -453,6 +496,7 @@ export function SpeakingTab({ progress }: { progress: StudioProgress }) {
                   考场参考：准备 {activeItem.prepSec}s · 作答 {activeItem.talkSec}s
                 </span>
               </div>
+              {audioError && <p className="mt-2 text-[12px] text-[var(--red)]">{audioError}</p>}
             </div>
 
             {activeItem.followUps && activeItem.followUps.length > 0 && (

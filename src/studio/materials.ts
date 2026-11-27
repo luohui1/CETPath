@@ -17,6 +17,8 @@ type SharedPaper = Paper & { shared?: { section: string; from: string }[] };
 
 const QUESTION_RE = /^Question\s*\d+\b/i;
 const CUE_RE = /^Questions?\s*\d+\s*(?:and|to|-)\s*\d+\s*(?:are\s*)?based\s*on/i;
+const SPEAKER_PREFIX_RE = /^\s*(?:M|W|Man|Woman)\s*[:：]\s*/;
+const STAGE_NAME_RE = /^[A-Z]{2,15}[.!]?$/;
 
 export function lineKind(l: RawAudioLine): "directions" | "cue" | "question" | "lead" | undefined {
   if (l.kind === "directions" || l.kind === "cue" || l.kind === "question" || l.kind === "lead") {
@@ -43,6 +45,9 @@ export interface StudioLine {
   text: string;
   start: number;
   end: number;
+  /** 加过呼吸垫片与前后邻句防串音约束的播放起止时间 */
+  playStart: number;
+  playEnd: number;
   speaker?: string;
   zh: string | null;
   qNumbers: number[];
@@ -197,21 +202,48 @@ export function loadStudioPack(paperId: string): Promise<StudioPack> {
       const segGroups = groups.filter((g) => g.audioSegment === seg.id);
       const segQuestions = segGroups.flatMap((g) => g.questions.filter((q) => q.options?.length));
 
-      const lines: StudioLine[] = [];
+      const rawLines: {
+        index: number;
+        text: string;
+        start: number;
+        end: number;
+        speaker?: string;
+        zh: string | null;
+        qNumbers: number[];
+      }[] = [];
       (seg.lines as RawAudioLine[]).forEach((ln, idx) => {
         if (lineKind(ln)) return;
-        const text = ln.text.trim();
+        const rawText = ln.text.trim();
+        const text = ln.speaker ? rawText.replace(SPEAKER_PREFIX_RE, "").trim() : rawText;
         if (!text) return;
+        const compact = text.replace(/["'“”‘’(),;:?\s]/g, "");
+        if (STAGE_NAME_RE.test(compact) && ln.end - ln.start <= 0.25) return;
         const qNumbers = lineQMap.get(`${seg.id}:${idx}`) ?? [];
-        lines.push({
+        rawLines.push({
           index: idx,
           text,
           start: ln.start,
           end: ln.end,
           speaker: ln.speaker,
-          zh: findTrans(trans, text),
+          zh: findTrans(trans, rawText) ?? findTrans(trans, text),
           qNumbers,
         });
+      });
+
+      const lines: StudioLine[] = rawLines.map((cur, pos) => {
+        const prevEnd = pos > 0 ? Math.min(cur.start, rawLines[pos - 1].end) : Math.max(0, seg.start);
+        const nextStart =
+          pos < rawLines.length - 1 ? Math.max(cur.end, rawLines[pos + 1].start) : seg.end;
+        const playStart = Math.max(0, Math.max(prevEnd, cur.start - 0.08));
+        const playEnd = Math.max(
+          playStart + 0.55,
+          Math.min(nextStart, Math.max(cur.end + 0.2, cur.start + 0.65)),
+        );
+        return {
+          ...cur,
+          playStart,
+          playEnd,
+        };
       });
 
       const lineByIdx = new Map(lines.map((l, pos) => [l.index, { l, pos }]));
@@ -234,8 +266,8 @@ export function loadStudioPack(paperId: string): Promise<StudioPack> {
 
       const speakers = [...new Set(lines.map((l) => l.speaker).filter((x): x is string => !!x))];
       const hasDialogue = speakers.includes("M") && speakers.includes("W");
-      const contentStart = lines[0]?.start ?? seg.start;
-      const contentEnd = lines.at(-1)?.end ?? seg.end;
+      const contentStart = lines[0]?.playStart ?? lines[0]?.start ?? seg.start;
+      const contentEnd = lines.at(-1)?.playEnd ?? lines.at(-1)?.end ?? seg.end;
 
       return {
         id: seg.id,

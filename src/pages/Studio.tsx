@@ -149,7 +149,8 @@ export function StudioPage() {
     };
   }, [paperId, tab, source, wrongTargets]);
 
-  const clip = useClipAudio(tab === "speaking" ? null : (pack?.paper.audio?.src ?? null));
+  const audioSrc = tab === "speaking" ? null : (pack?.paper.audio?.src ?? null);
+  const clip = useClipAudio(audioSrc);
 
   const handleRandom = () => {
     if (!paperOptions.length) return;
@@ -202,6 +203,7 @@ export function StudioPage() {
   return (
     <WordTextProvider onWord={onWord} marks>
       <div>
+        <audio ref={clip.audioRef} src={audioSrc ?? undefined} preload="metadata" hidden />
         <PageHeader
           title="听说实训"
           desc="脱离整卷束缚，用真题原声与全考种题库练透听写、影子跟读与口语输出。"
@@ -284,6 +286,7 @@ export function StudioPage() {
                   progress={progress}
                   tabMode={tab}
                   wrongQNumbers={wrongQNumbers}
+                  cachePct={clip.cachePct}
                 />
 
                 {packErr && <EmptyState title="加载听力原文失败" desc={packErr} />}

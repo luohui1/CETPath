@@ -12,15 +12,26 @@ export interface PaperOption {
   wrongTarget?: WrongAudioTarget;
 }
 
+/** 对话角色方章（对齐考场 ListeningBar：M 实心墨方章白字，W 空心描边方章墨字） */
 export function SpeakerTag({ speaker, reliable = true }: { speaker?: string; reliable?: boolean }) {
   if (!speaker) return null;
-  const label = reliable ? speaker : speaker === "M" ? "A" : speaker === "W" ? "B" : speaker;
   const isM = speaker === "M";
+  const label = reliable
+    ? speaker.slice(0, 1).toUpperCase()
+    : speaker === "M"
+      ? "A"
+      : speaker === "W"
+        ? "B"
+        : speaker.slice(0, 1).toUpperCase();
   return (
     <span
       className={cn(
-        "inline-flex h-5 min-w-[20px] items-center justify-center rounded-[5px] px-1.5 text-[11px] font-semibold select-none",
-        isM ? "bg-[var(--blue-tint)] text-[var(--blue)]" : "bg-[var(--mark-tint)] text-[var(--mark-ink)]",
+        "inline-flex size-[18px] flex-none items-center justify-center rounded-[4px] text-[11px] leading-none font-bold select-none",
+        reliable
+          ? isM
+            ? "bg-[var(--ink)] text-white"
+            : "bg-white text-[var(--ink)] shadow-[inset_0_0_0_1.5px_var(--ink)]"
+          : "bg-[var(--paper-200)] text-[var(--ink-700)]",
       )}
       title={reliable ? (isM ? "男声 (M)" : "女声 (W)") : `说话人 ${label}`}
     >
@@ -44,6 +55,7 @@ export function MaterialBar({
   progress,
   tabMode,
   wrongQNumbers,
+  cachePct,
 }: {
   source: MaterialSource;
   onSourceChange: (s: MaterialSource) => void;
@@ -59,6 +71,7 @@ export function MaterialBar({
   progress: StudioProgress;
   tabMode: "dictation" | "shadowing";
   wrongQNumbers: number[];
+  cachePct?: number | null;
 }) {
   const wrongSet = new Set(wrongQNumbers);
   const sources: { id: MaterialSource; label: string; count?: number }[] = [
@@ -66,9 +79,10 @@ export function MaterialBar({
     { id: "cet6", label: "六级真题" },
     { id: "cet4", label: "四级真题" },
   ];
+  const activeSeg = segments.find((x) => x.id === segId);
 
   return (
-    <Card className="mb-5 p-4">
+    <Card className="mb-4 p-3.5">
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="选材范围">
           {sources.map((s) => (
@@ -113,8 +127,8 @@ export function MaterialBar({
       </div>
 
       {segments.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--line-soft)] pt-3">
-          <span className="mr-1 text-[12px] text-[var(--ink-500)]">音频片段：</span>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[var(--line-soft)] pt-2.5">
+          <span className="mr-1 text-[12px] text-[var(--ink-500)]">片段：</span>
           {segments.map((s) => {
             const key = `${paperId}:${s.id}`;
             const dStat = progress.dictation[key];
@@ -164,11 +178,25 @@ export function MaterialBar({
               </button>
             );
           })}
-          {segments.find((x) => x.id === segId) && (
-            <Badge className="ml-auto" tone="neutral">
-              <span className="num">{segments.find((x) => x.id === segId)!.lines.length}</span> 句原声
-            </Badge>
-          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {cachePct === 1 ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--green-tint)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--green-dark)]">
+                <span className="size-1.5 rounded-full bg-[var(--green)]" />
+                原声已缓存
+              </span>
+            ) : cachePct !== null && cachePct !== undefined && cachePct >= 0 && cachePct < 1 ? (
+              <span className="num inline-flex items-center gap-1 rounded-full bg-[var(--blue-tint)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--blue)]">
+                原声缓存 {Math.floor(cachePct * 100)}%
+              </span>
+            ) : null}
+
+            {activeSeg && (
+              <Badge tone="neutral">
+                <span className="num">{activeSeg.lines.length}</span> 句原声
+              </Badge>
+            )}
+          </div>
         </div>
       )}
     </Card>
