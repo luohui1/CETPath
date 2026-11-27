@@ -21,7 +21,7 @@ import {
   Waveform,
   X,
 } from "@phosphor-icons/react";
-import { StickyTab } from "@/components/paper-ui";
+import { Bubbles, PaperThumb, StickyTab, jumpToYear, useCurrentYear } from "@/components/paper-ui";
 import { Badge, Button, Card, EmptyState, LoadingBlock, PageHeader } from "@/components/ui";
 import { WordText, WordTextProvider, type WordClick } from "@/components/WordText";
 import { AgentPanel, type AgentThread } from "@/exam/AgentPanel";
@@ -58,6 +58,7 @@ import { useClipAudio } from "@/studio/useClipAudio";
 import { useRecorder } from "@/studio/useRecorder";
 
 type ViewMode = "cloze" | "blind" | "text";
+type DrillFilter = "all" | "new" | "done";
 
 const RATES = [0.8, 1, 1.2];
 const AUTOPLAY_KEY = "yz-listening-autoplay";
@@ -113,6 +114,7 @@ export function ListeningDrillPage() {
   const [pack, setPack] = useState<StudioPack | null>(null);
   const [loadingPack, setLoadingPack] = useState(false);
   const [packErr, setPackErr] = useState<string | null>(null);
+  const [drillFilter, setDrillFilter] = useState<DrillFilter>("all");
 
   // 加载选定试卷的音频时间轴与译文层
   useEffect(() => {
@@ -237,10 +239,85 @@ export function ListeningDrillPage() {
     return cat ? { ...hitEntry, title: cat.title } : null;
   }, [catalog, progress.dictation, progress.shadowing]);
 
-  // 按分组聚类目录
-  const groupedCatalog = useMemo(() => {
+  // 计算每套真题已练习的片段数（听写与跟读合并去重）
+  const practicedSegMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const add = (key: string) => {
+      const idx = key.lastIndexOf(":");
+      if (idx <= 0) return;
+      const pid = key.slice(0, idx);
+      const sid = key.slice(idx + 1);
+      let s = map.get(pid);
+      if (!s) {
+        s = new Set();
+        map.set(pid, s);
+      }
+      s.add(sid);
+    };
+    for (const k of Object.keys(progress.dictation)) add(k);
+    for (const [k, v] of Object.entries(progress.shadowing)) {
+      if (v.doneLines > 0) add(k);
+    }
+    return map;
+  }, [progress.dictation, progress.shadowing]);
+
+  const filterCount = useCallback(
+    (f: DrillFilter) => {
+      if (f === "all") return catalog.length;
+      return catalog.filter((c) => {
+        const done = (practicedSegMap.get(c.id)?.size ?? 0) > 0;
+        return f === "done" ? done : !done;
+      }).length;
+    },
+    [catalog, practicedSegMap],
+  );
+
+  const filteredCatalog = useMemo(() => {
+    if (drillFilter === "all") return catalog;
+    return catalog.filter((c) => {
+      const done = (practicedSegMap.get(c.id)?.size ?? 0) > 0;
+      return drillFilter === "done" ? done : !done;
+    });
+  }, [catalog, drillFilter, practicedSegMap]);
+
+  // 四六级按年份 → 上半年 / 下半年分级整理（对齐 Papers.tsx 书架布局）
+  const cetYears = useMemo(() => {
+    if (ieltsMode) return [];
+    const byYear = new Map<number, Map<number, ListeningCatalogItem[]>>();
+    for (const c of filteredCatalog) {
+      const y = c.paper?.year ?? 0;
+      const mNum = c.paper?.month;
+      const half = mNum ? (mNum <= 9 ? 1 : 2) : 0;
+      if (!byYear.has(y)) byYear.set(y, new Map());
+      const hm = byYear.get(y)!;
+      if (!hm.has(half)) hm.set(half, []);
+      hm.get(half)!.push(c);
+    }
+    return [...byYear.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, halves]) => ({
+        year,
+        sittings: [...halves.entries()]
+          .sort((a, b) => b[0] - a[0])
+          .map(([half, items]) => ({
+            half,
+            items: items.sort(
+              (a, b) =>
+                (b.paper?.month ?? 0) - (a.paper?.month ?? 0) ||
+                (a.paper?.set ?? 0) - (b.paper?.set ?? 0),
+            ),
+          })),
+      }));
+  }, [ieltsMode, filteredCatalog]);
+
+  const yearNums = useMemo(() => cetYears.map((y) => y.year), [cetYears]);
+  const curYear = useCurrentYear(yearNums);
+
+  // 雅思模式按册次/套题分组与快速导航
+  const ieltsGroups = useMemo(() => {
+    if (!ieltsMode) return [];
     const map = new Map<string, ListeningCatalogItem[]>();
-    for (const c of catalog) {
+    for (const c of filteredCatalog) {
       let arr = map.get(c.groupLabel);
       if (!arr) {
         arr = [];
@@ -248,8 +325,45 @@ export function ListeningDrillPage() {
       }
       arr.push(c);
     }
-    return [...map.entries()];
-  }, [catalog]);
+    return [...map.entries()].map(([groupLabel, items], idx) => {
+      const e = items[0]?.ieltsEntry;
+      const shortTag =
+        e && (e.family === "cam" || e.family === "gt") && e.book
+          ? `C${e.book}`
+          : groupLabel.includes("机经")
+            ? groupLabel.replace(/机经\s*Pro\s*/i, "").slice(0, 4) || "机经"
+            : groupLabel.includes("密卷")
+              ? "密卷"
+              : groupLabel.slice(0, 3);
+      return { id: `ig${idx}`, groupLabel, shortTag, items };
+    });
+  }, [ieltsMode, filteredCatalog]);
+
+  const [curIeltsGroup, setCurIeltsGroup] = useState<string>("");
+  const ieltsGroupKey = ieltsGroups.map((g) => g.id).join(",");
+  useEffect(() => {
+    if (!ieltsMode || paperParam || !ieltsGroups.length) return;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        let cur = ieltsGroups[0]?.id ?? "";
+        for (const g of ieltsGroups) {
+          if ((document.getElementById(g.id)?.getBoundingClientRect().top ?? Infinity) <= 140) {
+            cur = g.id;
+          }
+        }
+        setCurIeltsGroup(cur);
+      });
+    };
+    onScroll();
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      removeEventListener("scroll", onScroll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ieltsMode, paperParam, ieltsGroupKey]);
 
   return (
     <WordTextProvider onWord={onWord} marks>
@@ -270,7 +384,7 @@ export function ListeningDrillPage() {
           <div>
             <PageHeader
               title="听力精练"
-              desc={`当前目标：${targetMeta.name} · 选定真题后进入纯净单句卡片，听原声、关键词填空、跟读连播对比一屏完成。`}
+              desc={`当前目标：${targetMeta.name} · 逐句听清真题原声、关键词填空与跟读对比。`}
               actions={
                 catalog.length > 0 ? (
                   <Button
@@ -300,7 +414,7 @@ export function ListeningDrillPage() {
             )}
 
             {!catalogLoading && catalog.length > 0 && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {/* 顶部快捷卡片：继续上次 / 错题原声急救 */}
                 {(recentItem || wrongTargets.length > 0) && (
                   <div className="grid gap-4 md:grid-cols-2">
@@ -352,95 +466,219 @@ export function ListeningDrillPage() {
                   </div>
                 )}
 
-                {/* 按年 / 按册折叠档案架 */}
-                <div className="space-y-6">
-                  {groupedCatalog.map(([groupLabel, items]) => (
-                    <section key={groupLabel} className="grid grid-cols-[36px_minmax(0,1fr)]">
-                      <StickyTab vertical className="sticky top-6 mt-3 self-start">
-                        <span className="num text-[13px] tracking-[0.02em] whitespace-nowrap">
-                          {groupLabel.replace("剑桥雅思真题 ", "C").replace(/（.*?）/, "")}
-                        </span>
-                      </StickyTab>
-                      <div className="rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
-                        <h3 className="mb-3 px-1 text-[14px] font-semibold text-[var(--ink-700)]">{groupLabel}</h3>
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                          {items.map((item) => {
-                            const wrongHit = wrongTargets.find((w) => w.paperId === item.id);
-                            if (ieltsMode && item.segments.length > 0) {
-                              return (
-                                <Card key={item.id} className="flex flex-col gap-3 p-4">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <h4 className="truncate text-[15px] font-semibold text-[var(--ink)]">{item.title}</h4>
-                                      {item.subLabel && (
-                                        <p className="mt-0.5 text-[12.5px] text-[var(--ink-500)]">{item.subLabel}</p>
+                {/* 练习状态筛选栏 */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="按精练状态筛选">
+                    {(
+                      [
+                        ["all", "全部"],
+                        ["new", "没练过"],
+                        ["done", "已练习"],
+                      ] as const
+                    ).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={drillFilter === v}
+                        onClick={() => setDrillFilter(v)}
+                        className={cn("pill", drillFilter === v && "pill-on")}
+                      >
+                        {label} <span className="num">{filterCount(v)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[13px] text-[var(--ink-500)]">
+                    共 <span className="num font-medium text-[var(--ink)]">{catalog.length}</span> 套带逐句原声真题
+                  </span>
+                </div>
+
+                {filteredCatalog.length === 0 && (
+                  <p className="py-12 text-center text-[14px] text-[var(--ink-500)]">没有符合当前筛选条件的试卷</p>
+                )}
+
+                {/* 书架区 + 右侧悬浮年份 / 册次导航 */}
+                {!ieltsMode ? (
+                  <div className={cn(cetYears.length > 2 && "grid grid-cols-[minmax(0,1fr)_48px] gap-4")}>
+                    <div className="space-y-6">
+                      {cetYears.map(({ year, sittings }) => (
+                        <section key={year} id={`y${year}`} className="grid scroll-mt-6 grid-cols-[36px_minmax(0,1fr)]">
+                          <StickyTab vertical className="sticky top-6 mt-3 self-start">
+                            <span className="num text-[16px] tracking-[0.04em]">{year}</span>
+                          </StickyTab>
+                          <div className="space-y-5 rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
+                            {sittings.map(({ half, items }) => (
+                              <div key={half}>
+                                {half > 0 && (
+                                  <h3 className="mb-2.5 px-1 text-[14px] font-semibold text-[var(--ink-700)]">
+                                    {half === 1 ? "上半年" : "下半年"}
+                                  </h3>
+                                )}
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  {items.map((item) => {
+                                    const wrongHit = wrongTargets.find((w) => w.paperId === item.id);
+                                    const practicedCount = practicedSegMap.get(item.id)?.size ?? 0;
+                                    const split = item.title.match(/^(\d{4}年\d{1,2}月)(.+)$/);
+                                    const listenSec =
+                                      item.paper?.sections.find((s) => s.kind === "listening" && !s.from) ??
+                                      item.paper?.sections.find((s) => s.kind === "listening");
+
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => openSeg(item.id)}
+                                        className="card card-press flex items-center gap-3 p-3.5 text-left"
+                                      >
+                                        <PaperThumb id={item.id} width={68} frame />
+                                        <div className="min-w-0 flex-1">
+                                          {split ? (
+                                            <h4 className="text-[15px] leading-5 font-semibold text-[var(--ink)]">
+                                              {split[1]}
+                                              <span className="block truncate text-[13.5px] leading-5 font-medium text-[var(--ink-700)]">
+                                                {split[2]}
+                                              </span>
+                                            </h4>
+                                          ) : (
+                                            <h4 className="line-clamp-2 text-[15px] leading-5 font-semibold text-[var(--ink)]">
+                                              {item.title}
+                                            </h4>
+                                          )}
+                                          <p className="mt-0.5 truncate text-[12.5px] text-[var(--ink-500)]">
+                                            {listenSec?.questionCount ? `${listenSec.questionCount} 题听力 · 逐句原声` : "逐句听力精练"}
+                                          </p>
+                                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
+                                            {practicedCount > 0 ? (
+                                              <span className="flex items-center gap-1.5 font-medium text-[var(--green-dark)]">
+                                                <Bubbles total={3} done={Math.min(3, practicedCount)} max={3} />
+                                                已练 <span className="num">{practicedCount}</span> 段
+                                              </span>
+                                            ) : (
+                                              <span className="text-[var(--ink-500)]">没练过</span>
+                                            )}
+                                            {wrongHit && (
+                                              <span className="num rounded-full bg-[var(--red-tint)] px-1.5 py-px text-[11px] font-semibold text-[var(--red)]">
+                                                错题 Q{wrongHit.qNumbers.slice(0, 3).join(",")}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+
+                    {cetYears.length > 2 && (
+                      <nav aria-label="跳到年份" className="sticky top-8 flex flex-col items-stretch gap-0.5 self-start">
+                        {cetYears.map(({ year }) => (
+                          <a
+                            key={year}
+                            href={`#y${year}`}
+                            onClick={(e) => jumpToYear(e, year)}
+                            aria-current={curYear === year ? "true" : undefined}
+                            className={cn(
+                              "num relative flex h-10 items-center justify-center rounded-[8px] text-[13px] transition-colors",
+                              curYear === year
+                                ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2.5 before:bottom-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
+                                : "text-[var(--ink-500)] hover:text-[var(--ink)]",
+                            )}
+                          >
+                            {year}
+                          </a>
+                        ))}
+                      </nav>
+                    )}
+                  </div>
+                ) : (
+                  <div className={cn(ieltsGroups.length > 2 && "grid grid-cols-[minmax(0,1fr)_52px] gap-4")}>
+                    <div className="space-y-6">
+                      {ieltsGroups.map(({ id: gid, groupLabel, shortTag, items }) => (
+                        <section key={gid} id={gid} className="grid scroll-mt-6 grid-cols-[36px_minmax(0,1fr)]">
+                          <StickyTab vertical className="sticky top-6 mt-3 self-start">
+                            <span className="num text-[14px] tracking-[0.02em]">{shortTag}</span>
+                          </StickyTab>
+                          <div className="rounded-[14px] rounded-tl-[4px] bg-[var(--paper-200)]/60 p-4 shadow-[inset_0_1px_2px_rgba(28,35,48,0.06)]">
+                            <h3 className="mb-3 px-1 text-[14px] font-semibold text-[var(--ink-700)]">{groupLabel}</h3>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {items.map((item) => {
+                                const wrongHit = wrongTargets.find((w) => w.paperId === item.id);
+                                return (
+                                  <Card key={item.id} className="flex flex-col gap-3 p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <h4 className="truncate text-[15px] font-semibold text-[var(--ink)]">{item.title}</h4>
+                                        {item.subLabel && (
+                                          <p className="mt-0.5 text-[12.5px] text-[var(--ink-500)]">{item.subLabel}</p>
+                                        )}
+                                      </div>
+                                      {wrongHit && (
+                                        <span className="num rounded-full bg-[var(--red-tint)] px-2 py-0.5 text-[11px] font-semibold text-[var(--red)]">
+                                          {wrongHit.qNumbers.length} 错题
+                                        </span>
                                       )}
                                     </div>
-                                    {wrongHit && (
-                                      <span className="num rounded-full bg-[var(--red-tint)] px-2 py-0.5 text-[11px] font-semibold text-[var(--red)]">
-                                        {wrongHit.qNumbers.length} 错题
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="mt-auto grid grid-cols-4 gap-1.5">
-                                    {item.segments.map((s) => {
-                                      const k = `${item.id}:${s.id}`;
-                                      const done = !!progress.dictation[k] || !!progress.shadowing[k]?.doneLines;
-                                      return (
-                                        <button
-                                          key={s.id}
-                                          type="button"
-                                          onClick={() => openSeg(item.id, s.id)}
-                                          className={cn(
-                                            "inline-flex h-8 items-center justify-center gap-1 rounded-[8px] border text-[12px] font-medium transition",
-                                            done
-                                              ? "border-[var(--green)]/40 bg-[var(--green-tint)] text-[var(--green-dark)]"
-                                              : "border-[var(--line)] bg-[var(--paper-50)] text-[var(--ink-700)] hover:border-[var(--blue-line)] hover:bg-white hover:text-[var(--blue)]",
-                                          )}
-                                        >
-                                          {s.label}
-                                          {done && <Check className="size-3" weight="bold" />}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </Card>
-                              );
-                            }
+                                    <div className="mt-auto grid grid-cols-4 gap-1.5">
+                                      {item.segments.map((s) => {
+                                        const k = `${item.id}:${s.id}`;
+                                        const done = !!progress.dictation[k] || !!progress.shadowing[k]?.doneLines;
+                                        return (
+                                          <button
+                                            key={s.id}
+                                            type="button"
+                                            onClick={() => openSeg(item.id, s.id)}
+                                            className={cn(
+                                              "inline-flex h-8 items-center justify-center gap-1 rounded-[8px] border text-[12px] font-medium transition",
+                                              done
+                                                ? "border-[var(--green)]/40 bg-[var(--green-tint)] text-[var(--green-dark)]"
+                                                : "border-[var(--line)] bg-[var(--paper-50)] text-[var(--ink-700)] hover:border-[var(--blue-line)] hover:bg-white hover:text-[var(--blue)]",
+                                            )}
+                                          >
+                                            {s.label}
+                                            {done && <Check className="size-3" weight="bold" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </section>
+                      ))}
+                    </div>
 
-                            const practicedCount = Object.keys(progress.dictation).filter((k) =>
-                              k.startsWith(`${item.id}:`),
-                            ).length;
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => openSeg(item.id)}
-                                className="card card-press flex items-center justify-between gap-3 p-4 text-left"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <h4 className="truncate text-[15px] font-semibold text-[var(--ink)]">{item.title}</h4>
-                                  <p className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-[var(--ink-500)]">
-                                    {item.subLabel && <span>{item.subLabel}</span>}
-                                    {practicedCount > 0 && (
-                                      <span className="font-medium text-[var(--green-dark)]">已练 {practicedCount} 段</span>
-                                    )}
-                                    {wrongHit && (
-                                      <span className="font-medium text-[var(--red)]">
-                                        错题 Q{wrongHit.qNumbers.slice(0, 3).join(",")}
-                                      </span>
-                                    )}
-                                  </p>
-                                </div>
-                                <CaretRight className="size-4 flex-none text-[var(--ink-400)]" />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </section>
-                  ))}
-                </div>
+                    {ieltsGroups.length > 2 && (
+                      <nav aria-label="跳到套题分组" className="sticky top-8 flex flex-col items-stretch gap-0.5 self-start">
+                        {ieltsGroups.map(({ id: gid, shortTag }) => (
+                          <a
+                            key={gid}
+                            href={`#${gid}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              document.getElementById(gid)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            aria-current={curIeltsGroup === gid ? "true" : undefined}
+                            className={cn(
+                              "num relative flex h-9 items-center justify-center rounded-[8px] px-1 text-[12.5px] transition-colors",
+                              curIeltsGroup === gid
+                                ? "bg-white text-[var(--ink)] shadow-[var(--elev-1)] before:absolute before:top-2 before:bottom-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--blue)]"
+                                : "text-[var(--ink-500)] hover:text-[var(--ink)]",
+                            )}
+                          >
+                            {shortTag}
+                          </a>
+                        ))}
+                      </nav>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
