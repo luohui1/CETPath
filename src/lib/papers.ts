@@ -262,6 +262,25 @@ function applyExplain(paper: Paper, ex: ExplainFile) {
     }
 }
 
+/** 早期扫描二值化压缩页已修复的试卷：运行时给 PDF 地址加 ?v=2，绕过浏览器与 SW 的旧文件缓存 */
+export const SQUISH_FIXED_PDFS = new Set([
+  "cet6-2017-06-1",
+  "cet6-2017-06-2",
+  "cet6-2017-06-3",
+  "cet6-2017-12-1",
+  "cet6-2017-12-2",
+  "cet6-2017-12-3",
+  "cet6-2018-06-1",
+  "cet6-2018-06-2",
+  "cet6-2018-06-3",
+  "cet6-2019-06-1",
+  "cet6-2019-06-2",
+  "cet6-2019-06-3",
+  "cet6-2019-12-1",
+  "cet6-2019-12-3",
+  "cet6-2020-09-1",
+]);
+
 const paperCache = new Map<string, Promise<Paper>>();
 const paperLoaded = new Map<string, Paper>();
 
@@ -278,6 +297,9 @@ export function loadPaper(id: string): Promise<Paper> {
     const p = fetch(`/papers/${encodeURIComponent(id)}.json`).then(async (r) => {
       if (!r.ok) throw new Error(r.status === 404 ? "没有找到这套试卷" : `加载试卷失败：${r.status}`);
       const paper = (await r.json()) as Paper;
+      if (SQUISH_FIXED_PDFS.has(paper.id) && paper.pdf?.src && !paper.pdf.src.includes("?")) {
+        paper.pdf = { ...paper.pdf, src: `${paper.pdf.src}?v=2` };
+      }
       const ex = await explain;
       if (ex) applyExplain(paper, ex);
       paperLoaded.set(id, paper);

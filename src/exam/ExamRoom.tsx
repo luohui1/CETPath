@@ -37,7 +37,7 @@ import { Sparkle,
 import * as G from "@/grasso";
 import { db, memoryDb, type AttemptMode, type AttemptRow } from "@/lib/db";
 import { retryPath } from "@/lib/attempts";
-import { allQuestions, findAudioLine, kindName, KIND_NAMES, type ExplainFields, type Group, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
+import { allQuestions, findAudioLine, kindName, KIND_NAMES, SQUISH_FIXED_PDFS, type ExplainFields, type Group, type Paper, type PdfWordsPage, type Question, type Section, type SectionKind, type SectionRange } from "@/lib/papers";
 import { suggestMap } from "@/lib/report";
 import { colorValue, COLORS, colorTool, markBounds, PEN_SIZES, useMarkHistory, wordAt, type ColorTool, type MarkRow, type Tool } from "@/lib/marks";
 import { setSetting, useSettings, type PenPreset } from "@/lib/settings";
@@ -110,7 +110,23 @@ class RangeLoader extends pdfjs.PDFDataRangeTransport {
  */
 const PDF_ASSETS = { cMapUrl: "/pdfjs/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdfjs/standard_fonts/" };
 
+let pdfPurgeDone = false;
+async function purgeOldSquishedPdfs() {
+  if (pdfPurgeDone) return;
+  pdfPurgeDone = true;
+  if (typeof caches === "undefined") return;
+  try {
+    if (localStorage.getItem("yz.pdfSquishFixedV2") === "1") return;
+    const cache = await caches.open("content");
+    await Promise.all([...SQUISH_FIXED_PDFS].map((id) => cache.delete(`/papers/pdf/${id}.pdf`)));
+    localStorage.setItem("yz.pdfSquishFixedV2", "1");
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
 async function loadPdf(url: string, signal: AbortSignal) {
+  void purgeOldSquishedPdfs();
   const head = await fetch(url, { headers: { Range: "bytes=0-65535" }, signal });
   if (!head.ok) throw new Error(`HTTP ${head.status}`);
   const buf = new Uint8Array(await head.arrayBuffer());
