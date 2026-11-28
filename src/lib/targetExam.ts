@@ -1,5 +1,5 @@
 import type { ExamId } from "./papers";
-import { setSetting, type Settings } from "./settings";
+import { setSettings, type Settings } from "./settings";
 
 export interface TargetExamMeta {
   id: ExamId;
@@ -100,16 +100,16 @@ export async function applyTargetExam(
 ): Promise<void> {
   const norm = normalizeTargetExam(exam);
   const meta = getTargetMeta(norm);
-  const ops: Promise<unknown>[] = [
-    setSetting("targetExam", norm),
-    setSetting("lastExam", norm),
-    setSetting("examName", meta.name),
-  ];
+  const patch: Partial<Settings> = {
+    targetExam: norm,
+    lastExam: norm,
+    examName: meta.name,
+  };
   if (opts?.examDate !== undefined) {
-    ops.push(setSetting("examDate", opts.examDate));
+    patch.examDate = opts.examDate;
   }
   if (opts?.syncBook !== false) {
-    ops.push(setSetting("activeBook", meta.bookId));
+    patch.activeBook = meta.bookId;
   }
-  await Promise.all(ops);
+  await setSettings(patch);
 }

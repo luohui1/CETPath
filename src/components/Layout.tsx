@@ -281,7 +281,7 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <TargetExamModal open={targetModalOpen} onClose={() => setTargetModalOpen(false)} />
+      <TargetExamModal autoPrompt open={targetModalOpen} onClose={() => setTargetModalOpen(false)} />
     </div>
   );
 }

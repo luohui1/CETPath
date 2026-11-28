@@ -4,7 +4,7 @@ import { CalendarBlank, Check } from "@phosphor-icons/react";
 import { PaperDialog } from "@/components/overlay";
 import { Button } from "@/components/ui";
 import type { ExamId } from "@/lib/papers";
-import { setSetting, useSettings, useSettingsReady } from "@/lib/settings";
+import { setSettings, useSettings, useSettingsReady } from "@/lib/settings";
 import {
   applyTargetExam,
   inferExamFromName,
@@ -22,14 +22,17 @@ import { cn } from "@/lib/utils";
 export function TargetExamModal({
   open: controlledOpen,
   onClose,
+  autoPrompt = false,
 }: {
   open?: boolean;
   onClose?: () => void;
+  autoPrompt?: boolean;
 }) {
   const settings = useSettings();
   const ready = useSettingsReady();
   const { pathname } = useLocation();
   const autoCheckedRef = useRef(false);
+  const wasOpenRef = useRef(false);
 
   const [autoOpen, setAutoOpen] = useState(false);
   const isOpen = Boolean(controlledOpen || autoOpen);
@@ -41,14 +44,15 @@ export function TargetExamModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setPicked(resolveTargetExam(settings));
       setDate(settings.examDate ?? "");
     }
+    wasOpenRef.current = isOpen;
   }, [isOpen, settings]);
 
   useEffect(() => {
-    if (!ready || autoCheckedRef.current) return;
+    if (!autoPrompt || !ready || autoCheckedRef.current) return;
     if (settings.targetExam) {
       autoCheckedRef.current = true;
       return;
@@ -58,15 +62,14 @@ export function TargetExamModal({
     const inferred = inferExamFromName(settings.examName);
     if (inferred && settings.examDate) {
       autoCheckedRef.current = true;
-      void setSetting("targetExam", inferred);
-      void setSetting("lastExam", inferred);
+      void setSettings({ targetExam: inferred, lastExam: inferred });
       return;
     }
 
     autoCheckedRef.current = true;
     setPicked(inferred ?? resolveTargetExam(settings));
     setAutoOpen(true);
-  }, [ready, settings, pathname]);
+  }, [autoPrompt, ready, settings, pathname]);
 
   const handleClose = () => {
     setAutoOpen(false);

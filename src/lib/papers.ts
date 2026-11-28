@@ -300,6 +300,9 @@ export function loadPaper(id: string): Promise<Paper> {
       if (SQUISH_FIXED_PDFS.has(paper.id) && paper.pdf?.src && !paper.pdf.src.includes("?")) {
         paper.pdf = { ...paper.pdf, src: `${paper.pdf.src}?v=2` };
       }
+      if (paper.pdf?.words && !paper.pdf.words.includes("?")) {
+        paper.pdf = { ...paper.pdf, words: `${paper.pdf.words}?v=2` };
+      }
       const ex = await explain;
       if (ex) applyExplain(paper, ex);
       paperLoaded.set(id, paper);

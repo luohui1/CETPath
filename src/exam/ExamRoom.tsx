@@ -110,23 +110,37 @@ class RangeLoader extends pdfjs.PDFDataRangeTransport {
  */
 const PDF_ASSETS = { cMapUrl: "/pdfjs/cmaps/", cMapPacked: true, standardFontDataUrl: "/pdfjs/standard_fonts/" };
 
-let pdfPurgeDone = false;
-async function purgeOldSquishedPdfs() {
-  if (pdfPurgeDone) return;
-  pdfPurgeDone = true;
+let cachePurgeDone = false;
+async function purgeStalePaperCaches() {
+  if (cachePurgeDone) return;
+  cachePurgeDone = true;
   if (typeof caches === "undefined") return;
   try {
-    if (localStorage.getItem("yz.pdfSquishFixedV2") === "1") return;
-    const cache = await caches.open("content");
-    await Promise.all([...SQUISH_FIXED_PDFS].map((id) => cache.delete(`/papers/pdf/${id}.pdf`)));
-    localStorage.setItem("yz.pdfSquishFixedV2", "1");
+    if (localStorage.getItem("yz.pdfSquishFixedV2") !== "1") {
+      const contentCache = await caches.open("content");
+      await Promise.all([...SQUISH_FIXED_PDFS].map((id) => contentCache.delete(`/papers/pdf/${id}.pdf`)));
+      localStorage.setItem("yz.pdfSquishFixedV2", "1");
+    }
+    if (localStorage.getItem("yz.wordsAlignFixedV2") !== "1") {
+      const dataCache = await caches.open("paper-data");
+      const reqs = await dataCache.keys();
+      await Promise.all(
+        reqs
+          .filter((req) => {
+            const u = new URL(req.url);
+            return /^\/papers\/pdf\/[^/]+\.words\.json$/.test(u.pathname) && !u.search;
+          })
+          .map((req) => dataCache.delete(req)),
+      );
+      localStorage.setItem("yz.wordsAlignFixedV2", "1");
+    }
   } catch {
     /* ignore storage errors */
   }
 }
 
 async function loadPdf(url: string, signal: AbortSignal) {
-  void purgeOldSquishedPdfs();
+  void purgeStalePaperCaches();
   const head = await fetch(url, { headers: { Range: "bytes=0-65535" }, signal });
   if (!head.ok) throw new Error(`HTTP ${head.status}`);
   const buf = new Uint8Array(await head.arrayBuffer());

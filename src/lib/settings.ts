@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { db } from "./db";
 import { useCachedLiveQuery } from "./live";
 import type { ExamId } from "./papers";
@@ -84,9 +85,11 @@ export const settingsRows = () => db.settings.toArray();
 
 export function useSettings(): Settings {
   const rows = useCachedLiveQuery("settings", settingsRows);
-  const s = { ...DEFAULT_SETTINGS };
-  for (const r of rows ?? []) (s as Record<string, unknown>)[r.key] = r.value;
-  return s;
+  return useMemo(() => {
+    const s = { ...DEFAULT_SETTINGS };
+    for (const r of rows ?? []) (s as Record<string, unknown>)[r.key] = r.value;
+    return s;
+  }, [rows]);
 }
 
 export function useSettingsReady(): boolean {
@@ -101,4 +104,13 @@ export async function getSettings(): Promise<Settings> {
 
 export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
   return db.settings.put({ key, value });
+}
+
+export function setSettings(patch: Partial<Settings>) {
+  const entries = (Object.entries(patch) as [keyof Settings, Settings[keyof Settings]][]).filter(
+    ([, v]) => v !== undefined,
+  );
+  return db.transaction("rw", db.settings, async () => {
+    await db.settings.bulkPut(entries.map(([key, value]) => ({ key, value })));
+  });
 }
