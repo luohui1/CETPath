@@ -172,7 +172,7 @@ export function AskPage() {
   const paper = thread?.ctx.paper ? byTitle.get(thread.ctx.paper) : undefined;
 
   return (
-    <div className="card relative flex h-[calc(100dvh-112px)] min-h-[520px] overflow-hidden">
+    <div className="card relative flex h-[calc(100dvh-96px)] min-h-[380px] overflow-hidden">
       <aside className="hidden w-[272px] flex-none flex-col border-r border-[var(--line)] bg-[var(--paper-100)] lg:flex">{sidebar()}</aside>
 
       {drawer && (

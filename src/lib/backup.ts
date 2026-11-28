@@ -1,3 +1,4 @@
+import { clearStudioData, readStudioProgressRaw, writeStudioProgressRaw, type StudioProgress } from "@/studio/storage";
 import { db } from "./db";
 import { savePreviewModel } from "./preview";
 
@@ -19,15 +20,21 @@ const TABLES = [
   "ieltsSpeaking",
 ] as const;
 
-/** 所有学习数据导出成一个 JSON，换设备或清缓存前用来备份 */
+/** 所有学习数据导出成一个 JSON，换设备或清缓存前用来备份（含听力/口语文字进度，不含二进制录音） */
 export async function exportBackup() {
   const tables: Record<string, unknown[]> = {};
   for (const t of TABLES) tables[t] = await db.table(t).toArray();
-  return { app: "yingyu-zhidao", version: 1, exportedAt: new Date().toISOString(), tables };
+  return {
+    app: "yingyu-zhidao",
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    tables,
+    studioProgress: readStudioProgressRaw(),
+  };
 }
 
 export async function importBackup(json: unknown) {
-  const data = json as { app?: string; tables?: Record<string, unknown[]> };
+  const data = json as { app?: string; tables?: Record<string, unknown[]>; studioProgress?: Partial<StudioProgress> };
   if (data?.app !== "yingyu-zhidao" || !data.tables) throw new Error("这不是英语之道的备份文件");
   await db.transaction("rw", TABLES.map((t) => db.table(t)), async () => {
     for (const t of TABLES) {
@@ -36,11 +43,16 @@ export async function importBackup(json: unknown) {
       if (Array.isArray(rows) && rows.length) await db.table(t).bulkPut(rows);
     }
   });
+  if (data.studioProgress !== undefined) {
+    writeStudioProgressRaw(data.studioProgress);
+  }
 }
 
 export async function clearAll() {
   savePreviewModel(null);
-  await db.transaction("rw", TABLES.map((t) => db.table(t)), async () => {
+  await db.transaction("rw", [...TABLES.map((t) => db.table(t)), db.ieltsRecordings], async () => {
     for (const t of TABLES) await db.table(t).clear();
+    await db.ieltsRecordings.clear();
   });
+  await clearStudioData();
 }

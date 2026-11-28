@@ -61,14 +61,36 @@ export function PaperDialog({
   }, [open]);
   if (!open) return null;
   return createPortal(
-    <div className="animate-pop fixed inset-0 z-[80] grid place-items-center bg-[rgba(28,35,48,0.3)] p-4" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={id} className={cn("card card-float w-full rounded-[14px] p-6", board && "board pt-8", className)} style={{ maxWidth: width }}>
-        <h2 id={id} className="t-h2">
-          {title}
-        </h2>
-        {description && <p className="mt-1.5 text-[14px] leading-[22px] text-[var(--ink-500)]">{description}</p>}
-        {children}
-        {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
+    <div
+      className="animate-pop fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-[rgba(28,35,48,0.34)] p-3 sm:p-4"
+      onPointerDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={id}
+        className={cn(
+          "card card-float flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-[14px] p-5 sm:max-h-[calc(100dvh-2rem)] sm:p-6",
+          board && "board pt-7 sm:pt-8",
+          className,
+        )}
+        style={{ maxWidth: width }}
+      >
+        <div className="flex-none">
+          <h2 id={id} className="t-h2">
+            {title}
+          </h2>
+          {description && <p className="mt-1.5 text-[14px] leading-[22px] text-[var(--ink-500)]">{description}</p>}
+        </div>
+        <div className="-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1">
+          {children}
+        </div>
+        {footer && (
+          <div className="mt-4 flex flex-none flex-wrap items-center justify-end gap-2 border-t border-[var(--line-soft)] pt-3.5">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -104,6 +104,7 @@ export function ListeningDrillPage() {
   const segParam = params.get("seg") ?? "";
   const fromWrong = params.get("from") === "wrong";
   const wantRandom = params.get("rand") === "1";
+  const prevTargetRef = useRef(targetExam);
 
   const { catalog, loading: catalogLoading, error: catalogError, paperIndex } = useListeningCatalog(targetExam);
   const wrongTargets = useWrongAudioTargets(paperIndex, targetExam);
@@ -116,8 +117,30 @@ export function ListeningDrillPage() {
   const [packErr, setPackErr] = useState<string | null>(null);
   const [drillFilter, setDrillFilter] = useState<DrillFilter>("all");
 
-  // 加载选定试卷的音频时间轴与译文层
+  // 切换备考目标或遇到不属于当前目标的试卷参数时，暂停播放并退回选篇目录
   useEffect(() => {
+    if (!catalogLoading && !catalogError && paperParam && catalog.length > 0 && !catalog.some((c) => c.id === paperParam)) {
+      clip.pause();
+      setPack(null);
+      setPackErr(null);
+      setParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperParam, catalogLoading, catalogError, catalog]);
+
+  // 加载选定试卷的音频时间轴与译文层（切目标时立即退回选篇目录）
+  useEffect(() => {
+    if (prevTargetRef.current !== targetExam) {
+      prevTargetRef.current = targetExam;
+      clip.pause();
+      setPack(null);
+      setPackErr(null);
+      setLoadingPack(false);
+      if (paperParam) {
+        setParams({}, { replace: true });
+        return;
+      }
+    }
     if (!paperParam) {
       setPack(null);
       setPackErr(null);
@@ -218,6 +241,15 @@ export function ListeningDrillPage() {
     clip.pause();
     setParams({});
   };
+
+  useEffect(() => {
+    if (!askThread) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAskThread(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [askThread]);
 
   // 查找当前备考目标下最近精练的记录
   const recentItem = useMemo(() => {
@@ -368,7 +400,7 @@ export function ListeningDrillPage() {
   return (
     <WordTextProvider onWord={onWord} marks>
       <div>
-        <audio ref={clip.audioRef} src={audioSrc ?? undefined} preload="metadata" hidden />
+        <audio ref={clip.audioRef} preload="none" hidden />
 
         {!targetMeta.hasListening ? (
           <>
@@ -758,7 +790,10 @@ export function ListeningDrillPage() {
 
         {askThread &&
           createPortal(
-            <div className="fixed inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]">
+            <div
+              className="fixed inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-[1px]"
+              onPointerDown={(e) => e.target === e.currentTarget && setAskThread(null)}
+            >
               <div
                 className="flex h-full w-full max-w-[440px] flex-col border-l border-[var(--line)] bg-white shadow-[var(--elev-3)]"
                 role="dialog"
@@ -982,6 +1017,14 @@ function SingleLineWorkbench({
     [lines.length, stopAllSeq],
   );
 
+  const persistedDoneMap = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const idx of progress.dictation[segKey]?.doneLines ?? []) {
+      out[`${segKey}:${idx}`] = true;
+    }
+    return out;
+  }, [progress.dictation, segKey]);
+
   const checkClozeLine = useCallback(() => {
     userInteractedRef.current = true;
     setCheckedLineKey(lineKey);
@@ -991,10 +1034,11 @@ function SingleLineWorkbench({
       if (isAnswerMatch(inputs[tok.index] ?? "", tok.word ?? "")) rightCount++;
     }
     const acc = Math.round((rightCount / blankTokens.length) * 100);
-    if (acc >= 60 || rightCount === blankTokens.length) {
+    const passed = acc >= 60 || rightCount === blankTokens.length;
+    if (passed) {
       setDoneLineKeys((prev) => ({ ...prev, [lineKey]: true }));
     }
-    patchDictationStat(segKey, acc, "cloze");
+    patchDictationStat(segKey, acc, "cloze", passed ? curLine.index : undefined);
     void bumpDay({ questions: 1, correct: acc >= 80 ? 1 : 0 });
   }, [blankTokens, curLine, inputs, lineKey, segKey]);
 
@@ -1659,11 +1703,11 @@ function SingleLineWorkbench({
             <span className="num text-[12px] text-[var(--ink-500)]">{lines.length} 句</span>
           </div>
 
-          <div ref={sideListRef} className="max-h-[480px] space-y-1 overflow-y-auto pr-1">
+          <div ref={sideListRef} className="max-h-[min(520px,calc(100dvh-170px))] space-y-1 overflow-y-auto pr-1">
             {lines.map((ln, idx) => {
               const lk = `${segKey}:${ln.index}`;
               const isCur = idx === safePos;
-              const isDone = !!doneLineKeys[lk];
+              const isDone = Boolean(doneLineKeys[lk] || persistedDoneMap[lk]);
               const isShadowDone = !!shadowDoneLines[ln.index];
               const revealed = viewMode === "text" || isDone;
               const durSec = (ln.playEnd - ln.playStart).toFixed(1);

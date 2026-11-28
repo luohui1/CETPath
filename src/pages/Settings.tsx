@@ -177,8 +177,8 @@ export function SettingsPage() {
           <div className="px-5 py-3.5 text-[13px] leading-[21px] text-[var(--ink-700)]">
             全真模考（整套或单科限时）开考后会自动锁死纯净机考环境，不显示任何查词、生词标记或 AI 入口，且整套连考全部交卷后才解锁复盘。以下开关仅控制单项自由练习与交卷后的复盘页。
           </div>
-          <Row title="机考考生显示名" desc="显示在雅思机考界面左上角（留空默认显示 Test taker ID）">
-            <SettingText value={s.ieltsCandidateName} onSave={(v) => setSetting("ieltsCandidateName", v)} />
+          <Row title="机考考生显示名" desc="显示在雅思机考界面左上角（留空默认显示 Test Taker）">
+            <SettingText value={s.ieltsCandidateName} placeholder="如：Alex Zhang" onSave={(v) => setSetting("ieltsCandidateName", v)} />
           </Row>
           <Row title="复盘允许点词查词" desc="交卷进入复盘后，点击阅读或听力原文单词可查词并带原句收入生词本">
             <Switch label="复盘允许点词查词" checked={s.ieltsReviewLookup} onChange={(v) => setSetting("ieltsReviewLookup", v)} />
@@ -270,9 +270,9 @@ export function SettingsPage() {
 
       <Group title="数据">
         <div className="px-5 py-4 text-[13px] leading-[21px] text-[var(--ink-700)]">
-          现在是单机版：所有数据只存在这台设备的浏览器里。换设备、换浏览器或清理浏览器数据之前，请先导出备份。
+          学习数据默认保存在当前设备的浏览器本地库中；登录账号后会开启云端多设备同步（精听与口语录音音频仅存本机）。换设备或清理浏览器缓存前，建议先导出备份。
         </div>
-        <Row title="导出备份" desc="生词本、背词进度、做题记录、设置">
+        <Row title="导出备份" desc="生词本、背词进度、做题记录、精听/口语进度与设置">
           <Button onClick={doExport}>
             <DownloadSimple className="size-[18px]" /> 导出
           </Button>
@@ -359,7 +359,7 @@ function AgentMemory() {
 }
 
 /** 设置里的文字框：输入时只改本地，设置存进本地库是异步的，直接绑设置值会在中文输入法拼字时把拼音也写进去 */
-function SettingText({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+function SettingText({ value, onSave, placeholder = "请输入" }: { value: string; onSave: (v: string) => void; placeholder?: string }) {
   const [text, setText] = useState(value);
   const editing = useRef(false);
   useEffect(() => {
@@ -378,7 +378,7 @@ function SettingText({ value, onSave }: { value: string; onSave: (v: string) => 
         if (!(e.nativeEvent as InputEvent).isComposing) onSave(e.target.value);
       }}
       onCompositionEnd={(e) => onSave(e.currentTarget.value)}
-      placeholder="如：考研英语一"
+      placeholder={placeholder}
       className="h-10 rounded-[9px] bg-white px-3 text-[14px] shadow-[var(--elev-1)] outline-none focus:shadow-[0_0_0_2px_var(--blue)] w-40"
     />
   );

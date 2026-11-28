@@ -22,6 +22,7 @@ export interface PageItems {
   segments: Group[]; // 听力题组的播放按钮
   writes: Question[]; // 作文、翻译入口
   timed: Set<string>; // 题号下面有「开始」小秒表的题（阅读理解：一题一题计）
+  inline?: Set<string>; // 明确是行内作答的题号（选词填空、排序题，含换行在行首的空位）
   sets: TimeSet[]; // 小节标题右边的「开始计时」（选词填空、长篇阅读、完形、新题型：整节一起计）
 }
 
@@ -163,10 +164,15 @@ function TimeTag({ left, top, time }: { left: number; top: number; time: { sec: 
   );
 }
 
-/** 题号在行中间：同一行、题号左边还有字（页边题号是一行的开头） */
-function midLine([x0, y0, , y1]: Box, data: PdfWordsPage) {
+/** 题号在行中间：同一行左边还有字，或句中自带 ___N___ 标记 */
+function midLine([x0, y0, , y1]: Box, data: PdfWordsPage, qNumber?: number) {
   const cy = (y0 + y1) / 2;
-  return data.w.some((w) => w[3] <= x0 + 0.5 && w[2] <= cy && w[4] >= cy);
+  if (data.w.some((w) => w[3] <= x0 + 0.5 && w[2] <= cy && w[4] >= cy)) return true;
+  if (qNumber != null) {
+    const mark = `___${qNumber}___`;
+    return data.s.some((s) => s.includes(mark));
+  }
+  return false;
 }
 
 /** 从 box 往右接着同一行挨着的字，到哪儿为止（"Section I Use of English" 这种标题后面还有字） */
@@ -657,7 +663,10 @@ export const ExamPage = memo(function ExamPage(p: ExamPageProps) {
   const stripQ = p.openQ ? (items.questions.find((q) => q.id === p.openQ) ?? items.blanks.find((q) => `${q.id}@blank` === p.openQ)) : undefined;
   const stripBox = stripQ && (p.openQ!.endsWith("@blank") ? stripQ.blank!.box : stripQ.box!);
   // 这一页所有题号、空位的触屏热区，一起算，互不重叠
-  const inlineIds = useMemo(() => new Set(items.questions.filter((q) => midLine(q.box!, data)).map((q) => q.id)), [items, data]);
+  const inlineIds = useMemo(
+    () => new Set(items.questions.filter((q) => items.inline?.has(q.id) || midLine(q.box!, data, q.number)).map((q) => q.id)),
+    [items, data],
+  );
   const zones = useMemo(() => hitZones([...items.questions.map((q) => ({ id: q.id, box: q.box! })), ...items.blanks.map((q) => ({ id: `${q.id}@blank`, box: q.blank!.box }))], scale), [items, scale]);
   const marker = (q: Question, id: string): MarkerProps & { key: string } => ({
     key: id,

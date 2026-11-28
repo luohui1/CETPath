@@ -12,6 +12,7 @@ export interface DictationStat {
   bestAcc: number;
   mode: string;
   count: number;
+  doneLines?: number[];
   updatedAt: number;
 }
 
@@ -80,13 +81,20 @@ export function writeStudioProgress(next: StudioProgress) {
   dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-export function patchDictationStat(key: string, acc: number, mode: string) {
+export function patchDictationStat(key: string, acc: number, mode: string, doneLineIdx?: number) {
   const cur = readStudioProgress();
   const prev = cur.dictation[key];
+  let doneLines = prev?.doneLines;
+  if (typeof doneLineIdx === "number" && Number.isFinite(doneLineIdx)) {
+    const s = new Set(doneLines ?? []);
+    s.add(doneLineIdx);
+    doneLines = [...s].sort((a, b) => a - b);
+  }
   cur.dictation[key] = {
     bestAcc: Math.max(prev?.bestAcc ?? 0, Math.round(acc)),
     mode,
     count: (prev?.count ?? 0) + 1,
+    ...(doneLines?.length ? { doneLines } : {}),
     updatedAt: Date.now(),
   };
   writeStudioProgress(cur);
@@ -191,4 +199,35 @@ export async function saveRecording(row: StudioRecordingRow): Promise<StudioReco
 
 export async function deleteRecording(id: string): Promise<void> {
   await studioAudioDb.recordings.delete(id);
+}
+
+export function readStudioProgressRaw(): StudioProgress {
+  return readStudioProgress();
+}
+
+export function writeStudioProgressRaw(data: Partial<StudioProgress> | null | undefined): void {
+  if (!data || typeof data !== "object") {
+    try {
+      localStorage.removeItem(PROGRESS_KEY);
+      if (!ACTIVE_ACCOUNT) localStorage.removeItem(RAW_PROGRESS_KEY);
+    } catch {
+      // 忽略
+    }
+    dispatchEvent(new Event(CHANGE_EVENT));
+    return;
+  }
+  writeStudioProgress({
+    dictation: data.dictation && typeof data.dictation === "object" ? data.dictation : {},
+    shadowing: data.shadowing && typeof data.shadowing === "object" ? data.shadowing : {},
+    speaking: data.speaking && typeof data.speaking === "object" ? data.speaking : {},
+  });
+}
+
+export async function clearStudioData(): Promise<void> {
+  writeStudioProgressRaw(null);
+  try {
+    await studioAudioDb.recordings.clear();
+  } catch {
+    // 忽略
+  }
 }

@@ -2202,7 +2202,7 @@ export function IeltsExamRoom({
       {/* ---------- Confirm Submit Dialog ---------- */}
       {confirmSubmitOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "var(--bg)", color: "var(--fg)", border: "1px solid var(--line)", maxWidth: 440, width: "100%", padding: 24, borderRadius: 4 }}>
+          <div style={{ background: "var(--bg)", color: "var(--fg)", border: "1px solid var(--line)", maxWidth: 440, width: "100%", maxHeight: "calc(100dvh - 32px)", overflowY: "auto", padding: 24, borderRadius: 4 }}>
             <p style={{ marginTop: 0, marginBottom: 18, fontWeight: 700 }}>
               Are you sure you want to submit your {IELTS_SKILLS_EN[skill]} answers? You will not be able to change them.
               {nextMockSkill ? ` The ${IELTS_SKILLS_EN[nextMockSkill]} test will begin immediately.` : ""}

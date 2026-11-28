@@ -121,18 +121,21 @@ async function purgeStalePaperCaches() {
       await Promise.all([...SQUISH_FIXED_PDFS].map((id) => contentCache.delete(`/papers/pdf/${id}.pdf`)));
       localStorage.setItem("yz.pdfSquishFixedV2", "1");
     }
-    if (localStorage.getItem("yz.wordsAlignFixedV2") !== "1") {
+    if (localStorage.getItem("yz.wordsAlignFixedV3") !== "1") {
       const dataCache = await caches.open("paper-data");
       const reqs = await dataCache.keys();
       await Promise.all(
         reqs
           .filter((req) => {
             const u = new URL(req.url);
-            return /^\/papers\/pdf\/[^/]+\.words\.json$/.test(u.pathname) && !u.search;
+            return (
+              (/^\/papers\/pdf\/[^/]+\.words\.json$/.test(u.pathname) && u.search !== "?v=3") ||
+              (/^\/papers\/[^/]+\.json$/.test(u.pathname) && u.search !== "?v=2")
+            );
           })
           .map((req) => dataCache.delete(req)),
       );
-      localStorage.setItem("yz.wordsAlignFixedV2", "1");
+      localStorage.setItem("yz.wordsAlignFixedV3", "1");
     }
   } catch {
     /* ignore storage errors */
@@ -190,7 +193,7 @@ function lastDockTab(): DockTab | null {
   }
 }
 const PART_NAMES: Record<string, string> = { writing: "写作", listening: "听力", banked: "选词", matching: "匹配", reading: "阅读", order: "新题型", translation: "翻译", cloze: "完形" };
-const EMPTY: PageItems = { questions: [], blanks: [], segments: [], writes: [], timed: new Set(), sets: [] };
+const EMPTY: PageItems = { questions: [], blanks: [], segments: [], writes: [], timed: new Set(), inline: new Set(), sets: [] };
 // 这几种题号嵌在文章里或一行挨一行，题前放不下按钮：小节标题旁一个「开始计时」，整节一起计
 const SET_KINDS = new Set<SectionKind>(["banked", "matching", "cloze", "order"]);
 const NO_MARKS: MarkRow[] = [];
@@ -692,7 +695,7 @@ export function ExamRoom({
   const items = useMemo(() => {
     const map = new Map<number, PageItems>();
     const get = (page: number) => {
-      if (!map.has(page)) map.set(page, { questions: [], blanks: [], segments: [], writes: [], timed: new Set(), sets: [] });
+      if (!map.has(page)) map.set(page, { questions: [], blanks: [], segments: [], writes: [], timed: new Set(), inline: new Set(), sets: [] });
       return map.get(page)!;
     };
     for (const s of paper.sections) {
@@ -706,6 +709,7 @@ export function ExamRoom({
           if (q.options?.length) {
             get(q.page).questions.push(q);
             if (s.kind === "reading") get(q.page).timed.add(q.id);
+            if (s.kind === "banked" || s.kind === "order") get(q.page).inline!.add(q.id);
           } else get(q.page).writes.push(q);
         }
       }

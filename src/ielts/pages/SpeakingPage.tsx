@@ -78,6 +78,17 @@ export function SpeakingPage() {
     [topicId, data],
   );
 
+  useEffect(() => {
+    if (!data || !topicId) return;
+    if (!activeTopic) {
+      navigate("/speaking", { replace: true });
+      return;
+    }
+    if (qIdx !== undefined && (!/^\d+$/.test(qIdx) || Number(qIdx) >= activeTopic.questions.length)) {
+      navigate(`/speaking/topic/${encodeURIComponent(activeTopic.id)}`, { replace: true });
+    }
+  }, [data, topicId, qIdx, activeTopic, navigate]);
+
   if (error) return <EmptyState title="口语题库加载失败" desc={error} />;
   if (!data) return <LoadingBlock text="正在加载雅思口语题库…" />;
 

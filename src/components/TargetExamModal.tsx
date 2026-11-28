@@ -109,7 +109,7 @@ export function TargetExamModal({
         </>
       }
     >
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-1.5">
         {TARGET_EXAMS.map((item) => {
           const active = picked === item.id;
           return (
@@ -119,7 +119,7 @@ export function TargetExamModal({
               onClick={() => setPicked(item.id)}
               aria-pressed={active}
               className={cn(
-                "relative flex w-full items-center gap-3 overflow-hidden rounded-[11px] border px-4 py-3 text-left transition",
+                "relative flex w-full items-center gap-3 overflow-hidden rounded-[11px] border px-3.5 py-2.5 text-left transition",
                 active
                   ? "border-[var(--blue)] bg-[var(--blue-tint)]/40 shadow-xs"
                   : "border-[var(--line)] bg-[var(--paper-50)] hover:border-[var(--ink-300)] hover:bg-white",
@@ -149,7 +149,7 @@ export function TargetExamModal({
         })}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--line-soft)] bg-[var(--paper-50)] px-3.5 py-2.5">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5 rounded-[10px] border border-[var(--line-soft)] bg-[var(--paper-50)] px-3 py-2">
         <label className="flex items-center gap-2 text-[13px] text-[var(--ink-700)]">
           <CalendarBlank className="size-4 text-[var(--ink-500)]" />
           <span>考试日期（可选）：</span>

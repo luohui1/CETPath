@@ -294,14 +294,14 @@ export function loadPaper(id: string): Promise<Paper> {
     const explain = fetch(`/papers/explain/${encodeURIComponent(id)}.json`)
       .then((r) => (r.ok ? (r.json() as Promise<ExplainFile>) : null))
       .catch(() => null);
-    const p = fetch(`/papers/${encodeURIComponent(id)}.json`).then(async (r) => {
+    const p = fetch(`/papers/${encodeURIComponent(id)}.json?v=2`).then(async (r) => {
       if (!r.ok) throw new Error(r.status === 404 ? "没有找到这套试卷" : `加载试卷失败：${r.status}`);
       const paper = (await r.json()) as Paper;
       if (SQUISH_FIXED_PDFS.has(paper.id) && paper.pdf?.src && !paper.pdf.src.includes("?")) {
         paper.pdf = { ...paper.pdf, src: `${paper.pdf.src}?v=2` };
       }
       if (paper.pdf?.words && !paper.pdf.words.includes("?")) {
-        paper.pdf = { ...paper.pdf, words: `${paper.pdf.words}?v=2` };
+        paper.pdf = { ...paper.pdf, words: `${paper.pdf.words}?v=3` };
       }
       const ex = await explain;
       if (ex) applyExplain(paper, ex);

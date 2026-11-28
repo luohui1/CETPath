@@ -1046,13 +1046,15 @@
   z-index: 50;
   background: var(--bg);
   overflow-y: auto;
-  padding: 36px 20px 60px;
+  padding: 28px 20px 60px;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
 }
 .ielts-cbt .cbt-card-modal {
   max-width: 660px;
   width: 100%;
+  padding-bottom: 32px;
 }
 .ielts-cbt .cbt-card-modal h1 {
   font-size: 26px;

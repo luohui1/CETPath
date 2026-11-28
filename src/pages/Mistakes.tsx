@@ -132,6 +132,11 @@ export function MistakesPage() {
   const [batches, setBatches] = useState(false);
   const [more, setMore] = useState<Set<string>>(new Set());
   useEffect(() => void backfillMastery(), []);
+  useEffect(() => {
+    setKind("all");
+    setPaperFilter("all");
+    setBatches(false);
+  }, [targetExam]);
 
   const titles = useMemo(() => new Map((index ?? []).map((p) => [p.id, p.title])), [index]);
   const examByPaper = useMemo(() => new Map((index ?? []).map((p) => [p.id, normalizeTargetExam(p.exam)])), [index]);

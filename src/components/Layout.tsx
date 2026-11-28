@@ -222,17 +222,17 @@ export function Layout() {
   return (
     <div className="min-h-dvh transition-[padding] duration-200 ease-out" style={{ paddingLeft: width }}>
       <aside
-        className="no-print fixed top-[var(--memdb-h)] bottom-0 left-0 z-30 flex flex-col overflow-x-hidden overflow-y-auto bg-[var(--paper-50)] px-2.5 py-5 shadow-[inset_-1px_0_0_rgba(28,35,48,0.07),4px_0_16px_-12px_rgba(28,35,48,0.25)] transition-[width] duration-200 ease-out"
+        className="no-print fixed top-[var(--memdb-h)] bottom-0 left-0 z-30 flex flex-col overflow-hidden bg-[var(--paper-50)] px-2.5 py-4 shadow-[inset_-1px_0_0_rgba(28,35,48,0.07),4px_0_16px_-12px_rgba(28,35,48,0.25)] transition-[width] duration-200 ease-out"
         style={{ width }}
       >
-        <NavLink to="/" className={cn("mb-7 flex items-center gap-2.5", collapsed ? "justify-center" : "px-2")} title="英语之道">
+        <NavLink to="/" className={cn("mb-4 flex flex-none items-center gap-2.5", collapsed ? "justify-center" : "px-2")} title="英语之道">
           <LogoMark className="flex-none" />
           {!collapsed && <span className="text-[17px] leading-none font-semibold tracking-[0.04em] whitespace-nowrap">英语之道</span>}
         </NavLink>
 
-        <nav className="flex flex-col" aria-label="主导航">
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex flex-col" aria-label="主导航">
           {groups.map((g, i) => (
-            <div key={g.title} className={cn("flex flex-col gap-1", i > 0 && (collapsed ? "mt-2 border-t border-[var(--line-soft)] pt-2" : "mt-4"))}>
+            <div key={g.title} className={cn("flex flex-col gap-1", i > 0 && (collapsed ? "mt-2 border-t border-[var(--line-soft)] pt-2" : "mt-3.5"))}>
               {!collapsed && <div className="px-3 pb-1 text-[11px] font-medium tracking-[0.12em] text-[var(--ink-subtle)]">{g.title}</div>}
               {g.items.map((it) => (
                 <Item key={it.to} {...it} collapsed={collapsed} />
@@ -241,14 +241,14 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="mt-auto flex flex-col gap-3 pt-5">
+        <div className="mt-2 flex flex-none flex-col gap-2 border-t border-[var(--line-soft)] pt-3">
           <TargetBadge
             collapsed={collapsed}
             target={targetMeta}
             examDate={settings.examDate}
             onClick={() => setTargetModalOpen(true)}
           />
-          <nav className={cn("flex flex-col", collapsed ? "gap-1.5" : "gap-0.5")} aria-label="更多">
+          <nav className={cn("flex flex-col", collapsed ? "gap-1" : "gap-0.5")} aria-label="更多">
             <Quiet to="/stats" label="学习统计" icon="graph" collapsed={collapsed} />
             <Quiet to="/settings" label="设置" icon="ruler" collapsed={collapsed} />
             <a
@@ -256,7 +256,7 @@ export function Layout() {
               target="_blank"
               rel="noopener noreferrer"
               title="GitHub 开源仓库 CETPath"
-              className={cn("flex min-h-10 items-center rounded-[10px] text-[13px] text-[var(--ink-500)] transition-colors hover:bg-white/70 hover:text-[var(--ink)]", collapsed ? "flex-col justify-center gap-1 py-1.5" : "gap-3 px-3 py-2")}
+              className={cn("flex min-h-9 items-center rounded-[10px] text-[13px] text-[var(--ink-500)] transition-colors hover:bg-white/70 hover:text-[var(--ink)]", collapsed ? "flex-col justify-center gap-1 py-1.5" : "gap-3 px-3 py-1.5")}
             >
               <GithubLogo className="size-[18px]" weight="fill" />
               {collapsed ? <span className="text-[11px] leading-none">GitHub</span> : "GitHub 开源"}
@@ -265,7 +265,7 @@ export function Layout() {
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className={cn("flex min-h-10 items-center gap-3 rounded-[10px] border-t border-[var(--line-soft)] py-2.5 text-[13px] text-[var(--ink-500)] transition-colors hover:text-[var(--ink)]", collapsed ? "justify-center" : "px-3")}
+            className={cn("flex min-h-9 items-center gap-3 rounded-[10px] border-t border-[var(--line-soft)] py-2 text-[13px] text-[var(--ink-500)] transition-colors hover:text-[var(--ink)]", collapsed ? "justify-center" : "px-3")}
             aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
             title={collapsed ? "展开侧边栏" : "收起侧边栏"}
           >

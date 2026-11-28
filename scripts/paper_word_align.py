@@ -34,7 +34,8 @@ import fitz  # noqa: E402
 import numpy as np  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-PDF_DIR = ROOT / "public" / "papers" / "pdf"
+PAPERS_DIR = ROOT / "public" / "papers"
+PDF_DIR = PAPERS_DIR / "pdf"
 BACKUP = ROOT / "data" / "cache" / "paper-word-align"
 
 Z = 3.0
@@ -95,17 +96,55 @@ def lines_of(ws: list) -> list[list[tuple[int, str, float, float, float, float]]
     return lines
 
 
-def split_columns(line: list) -> list[list]:
+def split_columns(line: list, max_gap: float = 24.0) -> list[list]:
     if not line:
         return []
     segs = [[line[0]]]
     for t in line[1:]:
         prev = segs[-1][-1]
-        if t[2] - prev[4] > 24.0:
+        if t[2] - prev[4] > max_gap:
             segs.append([t])
         else:
             segs[-1].append(t)
     return segs
+
+
+def find_underline_gray(gray: np.ndarray, box: list[float], kz: float) -> tuple[float, float, float] | None:
+    x0 = max(0, int((box[0] - 95) * kz))
+    x1 = min(gray.shape[1], int((box[2] + 95) * kz))
+    if x1 <= x0:
+        return None
+    cx = (box[0] + box[2]) / 2
+    y_lo = max(0, int((box[3] - 3.5) * kz))
+    y_hi = min(gray.shape[0], int((box[3] + 5.5) * kz))
+    best = None
+    for y in range(y_lo, y_hi):
+        xs = np.flatnonzero(gray[y, x0:x1] < 185)
+        if not len(xs):
+            continue
+        cuts = np.flatnonzero(np.diff(xs) > 4)
+        for seg in np.split(xs, cuts + 1):
+            l = (int(seg[0]) + x0) / kz
+            r = (int(seg[-1]) + 1 + x0) / kz
+            w_pt = r - l
+            if w_pt < 14.0 or w_pt > 125.0:
+                continue
+            d = 0.0 if l <= cx <= r else min(abs(cx - l), abs(cx - r))
+            if d > 18.0:
+                continue
+            ya = max(0, y - int(8.5 * kz))
+            yb = max(ya + 1, y - int(1.6 * kz))
+            xa = max(0, int((l + 2.0) * kz))
+            xb = min(gray.shape[1], int((r - 2.0) * kz))
+            if xb <= xa:
+                continue
+            cols = (gray[ya:yb, xa:xb] < 185).any(axis=0)
+            if float(cols.mean()) > 0.65:
+                continue
+            key = (round(d, 2), -w_pt)
+            if best is None or key < best[0]:
+                best = (key, (l, r, y / kz))
+    return best[1] if best else None
 
 
 def box_ink(ink: np.ndarray, kz: float, box) -> float:
@@ -135,13 +174,14 @@ def edge_bleed(ink: np.ndarray, kz: float, boxes) -> float:
     return bleed / max(len(boxes), 1)
 
 
-def align_segment(ink: np.ndarray, k: float, seg: list) -> dict[int, list[float]]:
+def align_segment(ink: np.ndarray, k: float, seg: list, has_blanks: bool = False) -> dict[int, list[float]]:
     kz = k * Z
     hs = [max(1.0, t[5] - t[3]) for t in seg]
     h = statistics.median(hs)
     yc = statistics.median((t[3] + t[5]) / 2 for t in seg)
-    xa = min(t[2] for t in seg) - 1.8 * h
-    xb = max(t[4] for t in seg) + 1.8 * h
+    pad_x = 3.5 * h if has_blanks else 1.8 * h
+    xa = min(t[2] for t in seg) - pad_x
+    xb = max(t[4] for t in seg) + pad_x
 
     H, W = ink.shape
     Y0, Y1 = max(0, int((yc - 1.5 * h) * kz)), min(H, int((yc + 1.5 * h) * kz))
@@ -196,7 +236,8 @@ def align_segment(ink: np.ndarray, k: float, seg: list) -> dict[int, list[float]
         gap_pen = sum((0.3 if has_punct else 2.8) * g for g in internal_gaps)
         too_narrow = max(0.0, 0.62 * ew - bw) * 3.5 if tws[tok_i] > 0.30 else 0.0
         too_wide = max(0.0, bw - 1.85 * ew) * 2.0
-        return abs(bw - ew) * 1.1 + abs(bc - tc_px[tok_i]) * 0.30 + gap_pen + too_narrow + too_wide
+        pos_w = 0.12 if has_blanks else 0.30
+        return abs(bw - ew) * 1.1 + abs(bc - tc_px[tok_i]) * pos_w + gap_pen + too_narrow + too_wide
 
     for j in range(m):
         for j1, a_px, b_px in spans_at_end[j]:
@@ -225,10 +266,14 @@ def align_segment(ink: np.ndarray, k: float, seg: list) -> dict[int, list[float]
                     back[i][j] = ("span", int(pref_arg[j1]), j1)
 
             if dp[i - 1, j] < INF:
-                orig_touch = (seg[i][2] - seg[i - 1][4]) <= 1.2
+                orig_touch = not has_blanks and (seg[i][2] - seg[i - 1][4]) <= 1.2
                 share_pen = (0.15 * bh) if orig_touch else (0.75 * bh)
+                bw_j = sub[j][1] - sub[j][0]
                 bc = (sub[j][0] + sub[j][1]) / 2
-                c = float(dp[i - 1, j]) + share_pen + abs(bc - tc_px[i]) * 0.30
+                share_need = ew_px[i - 1] + ew_px[i]
+                share_narrow = max(0.0, 0.58 * share_need - bw_j) * 3.5
+                pos_w = 0.12 if has_blanks else 0.30
+                c = float(dp[i - 1, j]) + share_pen + share_narrow + abs(bc - tc_px[i]) * pos_w
                 if c < dp[i, j]:
                     dp[i, j] = c
                     back[i][j] = ("share", j, j)
@@ -306,7 +351,13 @@ def align_segment(ink: np.ndarray, k: float, seg: list) -> dict[int, list[float]
     return out
 
 
-def decide_segment(ink: np.ndarray, k: float, seg: list, got: dict[int, list[float]]) -> dict[int, list[float]] | None:
+def decide_segment(
+    ink: np.ndarray,
+    k: float,
+    seg: list,
+    got: dict[int, list[float]],
+    has_blanks: bool = False,
+) -> dict[int, list[float]] | None:
     if len(got) != len(seg):
         return None
     kz = k * Z
@@ -352,8 +403,26 @@ def decide_segment(ink: np.ndarray, k: float, seg: list, got: dict[int, list[flo
     hrs = [(a[3] - a[1]) / max(0.5, b[3] - b[1]) for a, b in zip(old_boxes, new_boxes)]
 
     horiz_fix = (max(dxs) >= 1.5 or max(dws) >= 2.0) and old_bleed >= 0.12 and new_bleed <= old_bleed - 0.06
+    blank_fix = False
+    if has_blanks:
+        ch_pairs = [
+            (ob, nb)
+            for ob, nb, dx, dw in zip(old_boxes, new_boxes, dxs, dws)
+            if dx >= 1.5 or dw >= 2.0
+        ]
+        if len(ch_pairs) >= 2:
+            ch_old_b = [p[0] for p in ch_pairs]
+            ch_new_b = [p[1] for p in ch_pairs]
+            ch_old_d = float(np.mean([box_ink(ink, kz, b) for b in ch_old_b]))
+            ch_new_d = float(np.mean([box_ink(ink, kz, b) for b in ch_new_b]))
+            ch_old_bl = edge_bleed(ink, kz, ch_old_b)
+            ch_new_bl = edge_bleed(ink, kz, ch_new_b)
+            blank_fix = new_bleed <= old_bleed + 0.02 and (
+                (ch_new_d >= ch_old_d + 0.015 and ch_new_bl <= ch_old_bl + 0.02)
+                or (ch_old_bl >= 0.25 and ch_new_bl <= ch_old_bl - 0.15 and ch_new_d >= ch_old_d - 0.01)
+            )
     vert_fix = statistics.median(dys) >= 1.2 and new_d >= old_d + 0.01 and new_bleed <= old_bleed + 0.05
-    if horiz_fix or vert_fix:
+    if horiz_fix or blank_fix or vert_fix:
         return got
 
     if statistics.median(hrs) >= 1.35 and new_d >= old_d + 0.025:
@@ -377,6 +446,26 @@ def process_paper(args: tuple[str, bool]) -> tuple[str, bool, int, int, int, int
 
     raw_text = wf.read_text("utf-8")
     W = json.loads(raw_text)
+    pj_file = PAPERS_DIR / f"{pid}.json"
+    inline_qs_by_page: dict[int, list[list[float]]] = {}
+    if pj_file.exists():
+        pj = json.loads(pj_file.read_text("utf-8"))
+        for sec in pj.get("sections", []):
+            if sec.get("from"):
+                continue
+            skind = sec.get("kind", "")
+            for grp in sec.get("groups", []):
+                for q in grp.get("questions", []):
+                    qpg, qbox = q.get("page"), q.get("box")
+                    if not (q.get("options") and qpg and qbox and 1 <= qpg <= len(W["pages"])):
+                        continue
+                    pw_s = W["pages"][qpg - 1].get("s", [])
+                    q_cy = (qbox[1] + qbox[3]) / 2
+                    has_left = any(w[3] <= qbox[0] + 0.5 and w[2] <= q_cy <= w[4] for w in W["pages"][qpg - 1].get("w", []))
+                    has_mark = any(f"___{q['number']}___" in st for st in pw_s)
+                    if skind == "banked" or has_left or has_mark:
+                        inline_qs_by_page.setdefault(qpg - 1, []).append(qbox)
+
     doc = fitz.open(str(pf))
     pages_changed = 0
     segs_applied = 0
@@ -391,9 +480,17 @@ def process_paper(args: tuple[str, bool]) -> tuple[str, bool, int, int, int, int
         if len(ws) < 3:
             continue
         page = doc[pi]
-        pix = page.get_pixmap(matrix=fitz.Matrix(Z, Z), colorspace=fitz.csGRAY)
-        ink = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width) < 165
+        pix = page.get_pixmap(matrix=fitz.Matrix(Z, Z), colorspace=fitz.csGRAY, alpha=False)
+        gray = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width)
+        ink = gray < 165
         k = page.rect.width / pg["width"]
+        kz = k * Z
+
+        page_blanks: list[tuple[float, float, float, float]] = []
+        for qbox in inline_qs_by_page.get(pi, []):
+            ul = find_underline_gray(gray, qbox, kz)
+            if ul:
+                page_blanks.append((ul[0], ul[1], ul[2], (qbox[1] + qbox[3]) / 2))
 
         orig_len = len(ws)
         orig_words = [w[0] for w in ws]
@@ -401,11 +498,31 @@ def process_paper(args: tuple[str, bool]) -> tuple[str, bool, int, int, int, int
         page_dirty = False
 
         for line in lines_of(ws):
-            for seg in split_columns(line):
-                got = align_segment(ink, k, seg)
+            line_y0 = min(t[3] for t in line)
+            line_y1 = max(t[5] for t in line)
+            line_yc = (line_y0 + line_y1) / 2
+            line_blanks = [
+                (ul_l, ul_r)
+                for (ul_l, ul_r, ul_y, b_cy) in page_blanks
+                if abs(b_cy - line_yc) <= 6.0 or (line_y0 - 2.0 <= ul_y <= line_y1 + 5.5)
+            ]
+            if line_blanks:
+                work_ink = ink.copy()
+                yb0 = max(0, int(round((line_y0 - 3.0) * kz)))
+                yb1 = min(work_ink.shape[0], int(round((line_y1 + 5.5) * kz)))
+                for ul_l, ul_r in line_blanks:
+                    xl = max(0, int(round((ul_l - 0.3) * kz)))
+                    xr = min(work_ink.shape[1], int(round((ul_r + 0.3) * kz)))
+                    if xr > xl and yb1 > yb0:
+                        work_ink[yb0:yb1, xl:xr] = False
+            else:
+                work_ink = ink
+
+            for seg in split_columns(line, 75.0 if line_blanks else 24.0):
+                got = align_segment(work_ink, k, seg, has_blanks=bool(line_blanks))
                 if not got:
                     continue
-                chosen = decide_segment(ink, k, seg, got)
+                chosen = decide_segment(work_ink, k, seg, got, has_blanks=bool(line_blanks))
                 if not chosen:
                     continue
                 seg_dirty = False

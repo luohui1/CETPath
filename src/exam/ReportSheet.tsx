@@ -72,7 +72,33 @@ export function ReportSheet({
   const title = mode === "retry" ? "重做错题" : scope ? `${report.sections[0]?.name ?? ""} · ${paper.title}` : paper.title;
 
   return (
-    <PaperDialog open={open} onClose={onClose} board width={600} title="交卷单" className="max-h-[calc(100dvh-32px)] overflow-y-auto">
+    <PaperDialog
+      open={open}
+      onClose={onClose}
+      board
+      width={600}
+      title="交卷单"
+      footer={
+        <>
+          <Link to={back.to} className="btn btn-ghost">
+            {back.label}
+          </Link>
+          {report.total > 0 && (
+            <Button onClick={onExplain}>
+              <Lightbulb className="size-[18px]" /> 看解析
+            </Button>
+          )}
+          {report.wrong.length > 0 && (
+            <Button onClick={() => onRetry(wrongIds)}>
+              <ArrowCounterClockwise className="size-[18px]" /> 重做错题（{report.wrong.length}）
+            </Button>
+          )}
+          <Button variant="primary" onClick={onAgent}>
+            <Sparkle className="size-[18px]" /> 找 Agent 复盘
+          </Button>
+        </>
+      }
+    >
       <div className="mt-1 flex items-baseline justify-between gap-4 text-[14px]">
         <span className="min-w-0 truncate text-[var(--ink-700)]">{title}</span>
         <span className="flex-none text-[var(--ink-500)]">
@@ -195,25 +221,6 @@ export function ReportSheet({
           )}
         </div>
       )}
-
-      <div className="mt-6 flex flex-wrap justify-end gap-2">
-        <Link to={back.to} className="btn btn-ghost">
-          {back.label}
-        </Link>
-        {report.total > 0 && (
-          <Button onClick={onExplain}>
-            <Lightbulb className="size-[18px]" /> 看解析
-          </Button>
-        )}
-        {report.wrong.length > 0 && (
-          <Button onClick={() => onRetry(wrongIds)}>
-            <ArrowCounterClockwise className="size-[18px]" /> 重做错题（{report.wrong.length}）
-          </Button>
-        )}
-        <Button variant="primary" onClick={onAgent}>
-          <Sparkle className="size-[18px]" /> 找 Agent 复盘
-        </Button>
-      </div>
     </PaperDialog>
   );
 }

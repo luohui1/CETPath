@@ -80,6 +80,19 @@ function TargetSpeakingView({ targetExam }: { targetExam: ExamId }) {
   const decodedId = topicId ? decodeURIComponent(topicId) : null;
   const activeIdx = decodedId ? items.findIndex((x) => x.id === decodedId) : -1;
   const activeItem = activeIdx >= 0 ? items[activeIdx] : null;
+  const prevTargetRef = useRef(targetExam);
+
+  useEffect(() => {
+    if (prevTargetRef.current !== targetExam) {
+      prevTargetRef.current = targetExam;
+      setHit(null);
+      if (topicId) navigate("/speaking", { replace: true });
+      return;
+    }
+    if (topicId && !activeItem) {
+      navigate("/speaking", { replace: true });
+    }
+  }, [targetExam, topicId, activeItem, navigate]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

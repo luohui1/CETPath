@@ -180,7 +180,15 @@ export const ListeningBar = forwardRef<
     const lines = useMemo<Line[]>(
       () =>
         audio.segments
-          .flatMap((s) => s.lines.map((l, i) => ({ ...l, seg: s.id, i, kind: kindOf(l) })))
+          .flatMap((s) =>
+            s.lines.map((l, i) => ({
+              ...l,
+              end: Math.max(l.start + 0.45, l.end),
+              seg: s.id,
+              i,
+              kind: kindOf(l),
+            })),
+          )
           .sort((a, b) => a.start - b.start)
           .map((l, index) => ({ ...l, index })),
       [audio],
