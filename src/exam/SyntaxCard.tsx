@@ -123,9 +123,81 @@ function Section({ n, title, children }: { n: number; title: string; children: R
   );
 }
 
+/** 可复用的结构拆解区：主干 + 译文（可选）+ 修饰成分 + 怎么拆；考场卡片和思路库共用 */
+export function SyntaxBreakdown({
+  e,
+  showTrans = true,
+  startIndex = 1,
+}: {
+  e: SyntaxEntry;
+  showTrans?: boolean;
+  startIndex?: number;
+}) {
+  let n = startIndex - 1;
+  return (
+    <>
+      <Section n={++n} title="主干">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+          {e.main.map((m, i) => (
+            <Fragment key={i}>
+              {i > 0 && <span className="text-[13px] text-[var(--ink-300)]">→</span>}
+              <span className={cn("inline-flex max-w-full min-w-0 items-baseline gap-1.5 rounded-[8px] px-2 py-1", KIND[mainKind(m.r)].block)}>
+                <span className="flex-none text-[11px] font-semibold opacity-80">{m.r}</span>
+                <span className="serif min-w-0 text-[15px] leading-[1.4] font-semibold">{m.t}</span>
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      </Section>
+
+      {showTrans && e.zh && (
+        <Section n={++n} title="译文">
+          <p className="rounded-[8px] bg-[#f6f9ff] px-3 py-2 text-[15px] leading-[1.75] text-[var(--ink)]">{e.zh}</p>
+        </Section>
+      )}
+
+      {e.parts.length > 0 && (
+        <Section n={++n} title={`修饰成分 · ${e.parts.length} 处`}>
+          <ol className="space-y-2">
+            {e.parts.map((p, k) => (
+              <li key={k} className="flex gap-2">
+                <span className="w-4 flex-none pt-[3px] text-[13px] font-semibold text-[var(--ink-500)]">{NUM[k] ?? k + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-[var(--ink-500)]">
+                    <RoleTag r={p.r} part />
+                    {p.of && (
+                      <span>
+                        修饰 <span className="serif text-[14px] text-[var(--ink-700)]">{p.of}</span>
+                      </span>
+                    )}
+                    {p.note && <span>· {p.note}</span>}
+                  </div>
+                  <p className={cn("serif mt-1 border-l-[3px] pl-2.5 text-[14px] leading-[1.6] text-[var(--ink-700)]", partKind(p.r) === "clause" ? "border-[#d9c4f7]" : partKind(p.r) === "phrase" ? "border-[#f5d49a]" : "border-[var(--line)]")}>{p.t}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Section>
+      )}
+
+      {e.points.length > 0 && (
+        <Section n={++n} title="怎么拆">
+          <ul className="space-y-1.5">
+            {e.points.map((x, i) => (
+              <li key={i} className="flex gap-2 text-[14px] leading-[1.65] text-[var(--ink-700)]">
+                <span className="mt-[0.65em] size-1.5 flex-none rounded-full bg-[var(--blue)]" />
+                {x}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </>
+  );
+}
+
 /** onRemove：Agent 标的长难句可以删 */
 export function SyntaxCard({ e, onRemove }: { e: SyntaxEntry; onRemove?: () => void }) {
-  let n = 0;
   return (
     <div className="min-w-0 space-y-3 pb-1 [overflow-wrap:anywhere]">
       <div className="overflow-hidden rounded-[14px] bg-white ring-1 ring-[var(--line)]">
@@ -134,62 +206,10 @@ export function SyntaxCard({ e, onRemove }: { e: SyntaxEntry; onRemove?: () => v
           <span className="text-[11px] text-[var(--ink-500)]">AI 解析，仅供参考</span>
         </div>
         <div className="divide-y divide-[var(--line-soft)]">
-          <Section n={++n} title="原句">
+          <Section n={1} title="原句">
             <SyntaxSentence e={e} />
           </Section>
-
-          <Section n={++n} title="主干">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
-              {e.main.map((m, i) => (
-                <Fragment key={i}>
-                  {i > 0 && <span className="text-[13px] text-[var(--ink-300)]">→</span>}
-                  <span className={cn("inline-flex max-w-full min-w-0 items-baseline gap-1.5 rounded-[8px] px-2 py-1", KIND[mainKind(m.r)].block)}>
-                    <span className="flex-none text-[11px] font-semibold opacity-80">{m.r}</span>
-                    <span className="serif min-w-0 text-[15px] leading-[1.4] font-semibold">{m.t}</span>
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-          </Section>
-
-          <Section n={++n} title="译文">
-            <p className="rounded-[8px] bg-[#f6f9ff] px-3 py-2 text-[15px] leading-[1.75] text-[var(--ink)]">{e.zh}</p>
-          </Section>
-
-          {e.parts.length > 0 && (
-            <Section n={++n} title={`修饰成分 · ${e.parts.length} 处`}>
-              <ol className="space-y-2">
-                {e.parts.map((p, k) => (
-                  <li key={k} className="flex gap-2">
-                    <span className="w-4 flex-none pt-[3px] text-[13px] font-semibold text-[var(--ink-500)]">{NUM[k] ?? k + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-[var(--ink-500)]">
-                        <RoleTag r={p.r} part />
-                        {p.of && (
-                          <span>
-                            修饰 <span className="serif text-[14px] text-[var(--ink-700)]">{p.of}</span>
-                          </span>
-                        )}
-                        {p.note && <span>· {p.note}</span>}
-                      </div>
-                      <p className={cn("serif mt-1 border-l-[3px] pl-2.5 text-[14px] leading-[1.6] text-[var(--ink-700)]", partKind(p.r) === "clause" ? "border-[#d9c4f7]" : partKind(p.r) === "phrase" ? "border-[#f5d49a]" : "border-[var(--line)]")}>{p.t}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </Section>
-          )}
-
-          <Section n={++n} title="怎么拆">
-            <ul className="space-y-1.5">
-              {e.points.map((x, i) => (
-                <li key={i} className="flex gap-2 text-[14px] leading-[1.65] text-[var(--ink-700)]">
-                  <span className="mt-[0.65em] size-1.5 flex-none rounded-full bg-[var(--blue)]" />
-                  {x}
-                </li>
-              ))}
-            </ul>
-          </Section>
+          <SyntaxBreakdown e={e} startIndex={2} />
         </div>
       </div>
 

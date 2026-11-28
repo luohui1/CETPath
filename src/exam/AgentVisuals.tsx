@@ -1,6 +1,11 @@
 import { useState } from "react";
+import { Check, Lightbulb } from "@phosphor-icons/react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { cn } from "@/lib/utils";
 import type { ToolCall } from "@/lib/agent";
+import { addMethod, hasSentenceMethod } from "@/lib/methods";
+import type { Paper } from "@/lib/papers";
+import { sentenceMapToSyntaxEntry } from "@/lib/syntax";
 import { Quote } from "./paperLink";
 
 /** Agent 回答里嵌的可视化：长难句结构图、解题步骤、词汇卡片（都来自工具调用的参数） */
@@ -33,8 +38,10 @@ const ROLE: Record<string, { name: string; cls: string }> = {
 
 function SentenceMap({
   data,
+  paper,
 }: {
   data: { sentence?: string; translation?: string; parts?: Part[] };
+  paper?: Pick<Paper, "id" | "title">;
 }) {
   const [on, setOn] = useState<number | null>(null);
   const parts = arr<Part>(data.parts)
@@ -45,18 +52,46 @@ function SentenceMap({
       note: str(p.note),
       level: typeof p.level === "number" ? p.level : 0,
     }));
+  const syn = sentenceMapToSyntaxEntry({ sentence: str(data.sentence), translation: str(data.translation), parts });
+  const sent = syn?.en || str(data.sentence)?.trim() || "";
+  const saved = useLiveQuery(() => (sent ? hasSentenceMethod(sent) : false), [sent]) ?? false;
   if (!parts.length) return null;
   const cur = on != null ? parts[on] : null;
+  const saveSentence = () => {
+    if (!sent || saved) return;
+    const source = paper ? { paperId: paper.id, paperTitle: paper.title, sentence: sent } : undefined;
+    void addMethod({
+      sentence: sent,
+      translation: str(data.translation) || syn?.zh || undefined,
+      syntax: syn ?? undefined,
+      from: "agent",
+      source,
+    });
+  };
   return (
     <div className="mt-2 rounded-[12px] p-3 ring-1 ring-[var(--line)]">
-      <p className="mb-2 text-[12px] font-medium text-[var(--ink-500)]">
-        句子结构 · 点色块看作用
-        {str(data.sentence) && (
-          <Quote text={str(data.sentence)!} className="ml-2 text-[var(--blue)]">
-            在卷面上看
-          </Quote>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[12px] font-medium text-[var(--ink-500)]">
+        <span>
+          句子结构 · 点色块看作用
+          {str(data.sentence) && (
+            <Quote text={str(data.sentence)!} className="ml-2 text-[var(--blue)]">
+              在卷面上看
+            </Quote>
+          )}
+        </span>
+        {sent && (
+          <button
+            type="button"
+            disabled={saved}
+            onClick={saveSentence}
+            className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-[var(--ink-500)] transition-colors hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
+            title="把这句长难句和结构拆解收进思路库"
+          >
+            {saved ? <Check className="size-3" weight="bold" /> : <Lightbulb className="size-3" />}
+            {saved ? "已收" : "收进思路库"}
+          </button>
         )}
-      </p>
+      </div>
       <div className="flex flex-wrap items-end gap-x-1 gap-y-2 font-serif text-[15px] leading-[1.5]">
         {parts.map((p, i) => {
           const r = ROLE[p.role ?? "other"] ?? ROLE.other;
@@ -442,14 +477,14 @@ export const VISUAL_TOOLS = new Set([
   "show_answer_map",
 ]);
 
-export function AgentVisual({ call }: { call: ToolCall }) {
+export function AgentVisual({ call, paper }: { call: ToolCall; paper?: Pick<Paper, "id" | "title"> }) {
   if (call.name === "show_sentence_map") {
     const d = parse<{
       sentence?: string;
       translation?: string;
       parts?: Part[];
     }>(call);
-    return d ? <SentenceMap data={d} /> : null;
+    return d ? <SentenceMap data={d} paper={paper} /> : null;
   }
   if (call.name === "show_steps") {
     const d = parse<{ question?: string; steps?: Step[]; answer?: string }>(

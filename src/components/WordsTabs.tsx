@@ -9,10 +9,10 @@ export const WORD_PAGES = [
   { to: "/books", label: "词书" },
 ] as const;
 
-/** 错题本、解题思路库共用的顶部切换 */
+/** 错题本、思路库共用的顶部切换 */
 export const MISTAKE_PAGES = [
   { to: "/mistakes", label: "错题本" },
-  { to: "/methods", label: "解题思路" },
+  { to: "/methods", label: "思路库" },
 ] as const;
 
 export function WordsTabs({ pages = WORD_PAGES, label = "单词" }: { pages?: readonly { to: string; label: string }[]; label?: string }) {

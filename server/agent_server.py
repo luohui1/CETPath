@@ -476,7 +476,7 @@ TOOLS = [
         [],
     ),
     _fn("remove_from_vocab", "把一个词从学习者的生词本删掉。学习者说不要这个词了时用。", {"word": {"type": "string"}}, ["word"]),
-    _fn("add_method", "把一条做题方法（比如定位句该往前看还是往后看、某类陷阱怎么识别）收进学习者的解题思路库。学习者说要记下这个方法/思路时用；写成能复用的一两句话，别写某题的答案。", {"text": {"type": "string", "description": "方法本身，一两句话"}, "kind": {"type": "string", "description": "适用题型，如 细节、推理、主旨、态度、听力、选词填空、段落匹配、翻译、写作；通用的不填"}}, ["text"]),
+    _fn("add_method", "把一条做题方法（比如定位句该往前看还是往后看、某类陷阱怎么识别）或一句英文长难句（可带中文译文和拆解要点）收进学习者的思路库。学习者说要记下这个方法/长难句时用。", {"text": {"type": "string", "description": "方法本身，或长难句的拆解要点（一两句话）"}, "sentence": {"type": "string", "description": "若要收入长难句，填英文原句"}, "translation": {"type": "string", "description": "长难句的中文译文，可选"}, "kind": {"type": "string", "description": "适用分类，如 细节、推理、主旨、态度、听力、选词填空、段落匹配、翻译、写作、长难句；通用的不填"}}, ["text"]),
     _fn("mark_known", "把生词本里的一个词标成已掌握（两个月后再复习）。学习者说这个词会了时用。", {"word": {"type": "string"}}, ["word"]),
     _fn(
         "show_sentence_map",

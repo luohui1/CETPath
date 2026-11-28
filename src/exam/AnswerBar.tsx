@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
-import { CaretLeft, CaretRight, X, Sparkle } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, Check, Lightbulb, Sparkle, X } from "@phosphor-icons/react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { addMethod, hasSentenceMethod } from "@/lib/methods";
 import type { Question } from "@/lib/papers";
 import type { SyntaxEntry } from "@/lib/syntax";
 import type { TransLookup } from "@/lib/trans";
@@ -46,6 +48,40 @@ const CloseButton = ({ onClose }: { onClose: () => void }) => (
   </button>
 );
 
+function SaveSentence({
+  sentence,
+  syn,
+  transText,
+  paper,
+}: {
+  sentence: string;
+  syn?: SyntaxEntry | null;
+  transText?: string | null;
+  paper?: { id: string; title: string };
+}) {
+  const saved = useLiveQuery(() => hasSentenceMethod(sentence), [sentence]) ?? false;
+  const save = () => {
+    const source = paper ? { paperId: paper.id, paperTitle: paper.title, sentence } : undefined;
+    void addMethod(
+      syn
+        ? { sentence: syn.en || sentence, translation: syn.zh || transText || undefined, syntax: syn, from: "syntax", source }
+        : { sentence, translation: transText || undefined, from: "mine", source },
+    );
+  };
+  return (
+    <button
+      type="button"
+      disabled={saved}
+      onClick={save}
+      title="把这句长难句收进思路库"
+      className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[13px] font-medium text-[var(--ink-700)] transition-colors hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
+    >
+      {saved ? <Check className="size-3.5" weight="bold" /> : <Lightbulb className="size-3.5" />}
+      {saved ? "已收" : "收进思路库"}
+    </button>
+  );
+}
+
 /**
  * 卷面那一栏底边的条（排在卷面下面，不盖在卷面上）：点了选项条上的"解析"放这道题的解析（最高 50% 高），
  * 长按一句是这句的译文（最高 40%）；同一时间只放一样，里面滚动，卷面不动。选项本身在卷面上题号下面（ChoiceStrip）。
@@ -57,6 +93,7 @@ export function AnswerBar({
   content,
   mine,
   trans,
+  paper,
   embedded,
   onClose,
   step,
@@ -66,6 +103,7 @@ export function AnswerBar({
   content: BarContent;
   mine?: string | null; // 解析里要不要对答案（交卷后、练习模式选过）：见 ExplanationCard
   trans: TransLookup;
+  paper?: { id: string; title: string };
   embedded?: boolean;
   onClose: () => void;
   step?: { prev: boolean; next: boolean; go: (dir: 1 | -1) => void }; // 解析头上的上一题、下一题
@@ -185,6 +223,12 @@ export function AnswerBar({
                 {content.syn ? "长难句解析" : "译句"}
                 {content.nav && <span className="num ml-2 text-[13px] font-normal text-[var(--ink-500)]">{content.nav.pos}</span>}
               </span>
+              <SaveSentence
+                sentence={content.sentence}
+                syn={content.syn}
+                transText={content.syn ? content.syn.zh : trans(content.sentence).text}
+                paper={paper}
+              />
               {onAsk && (
                 <button type="button" onClick={onAsk} className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-[var(--blue)] transition-colors hover:bg-[var(--blue-tint)]">
                   <Sparkle className="size-3.5" weight="fill" /> 问 AI

@@ -133,13 +133,16 @@ export interface MemoryRow {
 }
 
 /** AI 助教的一段对话：问的哪句（可带点的词）和来回的消息；AI 助教页列出历史 */
-/** 解题思路库：从解析的"信号"、Agent 的回答里收进来的，或者自己写的做题方法（2026-11-22） */
+/** 解题思路库：从解析的"信号"、Agent 的回答、卷面长难句收进来的，或者自己写的做题方法与长难句（2026-11-22，2026-11-28 扩充长难句） */
 export interface MethodRow {
   id: string;
   text: string;
-  kind?: string; // 题型：细节、推理、主旨、听力……没有就算"通用"
-  from: "explain" | "agent" | "mine";
-  source?: { paperId: string; paperTitle: string; questionId?: string; number?: number };
+  kind?: string; // 题型：细节、推理、主旨、听力……或"长难句"；没有就算"通用"
+  from: "explain" | "agent" | "mine" | "syntax";
+  sentence?: string; // 长难句英文原句
+  translation?: string; // 中文译文
+  syntax?: SyntaxEntry; // 结构化成分拆解（主干/修饰色块）
+  source?: { paperId: string; paperTitle: string; questionId?: string; number?: number; sentence?: string };
   createdAt: number;
   updatedAt: number;
 }

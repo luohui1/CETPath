@@ -18,10 +18,10 @@ import { masteryId, scoredQuestions } from "./mistakes";
 import { getProfile, saveProfile } from "./profile";
 import { touchMemory } from "./agent";
 import { lookupOnline } from "./youdao";
-import { addMethod } from "./methods";
+import { SYNTAX_KIND, addMethod } from "./methods";
 import { KIND_NAMES, type Paper, type PdfWordsPage } from "./papers";
 import { newMark, wordRange } from "./marks";
-import { locate, type SyntaxPiece } from "./syntax";
+import { locate, looksLikeEnglishSentence, type SyntaxPiece } from "./syntax";
 import { sentenceKey } from "./trans";
 import type { ToolCall } from "./agent";
 
@@ -185,16 +185,22 @@ export async function runTool(
         };
       }
       case "add_method": {
-        const text = String(a.text ?? "").trim();
-        if (!text) return { label: "思路库：没有内容", result: "没给要记的方法" };
+        const rawText = String(a.text ?? "").trim();
+        const rawSent = typeof a.sentence === "string" ? a.sentence.trim() : "";
+        const rawTrans = typeof a.translation === "string" ? a.translation.trim() : "";
         const kind = typeof a.kind === "string" ? a.kind.trim() : "";
+        const sentence = rawSent || (kind === SYNTAX_KIND || (!kind && looksLikeEnglishSentence(rawText, 8)) ? rawText : "");
+        if (!rawText && !sentence) return { label: "思路库：没有内容", result: "没给要记的方法或长难句" };
         await addMethod({
-          text,
+          text: rawText || undefined,
+          sentence: sentence || undefined,
+          translation: rawTrans || undefined,
           kind: kind || undefined,
           from: "agent",
-          source: env.paper ? { paperId: env.paper.id, paperTitle: env.paper.title } : undefined,
+          source: env.paper ? { paperId: env.paper.id, paperTitle: env.paper.title, ...(sentence ? { sentence } : {}) } : undefined,
         });
-        return { label: `已收进解题思路库${kind ? ` · ${kind}` : ""}`, result: "已收进解题思路库" };
+        const tag = kind || (sentence ? SYNTAX_KIND : "");
+        return { label: `已收进思路库${tag ? ` · ${tag}` : ""}`, result: "已收进思路库" };
       }
       case "mark_known": {
         const lemma = await toLemma(String(a.word ?? "").trim());

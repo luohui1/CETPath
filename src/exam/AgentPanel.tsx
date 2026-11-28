@@ -447,7 +447,7 @@ export function AgentPanel({
                 const quiz = c.name === "show_quiz" ? quizOf(c) : null;
                 if (quiz) return <AgentQuiz key={c.id} quiz={quiz} />;
                 return VISUAL_TOOLS.has(c.name) ? (
-                  <AgentVisual key={c.id} call={c} />
+                  <AgentVisual key={c.id} call={c} paper={env?.paper} />
                 ) : null;
               })}
             </div>

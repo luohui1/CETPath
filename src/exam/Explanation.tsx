@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { CaretDown, Check, Crosshair, Lightbulb, Play, Plus, X } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addMethod, hasMethod } from "@/lib/methods";
+import { addMethod, hasMethod, hasSentenceMethod } from "@/lib/methods";
 import type { ExplainFields, ExplainSource, Question } from "@/lib/papers";
 import { addToVocab } from "@/lib/learning";
 import { setSetting, useSettings } from "@/lib/settings";
+import { looksLikeEnglishSentence } from "@/lib/syntax";
 import { cn } from "@/lib/utils";
 import { CardSection, QuoteAction, QuoteBlock } from "./cardParts";
 
@@ -170,11 +171,34 @@ function SaveSignal({ q, kind, signal }: { q: Question; kind?: string; signal: s
       disabled={!!saved}
       onClick={() => void addMethod({ text: signal, kind, from: "explain", source: { paperId: ctx.paperId, paperTitle: ctx.paperTitle, questionId: q.id, number: q.number } })}
       className="-my-0.5 inline-flex h-7 flex-none items-center gap-1 rounded-full px-2 text-[12px] text-[var(--ink-500)] hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
-      title="收进解题思路库"
+      title="收进思路库"
     >
       {saved ? <Check className="size-3" weight="bold" /> : <Lightbulb className="size-3" />}
       {saved ? "已收" : "收进思路库"}
     </button>
+  );
+}
+
+/** 原文定位句旁的"收长难句"：英文长句一键存入思路库 */
+function SaveQuoteSentence({ q, sentence, translation }: { q: Question; sentence?: string; translation?: string }) {
+  const ctx = useContext(ExplainContext);
+  const saved = useLiveQuery(() => (sentence ? hasSentenceMethod(sentence) : false), [sentence]) ?? false;
+  if (!ctx || !sentence || !looksLikeEnglishSentence(sentence, 12)) return null;
+  return (
+    <QuoteAction
+      onClick={() => {
+        if (saved) return;
+        void addMethod({
+          sentence,
+          translation: translation || undefined,
+          from: "explain",
+          source: { paperId: ctx.paperId, paperTitle: ctx.paperTitle, questionId: q.id, number: q.number, sentence },
+        });
+      }}
+      icon={saved ? <Check className="size-3.5" weight="bold" /> : <Lightbulb className="size-3.5" />}
+    >
+      {saved ? "已收长难句" : "收长难句"}
+    </QuoteAction>
   );
 }
 
@@ -531,6 +555,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
                       听这一句
                     </QuoteAction>
                   )}
+                  <SaveQuoteSentence q={q} sentence={loc!.quote} translation={f.translation} />
                 </>
               }
               sub={f.translation}
@@ -647,6 +672,7 @@ export function ExplanationCard({ q, mine, answer = true, title, action, classNa
                   听这一句
                 </QuoteAction>
               )}
+              <SaveQuoteSentence q={q} sentence={loc!.quote} translation={f?.translation} />
             </>
           }
           sub={open && f?.translation ? f.translation : undefined}

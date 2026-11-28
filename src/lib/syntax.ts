@@ -106,3 +106,156 @@ export function syntaxRuns(e: SyntaxEntry): SyntaxRun[] {
   }
   return runs;
 }
+
+/** 判断一段文本是否更像一句英文长句（非中文问题/方法） */
+export function looksLikeEnglishSentence(text: string, minWords = 8): boolean {
+  const s = text.trim();
+  if (!s || /[\u4e00-\u9fff]/.test(s)) return false;
+  const words = s.match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g);
+  return (words?.length ?? 0) >= minWords;
+}
+
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  const candidates: string[] = [];
+  const trimmed = raw.trim();
+  if (trimmed) candidates.push(trimmed);
+  for (const m of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    if (m[1]?.trim()) candidates.push(m[1].trim());
+  }
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(trimmed.slice(first, last + 1));
+  for (const c of candidates) {
+    try {
+      const v = JSON.parse(c);
+      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+    } catch {
+      // ignore malformed candidate
+    }
+  }
+  return null;
+}
+
+/** 从 AI 输出的 JSON 中尽力提取译文（即使结构字段校验未通过也能保留翻译） */
+export function extractTranslationFromJson(raw: string): string | undefined {
+  const obj = extractJsonObject(raw);
+  if (!obj) return undefined;
+  const zh = typeof obj.zh === "string" ? obj.zh.trim() : typeof obj.translation === "string" ? obj.translation.trim() : "";
+  return zh || undefined;
+}
+
+/** 把 AI 返回的 JSON 校验并转换成卷面同款 SyntaxEntry；片段必须在原句中找得到 */
+export function parseAiSyntaxJson(en: string, raw: string, group = "method"): SyntaxEntry | null {
+  const obj = extractJsonObject(raw);
+  if (!obj) return null;
+  const text = en.trim();
+  if (!text) return null;
+
+  const main: SyntaxPiece[] = [];
+  let pos = 0;
+  for (const item of Array.isArray(obj.main) ? obj.main : []) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const t = String(rec.t ?? rec.text ?? "").trim();
+    const r = String(rec.r ?? rec.role ?? "").trim();
+    if (!t || !r) continue;
+    const at = locate(text, t, pos);
+    if (!at) continue;
+    main.push({ t: text.slice(at[0], at[1]), r });
+    pos = at[1];
+  }
+
+  const parts: SyntaxPiece[] = [];
+  for (const item of Array.isArray(obj.parts) ? obj.parts : []) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const t = String(rec.t ?? rec.text ?? "").trim();
+    const r = String(rec.r ?? rec.role ?? "").trim();
+    if (!t || !r) continue;
+    const at = locate(text, t);
+    if (!at) continue;
+    const of = typeof rec.of === "string" ? rec.of.trim() : "";
+    const note = typeof rec.note === "string" ? rec.note.trim() : "";
+    parts.push({
+      t: text.slice(at[0], at[1]),
+      r,
+      ...(of ? { of } : {}),
+      ...(note ? { note } : {}),
+    });
+  }
+
+  const points = (Array.isArray(obj.points) ? obj.points : []).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4);
+  const zh = typeof obj.zh === "string" ? obj.zh.trim() : typeof obj.translation === "string" ? obj.translation.trim() : "";
+  if (!main.length || (!zh && !parts.length)) return null;
+  return { group, en: text, main, parts, points, zh };
+}
+
+type AgentMapPart = { text?: string; role?: string; level?: number; label?: string; note?: string };
+
+/** 把 AI 助教 show_sentence_map 工具的数据转换成 SyntaxEntry */
+export function sentenceMapToSyntaxEntry(data: { sentence?: string; translation?: string; parts?: AgentMapPart[] }): SyntaxEntry | null {
+  const rawParts = (Array.isArray(data.parts) ? data.parts : []).filter((p) => p && typeof p.text === "string" && p.text.trim());
+  const built = rawParts
+    .map((p) => p.text!.trim())
+    .join(" ")
+    .replace(/\s+([,.;:?!'"’”)\]])/g, "$1")
+    .replace(/([('"‘“[])\s+/g, "$1");
+  const en = (typeof data.sentence === "string" && data.sentence.trim() ? data.sentence.trim() : built).replace(/\s+/g, " ");
+  if (!en) return null;
+
+  const mainRole = (role?: string) => (role === "subject" ? "主语" : role === "predicate" ? "谓语" : role === "object" ? "宾语" : "");
+  const extractMain = (strictLevel: boolean) => {
+    const out: SyntaxPiece[] = [];
+    let pos = 0;
+    for (const p of rawParts) {
+      if (strictLevel && (p.level ?? 0) > 0) continue;
+      const r = mainRole(p.role);
+      if (!r) continue;
+      const at = locate(en, p.text!, pos);
+      if (!at) continue;
+      out.push({ t: en.slice(at[0], at[1]), r });
+      pos = at[1];
+    }
+    return out;
+  };
+  let main = extractMain(true);
+  if (!main.length) main = extractMain(false);
+  if (!main.length) return null;
+
+  const parts: SyntaxPiece[] = [];
+  const pts: string[] = [];
+  for (const p of rawParts) {
+    const isMod = p.role === "clause" || p.role === "modifier" || (p.level ?? 0) > 0 || (p.role === "other" && !!(p.label || p.note));
+    if (!isMod) continue;
+    const t = p.text!.trim();
+    if (!/[A-Za-z0-9]/.test(t)) continue;
+    const at = locate(en, t);
+    if (!at) continue;
+    const label = typeof p.label === "string" ? p.label.trim() : "";
+    const note = typeof p.note === "string" ? p.note.trim() : "";
+    const head = label.split(/[，,：:·(（]/)[0]?.trim() ?? "";
+    const r = head || (p.role === "clause" ? "从句" : p.role === "modifier" ? "修饰短语" : "插入/同位");
+    const ofMatch = label.match(/修饰\s*(.+)$/);
+    const of = ofMatch?.[1]?.trim();
+    const restLabel = label && head && label !== head && !ofMatch ? label.slice(head.length).replace(/^[，,：:·\s]+/, "") : "";
+    const fullNote = [restLabel, note].filter(Boolean).join(" · ");
+    parts.push({
+      t: en.slice(at[0], at[1]),
+      r,
+      ...(of ? { of } : {}),
+      ...(fullNote ? { note: fullNote } : {}),
+    });
+    const pt = [label, note].filter(Boolean).join("：");
+    if (pt && !pts.includes(pt) && pts.length < 4) pts.push(pt);
+  }
+
+  return {
+    group: "agent",
+    en,
+    main,
+    parts,
+    points: pts,
+    zh: typeof data.translation === "string" ? data.translation.trim() : "",
+  };
+}
+

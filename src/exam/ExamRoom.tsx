@@ -1055,10 +1055,11 @@ export function ExamRoom({
     if (q) setTimeout(() => onJump(q), 300);
   }, [ready, focus, retry, qById, paper, onJump]);
 
-  // 从单词卡"在卷面上看"过来：?mark= 跳到那条批注，?sent= 把那句原句标蓝
+  // 从单词卡"在卷面上看"或思路库"看卷面长难句"过来：?mark= 跳到那条批注，?sent= 把那句原句标蓝（&syntax=1 自动展开长难句解析）
   const targeted = useRef(false);
   const focusMark = search.get("mark");
   const focusSent = search.get("sent");
+  const focusSyntax = search.get("syntax") === "1";
   useEffect(() => {
     if (!ready || !pages || targeted.current || (!focusMark && !focusSent)) return;
     if (focusMark) {
@@ -1069,15 +1070,34 @@ export function ExamRoom({
       return;
     }
     targeted.current = true;
+    if (focusSyntax && !synOn) {
+      setSynOn(true);
+      try {
+        localStorage.setItem(`yz-syn-on:${paper.id}`, "1");
+      } catch {
+        // 存储满了就只在这次打开时生效
+      }
+    }
+    const targetKey = sentenceKey(focusSent!);
     for (let n = firstPage; n <= lastPage; n++) {
       const p = pages[n - 1];
-      const si = p?.s.indexOf(focusSent!) ?? -1;
+      let si = p?.s.indexOf(focusSent!) ?? -1;
+      if (si < 0 && p) si = p.s.findIndex((x) => sentenceKey(x) === targetKey);
       if (si < 0) continue;
       const idx = p.w.flatMap((w, i) => (w[5] === si ? [i] : []));
-      if (idx.length) setTimeout(() => flashWords(n, [idx[0], idx[idx.length - 1]]), 300);
+      if (idx.length) {
+        setTimeout(() => {
+          flashWords(n, [idx[0], idx[idx.length - 1]]);
+          if (focusSyntax) {
+            setHit(null);
+            setOpenQ(null);
+            setSent({ page: n, sid: si, sentence: p.s[si], n: Date.now() });
+          }
+        }, 300);
+      }
       break;
     }
-  }, [ready, pages, focusMark, focusSent, marksRaw, onJumpMark, flashWords, firstPage, lastPage]);
+  }, [ready, pages, focusMark, focusSent, focusSyntax, marksRaw, onJumpMark, flashWords, firstPage, lastPage, paper.id, synOn]);
 
   // 查找：当前命中滚到画布上方三分之一处
   useEffect(() => {
@@ -1941,6 +1961,7 @@ export function ExamRoom({
     barContent && (
       <AnswerBar
         content={barContent}
+        paper={{ id: paper.id, title: paper.title }}
         embedded={embedded}
         mine={curQ && (submitted || (practice && !!answers[curQ.id])) ? (answers[curQ.id] ?? null) : undefined}
         trans={trans}

@@ -1,15 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookmarkSimple, BracketsSquare, CaretDown, Check, Plus, Sparkle, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
+import { BookmarkSimple, BracketsSquare, CaretDown, Check, Lightbulb, Plus, Sparkle, SpeakerHigh, Translate, TreeStructure, X } from "@phosphor-icons/react";
 import { db } from "@/lib/db";
 import { lookup, phonetic, TAG_LABELS, translationLines, type LookupResult } from "@/lib/dict";
 import { addToVocab, removeFromVocab } from "@/lib/learning";
+import { addMethod, hasSentenceMethod } from "@/lib/methods";
 import { findPhrases, type PhraseHit } from "@/lib/phrases";
 import { speak } from "@/lib/speech";
 import { getSettings } from "@/lib/settings";
 import { lookupOnline, type OnlineResult } from "@/lib/youdao";
 import { getRoots, type RootInfo } from "@/lib/roots";
 import { RootLine } from "@/components/RootLine";
+import { looksLikeEnglishSentence } from "@/lib/syntax";
 import type { TransLookup } from "@/lib/trans";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui";
@@ -665,7 +667,16 @@ export function WordCard({
           {tr && (
             <div className="mt-3 rounded-[10px] bg-[var(--paper-50)] px-3.5 py-3 shadow-[inset_2px_0_0_var(--blue-line),inset_0_0_0_1px_var(--line-soft)]">
               <p className={cn("leading-[1.7]", tr.text ? "text-[17px] text-[var(--ink)]" : "text-[15px] text-[var(--ink-500)]")}>{!tr.ready ? "正在取译文…" : (tr.text ?? "这句还没有译文")}</p>
-              {tr.text && <p className="mt-1 text-right text-[12px] text-[var(--ink-500)]">AI 译文</p>}
+              {(tr.text || looksLikeEnglishSentence(hit.sentence, 8)) && (
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  {looksLikeEnglishSentence(hit.sentence, 8) ? (
+                    <SaveSentenceChip sentence={hit.sentence} translation={tr.text} source={source} />
+                  ) : (
+                    <span />
+                  )}
+                  {tr.text && <span className="text-[12px] text-[var(--ink-500)]">AI 译文</span>}
+                </div>
+              )}
               {hit.page == null && (
                 <p className="serif mt-2 border-t border-[var(--line-soft)] pt-2 text-[14px] leading-[1.6] text-[var(--ink-500)]">
                   <MarkWord text={hit.sentence} word={hit.word} nth={hit.nth} />
@@ -676,6 +687,29 @@ export function WordCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function SaveSentenceChip({ sentence, translation, source }: { sentence: string; translation?: string | null; source?: LookupSource }) {
+  const saved = useLiveQuery(() => hasSentenceMethod(sentence), [sentence]) ?? false;
+  return (
+    <button
+      type="button"
+      disabled={saved}
+      onClick={() =>
+        void addMethod({
+          sentence,
+          translation: translation || undefined,
+          from: "mine",
+          source: source ? { ...source, sentence } : undefined,
+        })
+      }
+      title="把这句长难句收进思路库"
+      className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-[var(--ink-500)] transition-colors hover:bg-[var(--blue-tint)] hover:text-[var(--blue)] disabled:text-[var(--blue)] disabled:hover:bg-transparent"
+    >
+      {saved ? <Check className="size-3.5" weight="bold" /> : <Lightbulb className="size-3.5" />}
+      {saved ? "已收进思路库" : "收长难句"}
+    </button>
   );
 }
 

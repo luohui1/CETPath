@@ -4,8 +4,9 @@ import { lookup } from "@/lib/dict";
 import { addToVocab } from "@/lib/learning";
 import { lookupOnline } from "@/lib/youdao";
 import { useLiveQuery } from "dexie-react-hooks";
-import { addMethod, hasMethod } from "@/lib/methods";
+import { SYNTAX_KIND, addMethod, hasMethod } from "@/lib/methods";
 import type { Paper } from "@/lib/papers";
+import { looksLikeEnglishSentence } from "@/lib/syntax";
 
 const EN = /^[A-Za-z][A-Za-z'’ -]*[A-Za-z]$|^[A-Za-z]$/;
 
@@ -45,8 +46,19 @@ export function AnswerPick({ root, paper }: { root: RefObject<HTMLElement | null
     setDone(`已加入生词本 · ${r?.lemma ?? word.toLowerCase()}`);
   };
   const addIdea = async () => {
+    if (looksLikeEnglishSentence(sel.text, 8)) {
+      await addMethod({
+        sentence: sel.text,
+        text: sel.text,
+        kind: SYNTAX_KIND,
+        from: "agent",
+        source: source ? { ...source, sentence: sel.text } : undefined,
+      });
+      setDone("已作为长难句收进思路库");
+      return;
+    }
     await addMethod({ text: sel.text, from: "agent", source });
-    setDone("已收进解题思路库");
+    setDone("已收进思路库");
   };
   return (
     <div

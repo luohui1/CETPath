@@ -1,6 +1,6 @@
 import { paperPath } from "@/lib/attempts";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowSquareOut, ArrowUp, CaretDown, ChatsCircle, FileText, List, NotePencil, Trash, X } from "@phosphor-icons/react";
 import { db, type ChatRow } from "@/lib/db";
@@ -52,6 +52,20 @@ export function AskPage() {
   const [gen, setGen] = useState(0);
   const [drawer, setDrawer] = useState(false);
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qParam = searchParams.get("q");
+
+  useEffect(() => {
+    const text = qParam?.trim().replace(/\s+/g, " ");
+    if (!text) return;
+    const question = /[\u4e00-\u9fff]/.test(text);
+    setThread(question ? { id: `q:${Date.now()}`, ctx: { sentence: "", question: text } } : { id: `${sentenceKey(text)}:`, ctx: { sentence: text } });
+    setGen((g) => g + 1);
+    setDraft("");
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    setSearchParams(next, { replace: true });
+  }, [qParam, searchParams, setSearchParams]);
 
   // 每组按最近一次对话排；卷子组标题用试卷目录里的名字，找不到（外刊、删掉的卷）就用存下来的标题
   const groups = useMemo(() => {
